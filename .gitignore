@@ -1,9 +1,11 @@
 *.exe
 *.exe~
+node_modules/
 *.dll
 *.so
 *.dylib
 dist/
+!frontend/dist/.gitkeep
 tools/
 de4dot-cex/
 ghidra/

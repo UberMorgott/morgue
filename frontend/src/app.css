@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  /* Cyberpunk palette */
+  --color-surface: #0a0a0f;
+  --color-surface-raised: #12121a;
+  --color-surface-overlay: #1a1a25;
+  --color-border: #2a2a3a;
+  --color-border-focus: #00e5ff;
+
+  --color-text-primary: #e0e0e0;
+  --color-text-secondary: #888899;
+  --color-text-muted: #555566;
+
+  --color-accent-cyan: #00e5ff;
+  --color-accent-magenta: #ff00aa;
+  --color-accent-green: #00ff88;
+  --color-accent-red: #ff3355;
+  --color-accent-yellow: #ffcc00;
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}

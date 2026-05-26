@@ -1,0 +1,24 @@
+version: '3'
+
+vars:
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+  COMMIT:
+    sh: git rev-parse --short HEAD 2>/dev/null || echo none
+
+tasks:
+  dev:
+    desc: Run Wails dev mode
+    cmds:
+      - wails3 dev
+
+  build:
+    desc: Build production binary with embedded frontend
+    cmds:
+      - cd frontend && npm run build
+      - go build -ldflags "-X main.Version={{.VERSION}} -X main.Commit={{.COMMIT}}" -o morgue.exe ./cmd/morgue
+
+  frontend:
+    desc: Install and build frontend
+    cmds:
+      - cd frontend && npm install && npm run build
