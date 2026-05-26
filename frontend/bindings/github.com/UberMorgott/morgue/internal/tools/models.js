@@ -7,6 +7,87 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * RuntimeKind identifies a runtime dependency.
+ * @readonly
+ * @enum {string}
+ */
+export const RuntimeKind = {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero: "",
+
+    RuntimeDotnet: "dotnet",
+    RuntimeJava: "java",
+};
+
+/**
+ * RuntimeStatus holds the detected state of a runtime.
+ */
+export class RuntimeStatus {
+    /**
+     * Creates a new RuntimeStatus instance.
+     * @param {Partial<RuntimeStatus>} [$$source = {}] - The source object to create the RuntimeStatus.
+     */
+    constructor($$source = {}) {
+        if (!("Kind" in $$source)) {
+            /**
+             * @member
+             * @type {RuntimeKind}
+             */
+            this["Kind"] = RuntimeKind.$zero;
+        }
+        if (!("Available" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["Available"] = false;
+        }
+        if (!("Version" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["Version"] = "";
+        }
+        if (!("Path" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["Path"] = "";
+        }
+        if (!("Local" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["Local"] = false;
+        }
+        if (!("Required" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["Required"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RuntimeStatus instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {RuntimeStatus}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RuntimeStatus(/** @type {Partial<RuntimeStatus>} */($$parsedSource));
+    }
+}
+
+/**
  * ToolStatus holds the installed state of a tool.
  */
 export class ToolStatus {

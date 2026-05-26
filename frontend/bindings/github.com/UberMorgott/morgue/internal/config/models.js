@@ -25,7 +25,7 @@ export class Config {
         if (!("SkipCategories" in $$source)) {
             /**
              * @member
-             * @type {{ [_ in string]?: boolean }}
+             * @type {{ [_: string]: boolean }}
              */
             this["SkipCategories"] = {};
         }
@@ -133,6 +133,20 @@ export class Config {
              * @type {boolean}
              */
             this["AutoUpdateCheck"] = false;
+        }
+        if (!("AutoUpdateTools" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["AutoUpdateTools"] = false;
+        }
+        if (!("AutoUpdateApp" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["AutoUpdateApp"] = false;
         }
         if (!("UpdateChannel" in $$source)) {
             /**

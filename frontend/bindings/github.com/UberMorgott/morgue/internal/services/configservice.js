@@ -27,7 +27,7 @@ export function Get() {
 
 /**
  * GetSkipCategories returns the current skip category map.
- * @returns {$CancellablePromise<{ [_ in string]?: boolean }>}
+ * @returns {$CancellablePromise<{ [_: string]: boolean }>}
  */
 export function GetSkipCategories() {
     return $Call.ByID(2253076753).then(/** @type {($result: any) => any} */(($result) => {
