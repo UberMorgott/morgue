@@ -5,12 +5,16 @@ type GroupKind int
 
 const (
 	GroupStandalone  GroupKind = iota
+	GroupDotNetApp
+	GroupDelphiApp
 	GroupUnityMono
 	GroupUnityIL2CPP
 )
 
 var groupKindNames = [...]string{
 	"Standalone",
+	"DotNetApp",
+	"DelphiApp",
 	"UnityMono",
 	"UnityIL2CPP",
 }

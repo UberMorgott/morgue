@@ -35,6 +35,7 @@ func TestDetectObfuscatorByStrings(t *testing.T) {
 		{"confuserex", []string{"ConfuserEx v1.0.0"}, "ConfuserEx"},
 		{"dotfuscator", []string{"Dotfuscator Community Edition"}, "Dotfuscator"},
 		{"obfuscar", []string{"Obfuscar"}, "Obfuscar"},
+		{"net reactor", []string{".NET Reactor"}, ".NET Reactor"},
 		{"none", []string{"System.Runtime", "mscorlib"}, ""},
 	}
 
@@ -72,20 +73,21 @@ func TestHasDelphiMarkers(t *testing.T) {
 
 func TestDetectEmbeddedSignals(t *testing.T) {
 	tests := []struct {
-		name     string
-		sections []string
-		want     int
+		name string
+		data []byte
+		want int
 	}{
-		{"rsrc", []string{".rsrc", ".text"}, 1},
-		{"none", []string{".text", ".data"}, 0},
-		{"multiple", []string{".rsrc", ".themida"}, 2},
+		{"costura", []byte("something costura. embedded"), 1},
+		{"costura loader", []byte("costura.something and Costura.AssemblyLoader found"), 2}, // matches both costura. and Costura.AssemblyLoader
+		{"ilmerge", []byte("ILMerge marker"), 1},
+		{"none", []byte("normal binary data"), 0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := detectEmbeddedSignals(tt.sections)
+			got := detectEmbeddedSignals(tt.data)
 			if len(got) != tt.want {
-				t.Errorf("detectEmbeddedSignals() len = %d, want %d", len(got), tt.want)
+				t.Errorf("detectEmbeddedSignals() len = %d, want %d; signals = %v", len(got), tt.want, got)
 			}
 		})
 	}
@@ -97,8 +99,10 @@ func TestDetectObfuscatorFeatures(t *testing.T) {
 		strings []string
 		want    int
 	}{
-		{"anti-debug", []string{"IsDebuggerPresent"}, 1},
-		{"proxy calls", []string{"something proxy_call somewhere"}, 1},
+		{"anti_tamper", []string{"AntiTamper"}, 1},
+		{"anti_debug", []string{"AntiDebug"}, 1},
+		{"ctrl_flow", []string{"ControlFlow"}, 1},
+		{"ref_proxy", []string{"ReferenceProxy"}, 1},
 		{"none", []string{"normal string"}, 0},
 	}
 

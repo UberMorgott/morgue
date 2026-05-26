@@ -45,7 +45,7 @@ func TestShouldSkipDisabled(t *testing.T) {
 
 func TestShouldSkipCategoryDisabled(t *testing.T) {
 	cfg := config.Default()
-	cfg.SkipCategories = map[string]bool{"dotnet_runtime": false}
+	cfg.SkipCategories = map[string]bool{"dotnet_bcl": false}
 	sl := New(cfg)
 
 	skip, _ := sl.ShouldSkip("mscorlib.dll")
