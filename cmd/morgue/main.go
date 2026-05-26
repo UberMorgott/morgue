@@ -5,6 +5,9 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/UberMorgott/morgue/internal/cli"
+	"github.com/UberMorgott/morgue/internal/selfupdate"
 )
 
 var (
@@ -35,8 +38,20 @@ func runCmd() *cobra.Command {
 		Short: "Run decompilation pipeline on a target binary",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("run: not yet implemented")
-			return nil
+			output, _ := cmd.Flags().GetString("output")
+			watch, _ := cmd.Flags().GetBool("watch")
+			recipe, _ := cmd.Flags().GetString("recipe")
+			noSkip, _ := cmd.Flags().GetBool("no-skip")
+			exclude, _ := cmd.Flags().GetStringSlice("exclude")
+
+			return cli.Run(cli.RunOptions{
+				Target:  args[0],
+				Output:  output,
+				Recipe:  recipe,
+				NoSkip:  noSkip,
+				Exclude: exclude,
+				Watch:   watch,
+			})
 		},
 	}
 
@@ -59,8 +74,7 @@ func toolsCmd() *cobra.Command {
 		Use:   "check",
 		Short: "Check which tools are installed",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("tools check: not yet implemented")
-			return nil
+			return cli.ToolsCheck()
 		},
 	})
 
@@ -68,8 +82,7 @@ func toolsCmd() *cobra.Command {
 		Use:   "install",
 		Short: "Download and install required tools",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("tools install: not yet implemented")
-			return nil
+			return cli.ToolsInstall()
 		},
 	})
 
@@ -91,8 +104,11 @@ func selfUpdateCmd() *cobra.Command {
 		Use:   "self-update",
 		Short: "Update morgue to the latest version",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("self-update: not yet implemented")
-			return nil
+			checkOnly, _ := cmd.Flags().GetBool("check")
+			if checkOnly {
+				return selfupdate.Check(Version)
+			}
+			return selfupdate.Update(Version)
 		},
 	}
 
