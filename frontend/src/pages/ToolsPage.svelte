@@ -118,7 +118,19 @@
     try {
       await ToolsService.Install(name);
       updateOperation(opId, { status: 'success', progress: 100 });
-      await loadTools();
+      // Refresh only this tool's status, not the whole list
+      const st = await ToolsService.CheckAll();
+      const updated = (st || []).find((s: any) => (s.Name ?? s.name) === name);
+      if (updated) {
+        tools = tools.map(t => t.name === name ? {
+          ...t,
+          installed: updated.Installed ?? updated.installed ?? false,
+          version: updated.Version ?? updated.version ?? '',
+          path: updated.Path ?? updated.path ?? '',
+          checking: true,
+        } : t);
+        checkLatestVersion(name);
+      }
     } catch (err: any) {
       console.error('Install failed:', err);
       updateOperation(opId, { status: 'failed', error: err.message || String(err) });
@@ -133,7 +145,10 @@
     try {
       await ToolsService.Delete(name);
       updateOperation(opId, { status: 'success', progress: 100 });
-      await loadTools();
+      // Refresh only this tool's row
+      tools = tools.map(t => t.name === name ? {
+        ...t, installed: false, version: '', path: '',
+      } : t);
     } catch (err: any) {
       console.error('Delete failed:', err);
       updateOperation(opId, { status: 'failed', error: err.message || String(err) });
@@ -151,13 +166,15 @@
       try {
         await ToolsService.Install(name);
         updateOperation(opId, { status: 'success', progress: 100 });
+        // Update just this row
+        tools = tools.map(t => t.name === name ? { ...t, installed: true, checking: true } : t);
+        checkLatestVersion(name);
       } catch (e: any) {
         console.error('Install failed:', name, e);
         updateOperation(opId, { status: 'failed', error: e.message || String(e) });
       }
     }
     busy = false;
-    await loadTools();
   }
 
   async function updateAll() {
@@ -171,13 +188,14 @@
       try {
         await ToolsService.Install(name);
         updateOperation(opId, { status: 'success', progress: 100 });
+        tools = tools.map(t => t.name === name ? { ...t, updateAvailable: false, checking: true } : t);
+        checkLatestVersion(name);
       } catch (e: any) {
         console.error('Update failed:', name, e);
         updateOperation(opId, { status: 'failed', error: e.message || String(e) });
       }
     }
     busy = false;
-    await loadTools();
   }
 
   $: missingCount = tools.filter(t => !t.installed).length;
