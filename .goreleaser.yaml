@@ -1,0 +1,38 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - main: ./cmd/morgue
+    binary: morgue
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.Commit={{.ShortCommit}}
+
+archives:
+  - format: zip
+    name_template: "morgue_{{.Os}}_{{.Arch}}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
