@@ -203,19 +203,14 @@ func (m *Manager) installDotnetSDK() error {
 	zipPath := filepath.Join(m.baseDir, "runtimes", "dotnet-sdk.zip")
 	url := "https://aka.ms/dotnet/8.0/dotnet-sdk-win-x64.zip"
 
-	opts := DownloadOptions{
-		URL:        url,
-		DestPath:   zipPath,
-		Retries:    m.cfg.DownloadRetries,
-		TimeoutMin: m.cfg.DownloadTimeoutMinutes,
-	}
+	var progressCb func(bytesDown, bytesTotal int64)
 	if m.OnProgress != nil {
-		opts.OnProgress = func(bytesDown, bytesTotal int64) {
+		progressCb = func(bytesDown, bytesTotal int64) {
 			m.OnProgress("dotnet-sdk", bytesDown, bytesTotal)
 		}
 	}
 
-	if err := downloadFile(opts); err != nil {
+	if err := downloadFile(url, zipPath, progressCb); err != nil {
 		return fmt.Errorf("download .NET SDK: %w", err)
 	}
 	defer os.Remove(zipPath)
@@ -288,19 +283,15 @@ func (m *Manager) installJavaJRE() error {
 	}
 
 	zipPath := filepath.Join(m.baseDir, "runtimes", fileName)
-	opts := DownloadOptions{
-		URL:        downloadURL,
-		DestPath:   zipPath,
-		Retries:    m.cfg.DownloadRetries,
-		TimeoutMin: m.cfg.DownloadTimeoutMinutes,
-	}
+
+	var progressCb func(bytesDown, bytesTotal int64)
 	if m.OnProgress != nil {
-		opts.OnProgress = func(bytesDown, bytesTotal int64) {
+		progressCb = func(bytesDown, bytesTotal int64) {
 			m.OnProgress("java-jre", bytesDown, bytesTotal)
 		}
 	}
 
-	if err := downloadFile(opts); err != nil {
+	if err := downloadFile(downloadURL, zipPath, progressCb); err != nil {
 		return fmt.Errorf("download Java JRE: %w", err)
 	}
 	defer os.Remove(zipPath)

@@ -6,7 +6,9 @@ require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.6
 	charm.land/lipgloss/v2 v2.0.3
+	github.com/cavaliergopher/grab/v3 v3.0.1
 	github.com/creativeprojects/go-selfupdate v1.5.2
+	github.com/google/go-github/v60 v60.0.0
 	github.com/saferwall/pe v1.6.5
 	github.com/spf13/cobra v1.10.2
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.67
