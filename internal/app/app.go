@@ -1,7 +1,9 @@
 package app
 
 import (
+	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -9,6 +11,9 @@ import (
 
 	"github.com/UberMorgott/morgue/internal/config"
 	"github.com/UberMorgott/morgue/internal/engine"
+	_ "github.com/UberMorgott/morgue/internal/recipe"
+	"github.com/UberMorgott/morgue/internal/scanner"
+	"github.com/UberMorgott/morgue/internal/tui"
 	"github.com/UberMorgott/morgue/internal/tui/components"
 	"github.com/UberMorgott/morgue/internal/util"
 )
@@ -29,6 +34,14 @@ var stepNames = []string{
 	"Input", "Scan", "Select", "Tools", "Pipeline", "Results",
 }
 
+// Internal messages
+type scanDoneMsg struct {
+	result scanner.ScanResult
+	err    error
+}
+
+type toolCheckDoneMsg struct{}
+
 // Model is the top-level Bubble Tea model for the TUI.
 type Model struct {
 	step      WizardStep
@@ -40,8 +53,16 @@ type Model struct {
 	height    int
 	quitting  bool
 
-	// Per-step state (will be populated in later tasks)
-	message string // placeholder for current step content
+	// Per-step state
+	inputPicker  *tui.InputPicker
+	scanResult   scanner.ScanResult
+	targetSelect *tui.TargetSelect
+	toolCheck    *tui.ToolCheck
+	pipelineView *tui.PipelineView
+	resultMsg    string
+
+	inputDir  string
+	outputDir string
 }
 
 // New creates a new TUI app model.
@@ -52,23 +73,23 @@ func New() Model {
 
 	sb := components.NewStatusBar(th.BG, th.FG)
 	sb.SetLeft("MORGUE")
-	sb.SetRight("q: quit")
+	sb.SetRight("q: quit  esc: back")
 
 	return Model{
-		step:      StepInputPicker,
-		theme:     th,
-		cfg:       cfg,
-		engine:    eng,
-		statusBar: sb,
-		width:     80,
-		height:    24,
-		message:   "Welcome to Morgue. Press enter to begin.",
+		step:        StepInputPicker,
+		theme:       th,
+		cfg:         cfg,
+		engine:      eng,
+		statusBar:   sb,
+		width:       80,
+		height:      24,
+		inputPicker: tui.NewInputPicker("./decompiled"),
 	}
 }
 
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
-	return nil
+	return m.inputPicker.Init()
 }
 
 // Update implements tea.Model.
@@ -78,21 +99,170 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.statusBar.SetWidth(m.width)
+		if m.pipelineView != nil {
+			m.pipelineView.SetSize(m.width, m.height)
+		}
 		return m, nil
 
 	case tea.KeyPressMsg:
 		key := tea.Key(msg)
-		switch {
-		case key.Code == 'q' || key.Code == 'Q':
-			m.quitting = true
-			return m, tea.Quit
-		case key.Code == rune(tea.KeyEscape):
+		// Global quit only when not in a form
+		if m.step != StepInputPicker {
+			if key.Code == 'q' || key.Code == 'Q' || key.Code == rune(tea.KeyEscape) {
+				m.quitting = true
+				return m, tea.Quit
+			}
+		}
+	}
+
+	// Route to current step
+	switch m.step {
+	case StepInputPicker:
+		return m.updateInputPicker(msg)
+	case StepScanning:
+		return m.updateScanning(msg)
+	case StepTargetSelect:
+		return m.updateTargetSelect(msg)
+	case StepToolCheck:
+		return m.updateToolCheck(msg)
+	case StepPipeline:
+		return m.updatePipeline(msg)
+	case StepResults:
+		return m.updateResults(msg)
+	}
+
+	return m, nil
+}
+
+func (m Model) updateInputPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := m.inputPicker.Update(msg)
+	if m.inputPicker.Done() {
+		result := m.inputPicker.Result()
+		m.inputDir = result.InputDir
+		m.outputDir = result.OutputDir
+		if m.outputDir == "" {
+			m.outputDir = "./decompiled"
+		}
+		m.step = StepScanning
+		return m, m.startScan()
+	}
+	return m, cmd
+}
+
+func (m Model) updateScanning(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case scanDoneMsg:
+		if msg.err != nil {
+			m.resultMsg = fmt.Sprintf("Scan error: %v", msg.err)
+			m.step = StepResults
+			return m, nil
+		}
+		m.scanResult = msg.result
+
+		// Build target items
+		var items []tui.TargetItem
+		for _, group := range m.scanResult.Groups {
+			for _, f := range group.Files {
+				item := tui.TargetItem{Path: f, Selected: true}
+				if skip, cat := m.engine.ShouldSkip(filepath.Base(f)); skip {
+					item.Skipped = true
+					item.SkipCat = cat
+					item.Selected = false
+				}
+				items = append(items, item)
+			}
+		}
+
+		m.targetSelect = tui.NewTargetSelect(items, m.theme.Accent, m.theme.Dim)
+		m.step = StepTargetSelect
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m Model) updateTargetSelect(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := m.targetSelect.Update(msg)
+	if m.targetSelect.Done() {
+		// Check tools
+		statuses := m.engine.ToolsManager().CheckAll()
+		m.toolCheck = tui.NewToolCheck(statuses, m.theme.Accent, m.theme.Err, m.theme.Dim)
+		m.step = StepToolCheck
+		return m, m.startToolCheck()
+	}
+	return m, cmd
+}
+
+func (m Model) updateToolCheck(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := m.toolCheck.Update(msg)
+	switch msg.(type) {
+	case tea.KeyPressMsg:
+		if m.toolCheck.Done() {
+			m.pipelineView = tui.NewPipelineView(
+				m.theme.Accent, m.theme.Err, m.theme.Dim, m.theme.Accent2,
+			)
+			m.pipelineView.SetSize(m.width, m.height)
+			m.step = StepPipeline
+			return m, m.startPipeline()
+		}
+	}
+	return m, cmd
+}
+
+func (m Model) updatePipeline(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := m.pipelineView.Update(msg)
+	if m.pipelineView.Done() {
+		m.resultMsg = "Pipeline complete. Check output directory for results."
+		m.step = StepResults
+	}
+	return m, cmd
+}
+
+func (m Model) updateResults(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		key := tea.Key(msg)
+		if key.Code == tea.KeyEnter || key.Code == 'q' || key.Code == 'Q' {
 			m.quitting = true
 			return m, tea.Quit
 		}
 	}
-
 	return m, nil
+}
+
+// Commands
+
+func (m Model) startScan() tea.Cmd {
+	return func() tea.Msg {
+		result, err := m.engine.Scan(m.inputDir)
+		return scanDoneMsg{result: result, err: err}
+	}
+}
+
+func (m Model) startToolCheck() tea.Cmd {
+	return func() tea.Msg {
+		return tui.ToolCheckDoneMsg{}
+	}
+}
+
+func (m Model) startPipeline() tea.Cmd {
+	return func() tea.Msg {
+		events := make(chan engine.PipelineEvent, 100)
+
+		go func() {
+			// Drain events (in real app, would send PipelineEventMsg via Program.Send)
+			for range events {
+			}
+		}()
+
+		opts := engine.Options{
+			Input:  m.inputDir,
+			Output: m.outputDir,
+			NoSkip: false,
+		}
+
+		err := m.engine.Run(context.Background(), opts, events)
+		return tui.PipelineDoneMsg{Err: err}
+	}
 }
 
 // View implements tea.Model.
@@ -112,11 +282,25 @@ func (m Model) View() tea.View {
 	b.WriteString(m.renderStepIndicator())
 	b.WriteString("\n\n")
 
-	// Content area (placeholder)
-	contentStyle := lipgloss.NewStyle().
-		Width(m.width - 4).
-		Padding(1, 2)
-	b.WriteString(contentStyle.Render(m.message))
+	// Content area
+	switch m.step {
+	case StepInputPicker:
+		b.WriteString(m.inputPicker.View())
+	case StepScanning:
+		b.WriteString(m.theme.Dimmed().Render("Scanning..."))
+	case StepTargetSelect:
+		b.WriteString(m.targetSelect.View())
+	case StepToolCheck:
+		b.WriteString(m.toolCheck.View())
+	case StepPipeline:
+		b.WriteString(m.pipelineView.View())
+	case StepResults:
+		accentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Accent))
+		b.WriteString(accentStyle.Render(m.resultMsg))
+		b.WriteString("\n\n")
+		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Dim))
+		b.WriteString(dimStyle.Render("Press enter or q to exit"))
+	}
 
 	// Pad to fill screen
 	lines := strings.Count(b.String(), "\n")
