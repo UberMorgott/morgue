@@ -164,6 +164,21 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // Sidebar — pipeline
   'sidebar.pipeline': { en: 'Pipeline', ru: 'Pipeline' },
+
+  // Runtimes
+  'runtimes.title': { en: 'Runtimes', ru: 'Рантаймы' },
+  'runtimes.dotnet': { en: '.NET SDK', ru: '.NET SDK' },
+  'runtimes.java': { en: 'Java JRE', ru: 'Java JRE' },
+  'runtimes.available': { en: 'Available', ru: 'Доступен' },
+  'runtimes.missing': { en: 'Not installed', ru: 'Не установлен' },
+  'runtimes.local': { en: 'Portable', ru: 'Портативный' },
+  'runtimes.system': { en: 'System', ru: 'Системный' },
+  'runtimes.install': { en: 'Download', ru: 'Скачать' },
+  'runtimes.installing': { en: 'Downloading...', ru: 'Скачивание...' },
+  'runtimes.required': { en: 'Required', ru: 'Необходим' },
+  'runtimes.optional': { en: 'Optional', ru: 'Опциональный' },
+  'runtimes.version': { en: 'Version', ru: 'Версия' },
+  'runtimes.missingForPipeline': { en: 'Required runtimes are missing. Go to Tools to install.', ru: 'Необходимые рантаймы отсутствуют. Перейдите в Инструменты для установки.' },
 };
 
 export function t(lang: Lang, key: string): string {

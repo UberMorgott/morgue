@@ -135,6 +135,36 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 	return statuses
 }
 
+// RuntimeEnv returns environment variables for local runtimes (PATH prepend, JAVA_HOME).
+// These should be passed to RunCmdWithEnv when executing tools that need runtimes.
+func (m *Manager) RuntimeEnv() []string {
+	var env []string
+
+	dotnetDir := m.localRuntimeDir(RuntimeDotnet)
+	if _, err := os.Stat(filepath.Join(dotnetDir, runtimeBinary(RuntimeDotnet))); err == nil {
+		env = append(env, fmt.Sprintf("PATH=%s%c%s", dotnetDir, os.PathListSeparator, os.Getenv("PATH")))
+	}
+
+	javaDir := m.localRuntimeDir(RuntimeJava)
+	if _, err := os.Stat(filepath.Join(javaDir, runtimeBinary(RuntimeJava))); err == nil {
+		env = append(env, fmt.Sprintf("JAVA_HOME=%s", javaDir))
+		javaBinDir := filepath.Join(javaDir, "bin")
+		// Prepend java bin to PATH (after dotnet if present)
+		for i, e := range env {
+			if len(e) > 5 && e[:5] == "PATH=" {
+				env[i] = fmt.Sprintf("PATH=%s%c%s", javaBinDir, os.PathListSeparator, e[5:])
+				break
+			}
+		}
+		if len(env) == 1 {
+			// No PATH entry yet, add one
+			env = append(env, fmt.Sprintf("PATH=%s%c%s", javaBinDir, os.PathListSeparator, os.Getenv("PATH")))
+		}
+	}
+
+	return env
+}
+
 // Delete removes a tool's directory from disk.
 func (m *Manager) Delete(name string) error {
 	_, ok := FindByName(name)
