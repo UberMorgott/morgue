@@ -40,9 +40,12 @@ func (m *Manager) Check(name string) ToolStatus {
 	path := filepath.Join(m.baseDir, name, tool.Binary)
 	_, err := os.Stat(path)
 	return ToolStatus{
-		Name:      name,
-		Installed: err == nil,
-		Path:      path,
+		Name:        name,
+		Installed:   err == nil,
+		Path:        path,
+		Category:    tool.Category.String(),
+		Description: tool.Description,
+		Optional:    tool.Optional,
 	}
 }
 
@@ -93,4 +96,36 @@ func (m *Manager) Install(name string) error {
 	default:
 		return fmt.Errorf("unsupported install method for %s", name)
 	}
+}
+
+// CheckAllWithUpdates returns status of all tools including latest GitHub versions.
+func (m *Manager) CheckAllWithUpdates() []ToolStatus {
+	statuses := make([]ToolStatus, 0, len(Registry))
+	for _, t := range Registry {
+		st := m.Check(t.Name)
+		st.Category = t.Category.String()
+		st.Description = t.Description
+		st.Optional = t.Optional
+
+		if t.Method == MethodGitHubRelease && t.Repo != "" {
+			release, err := fetchLatestRelease(t.Repo, os.Getenv("GITHUB_TOKEN"))
+			if err == nil {
+				st.LatestVersion = release.TagName
+				if st.Installed && st.Version != "" && st.Version != release.TagName {
+					st.UpdateAvailable = true
+				}
+			}
+		}
+		statuses = append(statuses, st)
+	}
+	return statuses
+}
+
+// Delete removes a tool's directory from disk.
+func (m *Manager) Delete(name string) error {
+	_, ok := FindByName(name)
+	if !ok {
+		return fmt.Errorf("unknown tool: %s", name)
+	}
+	return os.RemoveAll(filepath.Join(m.baseDir, name))
 }
