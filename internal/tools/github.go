@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -58,6 +59,47 @@ func saveReleaseCache(baseDir string, rc releaseCache) {
 		return
 	}
 	_ = os.WriteFile(filepath.Join(baseDir, releaseCacheFile), data, 0644)
+}
+
+// fetchLatestCommit returns the short hash of the latest commit on default branch.
+// Uses atom feed — no API, no rate limit.
+func fetchLatestCommit(repo string) (string, error) {
+	for _, branch := range []string{"main", "master"} {
+		url := fmt.Sprintf("https://github.com/%s/commits/%s.atom", repo, branch)
+		resp, err := http.Get(url)
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			continue
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			continue
+		}
+
+		// Parse: <id>tag:github.com,2008:Grit::Commit/{hash}</id>
+		content := string(body)
+		marker := "Grit::Commit/"
+		idx := strings.Index(content, marker)
+		if idx < 0 {
+			continue
+		}
+
+		start := idx + len(marker)
+		end := strings.Index(content[start:], "<")
+		if end < 0 {
+			continue
+		}
+
+		hash := content[start : start+end]
+		if len(hash) >= 7 {
+			return hash[:7], nil
+		}
+	}
+	return "", fmt.Errorf("no commits found for %s", repo)
 }
 
 // --- Version check via HTTP redirect (no API) ---
