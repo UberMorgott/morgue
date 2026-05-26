@@ -2,13 +2,16 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"github.com/UberMorgott/morgue/internal/app"
+	morgue "github.com/UberMorgott/morgue"
 	"github.com/UberMorgott/morgue/internal/cli"
 	"github.com/UberMorgott/morgue/internal/selfupdate"
+	"github.com/UberMorgott/morgue/internal/services"
 )
 
 var (
@@ -17,13 +20,52 @@ var (
 )
 
 func main() {
+	// If CLI args provided → cobra
+	if len(os.Args) > 1 {
+		runCLI()
+		return
+	}
+
+	// No args → Wails GUI
+	runGUI()
+}
+
+func runGUI() {
+	app := application.New(application.Options{
+		Name:        "Morgue",
+		Description: "Binary decompiler orchestrator",
+		Services: []application.Service{
+			application.NewService(&services.ReconService{}),
+			application.NewService(services.NewPipelineService()),
+			application.NewService(services.NewToolsService()),
+			application.NewService(&services.ConfigService{}),
+			application.NewService(&services.UpdateService{Version: Version}),
+		},
+		Assets: application.AssetOptions{
+			Handler: application.AssetFileServerFS(morgue.Assets),
+		},
+	})
+
+	app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title:            "Morgue",
+		Width:            1024,
+		Height:           700,
+		MinWidth:         800,
+		MinHeight:        600,
+		BackgroundColour: application.NewRGB(10, 10, 15),
+		URL:              "/",
+	})
+
+	if err := app.Run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func runCLI() {
 	root := &cobra.Command{
 		Use:   "morgue",
 		Short: "Binary decompiler orchestrator",
 		Long:  "Morgue — automated binary decompilation pipeline for .NET, Delphi, and native targets.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.RunTUI(Version)
-		},
 	}
 
 	root.AddCommand(runCmd())
