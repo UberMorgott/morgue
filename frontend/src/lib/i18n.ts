@@ -106,6 +106,49 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // LogViewer
   'log.empty': { en: 'No log entries', ru: 'Нет записей в журнале' },
+
+  // Pipeline view
+  'pipeline.scanning': { en: 'Scanning...', ru: 'Сканирование...' },
+  'pipeline.foundBinaries': { en: 'binaries found', ru: 'бинарников найдено' },
+  'pipeline.recon': { en: 'Analyzing...', ru: 'Анализ...' },
+  'pipeline.checkingTools': { en: 'Checking tools...', ru: 'Проверка инструментов...' },
+  'pipeline.allToolsReady': { en: 'All tools ready', ru: 'Все инструменты готовы' },
+  'pipeline.missingTools': { en: 'Missing tools', ru: 'Недостающие инструменты' },
+  'pipeline.installMissing': { en: 'Install missing', ru: 'Установить недостающие' },
+  'pipeline.executing': { en: 'Decompiling...', ru: 'Декомпиляция...' },
+  'pipeline.step': { en: 'Step', ru: 'Шаг' },
+  'pipeline.done': { en: 'Done', ru: 'Готово' },
+  'pipeline.outputPath': { en: 'Output', ru: 'Результат' },
+  'pipeline.filesDecompiled': { en: 'files decompiled', ru: 'файлов декомпилировано' },
+  'pipeline.totalTime': { en: 'Total time', ru: 'Общее время' },
+  'pipeline.error': { en: 'Error', ru: 'Ошибка' },
+
+  // Home — open buttons
+  'home.openFolder': { en: 'Open folder', ru: 'Открыть папку' },
+  'home.openFile': { en: 'Open file', ru: 'Открыть файл' },
+
+  // Tools page enhanced
+  'tools.version': { en: 'Version', ru: 'Версия' },
+  'tools.latest': { en: 'Latest', ru: 'Последняя' },
+  'tools.updateAvailable': { en: 'Update available', ru: 'Доступно обновление' },
+  'tools.update': { en: 'Update', ru: 'Обновить' },
+  'tools.updateAll': { en: 'Update all', ru: 'Обновить все' },
+  'tools.downloadAll': { en: 'Download all', ru: 'Скачать все' },
+  'tools.delete': { en: 'Delete', ru: 'Удалить' },
+  'tools.download': { en: 'Download', ru: 'Скачать' },
+  'tools.notInstalled': { en: 'Not installed', ru: 'Не установлен' },
+  'tools.upToDate': { en: 'Up to date', ru: 'Актуален' },
+  'tools.checking': { en: 'Checking updates...', ru: 'Проверка обновлений...' },
+
+  // StatusBar enhanced
+  'status.downloading': { en: 'Downloading', ru: 'Скачивание' },
+  'status.installing': { en: 'Installing', ru: 'Установка' },
+
+  // Settings — folder picker
+  'settings.browse': { en: 'Browse...', ru: 'Обзор...' },
+
+  // Sidebar — pipeline
+  'sidebar.pipeline': { en: 'Pipeline', ru: 'Pipeline' },
 };
 
 export function t(lang: Lang, key: string): string {
