@@ -11,6 +11,7 @@
   let tools: Array<{
     name: string; installed: boolean; path: string; version: string;
     latestVersion: string; updateAvailable: boolean; category: string; description: string;
+    checking: boolean;
   }> = [];
   let runtimes: Array<{
     kind: string; available: boolean; version: string; path: string; local: boolean; required: boolean;
@@ -75,16 +76,38 @@
   async function loadTools() {
     loading = true;
     try {
-      const statuses = await ToolsService.CheckAllWithUpdates();
+      // Phase 1: instant local status (no network calls)
+      const statuses = await ToolsService.CheckAll();
       tools = (statuses || []).map((s: any) => ({
         name: s.Name ?? s.name ?? '', installed: s.Installed ?? s.installed ?? false,
         path: s.Path ?? s.path ?? '', version: s.Version ?? s.version ?? '',
-        latestVersion: s.LatestVersion ?? s.latestVersion ?? '',
-        updateAvailable: s.UpdateAvailable ?? s.updateAvailable ?? false,
+        latestVersion: '', updateAvailable: false,
         category: s.Category ?? s.category ?? '', description: s.Description ?? s.description ?? '',
+        checking: true,
       }));
-    } catch (e) { console.error('CheckAllWithUpdates failed:', e); }
-    finally { loading = false; }
+      loading = false;
+
+      // Phase 2: check latest versions per tool (non-blocking)
+      for (const tool of tools) {
+        checkLatestVersion(tool.name);
+      }
+    } catch (e) {
+      console.error('CheckAll failed:', e);
+      loading = false;
+    }
+  }
+
+  async function checkLatestVersion(name: string) {
+    try {
+      const result = await ToolsService.CheckLatestVersion(name);
+      tools = tools.map(t =>
+        t.name === name
+          ? { ...t, latestVersion: result.latestVersion || '', updateAvailable: result.updateAvailable || false, checking: false }
+          : t
+      );
+    } catch {
+      tools = tools.map(t => t.name === name ? { ...t, checking: false } : t);
+    }
   }
 
   async function installTool(e: CustomEvent<{ name: string }>) {
@@ -224,6 +247,7 @@
         <ToolRow {lang} name={tool.name} installed={tool.installed} version={tool.version}
           latestVersion={tool.latestVersion} updateAvailable={tool.updateAvailable}
           category={tool.category} description={tool.description} {busy}
+          checking={tool.checking}
           on:install={installTool} on:delete={deleteTool} />
       {/each}
     </div>

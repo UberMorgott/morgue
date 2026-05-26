@@ -11,6 +11,7 @@
   export let category: string = '';
   export let description: string = '';
   export let busy: boolean = false;
+  export let checking: boolean = false;
 
   const dispatch = createEventDispatcher();
 </script>
@@ -28,12 +29,16 @@
   <div class="tool-version">
     {#if installed}
       <span class="ver-current">{version || '—'}</span>
-      {#if latestVersion}
+      {#if checking}
+        <span class="ver-spinner"></span>
+      {:else if latestVersion}
         <span class="ver-sep">→</span>
         <span class="ver-latest" class:ver-new={updateAvailable}>{latestVersion}</span>
       {/if}
     {:else}
-      {#if latestVersion}
+      {#if checking}
+        <span class="ver-spinner"></span>
+      {:else if latestVersion}
         <span class="ver-available">{latestVersion} {t(lang, 'tools.available')}</span>
       {:else}
         <span class="ver-none">—</span>
@@ -90,4 +95,10 @@
   .action-delete { border: 1px solid var(--error); color: var(--error); }
   .action-delete:hover:not(:disabled) { background: rgba(255, 51, 102, 0.1); }
   .up-to-date { font-size: 10px; color: var(--text-muted); }
+  .ver-spinner {
+    display: inline-block; width: 12px; height: 12px;
+    border: 2px solid var(--border-subtle); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
