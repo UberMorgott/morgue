@@ -33,12 +33,14 @@ const (
 	MethodGitHubRelease Method = iota
 	MethodDirectURL
 	MethodDotnetTool
+	MethodGitBuild
 )
 
 var methodNames = [...]string{
 	"GitHubRelease",
 	"DirectURL",
 	"DotnetTool",
+	"GitBuild",
 }
 
 func (m Method) String() string {
