@@ -160,13 +160,14 @@ func (m *Manager) Install(name string) (string, error) {
 }
 
 // CheckAllWithUpdates returns status of all tools including latest GitHub versions.
+// Uses HTTP redirect to check versions — no GitHub API calls, no rate limit.
 func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 	statuses := make([]ToolStatus, 0, len(Registry))
 	for _, t := range Registry {
 		st := m.Check(t.Name)
 
 		if t.Method == MethodGitHubRelease && t.Repo != "" {
-			tagName, _, err := fetchLatestRelease(t.Repo)
+			tagName, err := fetchLatestVersion(t.Repo)
 			if err == nil {
 				st.LatestVersion = tagName
 				if st.Installed && st.Version != "" && st.Version != tagName {
