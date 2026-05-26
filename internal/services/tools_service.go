@@ -24,10 +24,28 @@ func (s *ToolsService) CheckAll() []tools.ToolStatus {
 	return s.manager.CheckAll()
 }
 
+// CheckAllWithUpdates returns tool statuses including latest versions from GitHub.
+func (s *ToolsService) CheckAllWithUpdates() []tools.ToolStatus {
+	return s.manager.CheckAllWithUpdates()
+}
+
+// Delete removes a tool from disk.
+func (s *ToolsService) Delete(name string) error {
+	return s.manager.Delete(name)
+}
+
 // Install downloads and installs a single tool by name.
 func (s *ToolsService) Install(name string) error {
+	if app := application.Get(); app != nil {
+		app.Event.Emit("tool:download:start", map[string]string{"tool": name})
+	}
 	err := s.manager.Install(name)
 	if app := application.Get(); app != nil {
+		if err != nil {
+			app.Event.Emit("tool:download:complete", map[string]interface{}{"tool": name, "error": err.Error()})
+		} else {
+			app.Event.Emit("tool:download:complete", map[string]interface{}{"tool": name, "error": nil})
+		}
 		app.Event.Emit("tool:installed", name)
 	}
 	return err

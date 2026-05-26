@@ -1,6 +1,8 @@
 package services
 
 import (
+	"github.com/wailsapp/wails/v3/pkg/application"
+
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/scanner"
 )
@@ -40,4 +42,30 @@ func (s *ReconService) ClassifyFile(path string) (*recon.Result, error) {
 		return nil, err
 	}
 	return &r, nil
+}
+
+// PickFile opens a native file picker dialog.
+func (s *ReconService) PickFile() (string, error) {
+	app := application.Get()
+	if app == nil {
+		return "", nil
+	}
+	return app.Dialog.OpenFile().
+		CanChooseDirectories(false).
+		CanChooseFiles(true).
+		SetTitle("Select Binary File").
+		PromptForSingleSelection()
+}
+
+// PickDirectory opens a native directory picker dialog.
+func (s *ReconService) PickDirectory() (string, error) {
+	app := application.Get()
+	if app == nil {
+		return "", nil
+	}
+	return app.Dialog.OpenFile().
+		CanChooseDirectories(true).
+		CanChooseFiles(false).
+		SetTitle("Select Target Directory").
+		PromptForSingleSelection()
 }
