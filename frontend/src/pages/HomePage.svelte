@@ -1,32 +1,22 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { createEventDispatcher } from 'svelte';
   import DropZone from '../components/DropZone.svelte';
-  import { ToolsService } from '../lib/api';
   import { t, type Lang } from '../lib/i18n';
 
   export let lang: Lang = 'en';
 
   const dispatch = createEventDispatcher();
 
-  let toolsInstalled = 0;
-  let toolsTotal = 0;
-
-  onMount(async () => {
-    try {
-      const statuses = await ToolsService.CheckAll();
-      toolsTotal = statuses.length;
-      toolsInstalled = statuses.filter((t: any) => t.Installed || t.installed).length;
-    } catch (e) {
-      console.error('CheckAll failed:', e);
-    }
-  });
-
   function handleSelect(e: CustomEvent<{ path: string }>) {
-    dispatch('navigate', { page: 'scan', path: e.detail.path });
+    dispatch('navigate', { page: 'pipeline', path: e.detail.path });
   }
 
-  function handleBrowse() {
-    dispatch('browse');
+  function handleBrowseFolder() {
+    dispatch('browse-folder');
+  }
+
+  function handleBrowseFile() {
+    dispatch('browse-file');
   }
 </script>
 
@@ -36,21 +26,17 @@
     <p class="hero-subtitle">{t(lang, 'home.subtitle')}</p>
   </div>
 
-  <DropZone {lang} on:select={handleSelect} on:browse={handleBrowse} />
+  <DropZone {lang} on:select={handleSelect} on:browse={handleBrowseFolder} />
 
-  <div class="home-stats">
-    <div class="stat-card">
-      <span class="stat-value">{toolsInstalled}/{toolsTotal}</span>
-      <span class="stat-label">{t(lang, 'home.toolsInstalled')}</span>
-    </div>
-    <div class="stat-card">
-      <span class="stat-value">--</span>
-      <span class="stat-label">{t(lang, 'home.lastRun')}</span>
-    </div>
-    <div class="stat-card">
-      <span class="stat-value">5</span>
-      <span class="stat-label">{t(lang, 'home.recipesAvailable')}</span>
-    </div>
+  <div class="home-actions">
+    <button class="open-btn" on:click={handleBrowseFolder}>
+      <span class="open-icon">📁</span>
+      {t(lang, 'home.openFolder')}
+    </button>
+    <button class="open-btn open-btn-secondary" on:click={handleBrowseFile}>
+      <span class="open-icon">📄</span>
+      {t(lang, 'home.openFile')}
+    </button>
   </div>
 </div>
 
@@ -60,13 +46,11 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 32px;
+    gap: 24px;
     height: 100%;
     padding: 32px;
   }
-  .home-hero {
-    text-align: center;
-  }
+  .home-hero { text-align: center; }
   .hero-title {
     font-size: 28px;
     font-weight: 700;
@@ -79,36 +63,32 @@
     color: var(--text-muted);
     margin: 0;
   }
-  .home-stats {
+  .home-actions {
     display: flex;
-    gap: 16px;
-    margin-top: 16px;
+    gap: 12px;
   }
-  .stat-card {
+  .open-btn {
+    all: unset;
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 4px;
-    padding: 16px 24px;
-    background: var(--bg-card);
-    border: 1px solid var(--border-subtle);
+    gap: 8px;
+    padding: 10px 20px;
     border-radius: 8px;
-    min-width: 120px;
-    transition: border-color 0.15s;
-  }
-  .stat-card:hover {
-    border-color: var(--border);
-  }
-  .stat-value {
-    font-size: 20px;
+    background: var(--accent);
+    color: var(--bg-page);
     font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .open-btn:hover { box-shadow: 0 0 16px var(--accent-dim); }
+  .open-btn-secondary {
+    background: transparent;
+    border: 1px solid var(--accent);
     color: var(--accent);
-    font-family: ui-monospace, monospace;
   }
-  .stat-label {
-    font-size: 11px;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+  .open-btn-secondary:hover {
+    background: var(--accent-dim);
   }
+  .open-icon { font-size: 16px; }
 </style>
