@@ -61,10 +61,12 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 40px;
+    height: 44px;
     padding: 0 16px;
-    background: var(--bg-sidebar);
-    border-bottom: 1px solid var(--border);
+    background: rgba(18, 14, 22, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--glass-border);
     flex-shrink: 0;
     -webkit-app-region: drag;
   }
@@ -74,11 +76,12 @@
     gap: 8px;
   }
   .logo {
-    font-size: 15px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
     font-weight: 700;
-    letter-spacing: 2px;
+    letter-spacing: 3px;
     color: var(--accent);
-    text-shadow: 0 0 12px var(--accent-dim);
+    text-shadow: var(--accent-neon);
   }
   .version {
     font-size: 11px;
