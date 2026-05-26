@@ -2,6 +2,9 @@
   import { onMount } from 'svelte';
   import ToolRow from '../components/ToolRow.svelte';
   import { ToolsService } from '../lib/api';
+  import { t, type Lang } from '../lib/i18n';
+
+  export let lang: Lang = 'en';
 
   let tools: Array<{ name: string; installed: boolean; path: string }> = [];
   let loading = true;
@@ -58,22 +61,23 @@
 
 <div class="tools-page">
   <div class="tools-header">
-    <h2 class="tools-title">Tools</h2>
+    <h2 class="tools-title">{t(lang, 'tools.title')}</h2>
     {#if missingCount > 0}
       <button class="install-all-btn" on:click={installAllMissing} disabled={installingAll}>
-        {installingAll ? 'Installing...' : `Install All Missing (${missingCount})`}
+        {installingAll ? t(lang, 'tools.installing') : `${t(lang, 'tools.installAllMissing')} (${missingCount})`}
       </button>
     {:else if !loading}
-      <span class="all-installed">All tools installed</span>
+      <span class="all-installed">{t(lang, 'tools.allInstalled')}</span>
     {/if}
   </div>
 
   {#if loading}
-    <div class="tools-loading">Loading tools...</div>
+    <div class="tools-loading">{t(lang, 'tools.loading')}</div>
   {:else}
     <div class="tools-list">
       {#each tools as tool}
         <ToolRow
+          {lang}
           name={tool.name}
           installed={tool.installed}
           path={tool.path}
@@ -82,7 +86,7 @@
         />
       {/each}
       {#if tools.length === 0}
-        <div class="tools-empty">No tools registered</div>
+        <div class="tools-empty">{t(lang, 'tools.empty')}</div>
       {/if}
     </div>
   {/if}

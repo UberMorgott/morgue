@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { t, type Lang } from '../lib/i18n';
+
+  export let lang: Lang = 'en';
   export let phase: string = '';
   export let target: string = '';
   export let elapsed: string = '';
@@ -12,7 +15,7 @@
         <span class="status-target">{target}</span>
       {/if}
     {:else}
-      <span class="status-idle">Ready</span>
+      <span class="status-idle">{t(lang, 'status.ready')}</span>
     {/if}
   </div>
   <div class="status-right">

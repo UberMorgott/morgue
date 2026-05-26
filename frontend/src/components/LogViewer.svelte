@@ -1,6 +1,8 @@
 <script lang="ts">
   import { afterUpdate } from 'svelte';
+  import { t, type Lang } from '../lib/i18n';
 
+  export let lang: Lang = 'en';
   export let entries: Array<{ level: 'info' | 'warn' | 'error'; message: string; time?: string }> = [];
   export let autoScroll: boolean = true;
 
@@ -24,7 +26,7 @@
     </div>
   {/each}
   {#if entries.length === 0}
-    <div class="log-empty">No log entries</div>
+    <div class="log-empty">{t(lang, 'log.empty')}</div>
   {/if}
 </div>
 

@@ -7,12 +7,17 @@
   import ToolsPage from './pages/ToolsPage.svelte';
   import JobsPage from './pages/JobsPage.svelte';
   import SettingsPage from './pages/SettingsPage.svelte';
+  import { currentLang } from './lib/stores';
+  import type { Lang } from './lib/i18n';
 
   let currentPage = 'home';
   let scanInputPath = '';
   let statusPhase = '';
   let statusTarget = '';
   let statusElapsed = '';
+
+  let lang: Lang;
+  currentLang.subscribe(v => lang = v);
 
   function handleNavigate(e: CustomEvent<{ page: string; path?: string }>) {
     currentPage = e.detail.page;
@@ -33,24 +38,24 @@
 </script>
 
 <div class="app-layout">
-  <Header />
+  <Header {lang} />
   <div class="main-area">
-    <Sidebar bind:currentPage />
+    <Sidebar bind:currentPage {lang} />
     <div class="page-content">
       {#if currentPage === 'home'}
-        <HomePage on:navigate={handleNavigate} on:browse={handleBrowse} />
+        <HomePage {lang} on:navigate={handleNavigate} on:browse={handleBrowse} />
       {:else if currentPage === 'scan'}
-        <ScanPage inputPath={scanInputPath} on:start-pipeline={handleStartPipeline} />
+        <ScanPage {lang} inputPath={scanInputPath} on:start-pipeline={handleStartPipeline} />
       {:else if currentPage === 'tools'}
-        <ToolsPage />
+        <ToolsPage {lang} />
       {:else if currentPage === 'jobs'}
-        <JobsPage />
+        <JobsPage {lang} />
       {:else if currentPage === 'settings'}
-        <SettingsPage />
+        <SettingsPage {lang} />
       {/if}
     </div>
   </div>
-  <StatusBar phase={statusPhase} target={statusTarget} elapsed={statusElapsed} />
+  <StatusBar {lang} phase={statusPhase} target={statusTarget} elapsed={statusElapsed} />
 </div>
 
 <style>

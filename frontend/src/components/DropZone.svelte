@@ -1,5 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
+  import { t, type Lang } from '../lib/i18n';
+
+  export let lang: Lang = 'en';
 
   const dispatch = createEventDispatcher();
   let dragover = false;
@@ -48,8 +51,8 @@
       <line x1="12" y1="3" x2="12" y2="15" />
     </svg>
   </div>
-  <p class="dropzone-text">Drop folder or binary here</p>
-  <p class="dropzone-hint">or click to select</p>
+  <p class="dropzone-text">{t(lang, 'dropzone.text')}</p>
+  <p class="dropzone-hint">{t(lang, 'dropzone.hint')}</p>
 </div>
 
 <style>

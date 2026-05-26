@@ -2,6 +2,9 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import FileTree from '../components/FileTree.svelte';
   import { ReconService } from '../lib/api';
+  import { t, type Lang } from '../lib/i18n';
+
+  export let lang: Lang = 'en';
 
   const dispatch = createEventDispatcher();
 
@@ -72,7 +75,7 @@
 
 <div class="scan-page">
   <div class="scan-header">
-    <h2 class="scan-title">Scan Results</h2>
+    <h2 class="scan-title">{t(lang, 'scan.title')}</h2>
     {#if inputPath}
       <span class="scan-path selectable">{inputPath}</span>
     {/if}
@@ -81,22 +84,22 @@
   {#if scanning}
     <div class="scan-loading">
       <span class="loading-spinner"></span>
-      <span>Scanning directory...</span>
+      <span>{t(lang, 'scan.scanning')}</span>
     </div>
   {:else if error}
     <div class="scan-error">{error}</div>
   {:else}
     <div class="scan-content">
-      <FileTree bind:items />
+      <FileTree {lang} bind:items />
       {#if classifying}
-        <div class="classifying-hint">Classifying binaries...</div>
+        <div class="classifying-hint">{t(lang, 'scan.classifying')}</div>
       {/if}
     </div>
 
     <div class="scan-footer">
-      <span class="scan-summary">{selectedCount} targets selected</span>
+      <span class="scan-summary">{selectedCount} {t(lang, 'scan.targetsSelected')}</span>
       <button class="start-btn" on:click={startPipeline} disabled={selectedCount === 0}>
-        Start Pipeline
+        {t(lang, 'scan.startPipeline')}
       </button>
     </div>
   {/if}

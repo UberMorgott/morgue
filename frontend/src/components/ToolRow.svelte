@@ -1,6 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
+  import { t, type Lang } from '../lib/i18n';
 
+  export let lang: Lang = 'en';
   export let name: string;
   export let installed: boolean = false;
   export let path: string = '';
@@ -32,10 +34,10 @@
   <div class="tool-actions">
     {#if !installed}
       <button class="install-btn" on:click={handleInstall} disabled={installing}>
-        {installing ? 'Installing...' : 'Install'}
+        {installing ? t(lang, 'tools.installing') : t(lang, 'tools.install')}
       </button>
     {:else}
-      <span class="installed-label">Installed</span>
+      <span class="installed-label">{t(lang, 'tools.installed')}</span>
     {/if}
   </div>
 </div>

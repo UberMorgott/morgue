@@ -2,6 +2,9 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import DropZone from '../components/DropZone.svelte';
   import { ToolsService } from '../lib/api';
+  import { t, type Lang } from '../lib/i18n';
+
+  export let lang: Lang = 'en';
 
   const dispatch = createEventDispatcher();
 
@@ -29,24 +32,24 @@
 
 <div class="home-page">
   <div class="home-hero">
-    <h1 class="hero-title">Binary Decompiler</h1>
-    <p class="hero-subtitle">Automated decompilation pipeline for .NET, Delphi, and native targets</p>
+    <h1 class="hero-title">{t(lang, 'home.title')}</h1>
+    <p class="hero-subtitle">{t(lang, 'home.subtitle')}</p>
   </div>
 
-  <DropZone on:select={handleSelect} on:browse={handleBrowse} />
+  <DropZone {lang} on:select={handleSelect} on:browse={handleBrowse} />
 
   <div class="home-stats">
     <div class="stat-card">
       <span class="stat-value">{toolsInstalled}/{toolsTotal}</span>
-      <span class="stat-label">Tools installed</span>
+      <span class="stat-label">{t(lang, 'home.toolsInstalled')}</span>
     </div>
     <div class="stat-card">
       <span class="stat-value">--</span>
-      <span class="stat-label">Last run</span>
+      <span class="stat-label">{t(lang, 'home.lastRun')}</span>
     </div>
     <div class="stat-card">
       <span class="stat-value">5</span>
-      <span class="stat-label">Recipes available</span>
+      <span class="stat-label">{t(lang, 'home.recipesAvailable')}</span>
     </div>
   </div>
 </div>
