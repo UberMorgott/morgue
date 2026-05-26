@@ -29,7 +29,7 @@ dev_mode:
   executes:
     - cmd: go build -tags dev -o bin/morgue-dev.exe ./cmd/morgue
       type: blocking
-    - cmd: npx --prefix frontend vite --port 34115
+    - cmd: npx --prefix frontend vite --port 9245
       type: background
     - cmd: bin/morgue-dev.exe
       type: primary
