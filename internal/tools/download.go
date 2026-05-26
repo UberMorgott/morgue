@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -252,12 +253,34 @@ func installFromURL(opts DownloadOptions, tool ToolDef, destDir string) error {
 }
 
 // installDotnetTool installs a .NET global tool.
+// It prefers a local portable dotnet SDK, then falls back to the system one.
 func installDotnetTool(tool ToolDef, destDir string) error {
+	dotnetBin, err := findDotnetBin(destDir)
+	if err != nil {
+		return err
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	_, err := util.RunCmd(ctx, "dotnet", []string{
+	_, err = util.RunCmd(ctx, dotnetBin, []string{
 		"tool", "install", tool.DotnetID, "--tool-path", destDir,
 	}, "")
 	return err
+}
+
+// findDotnetBin locates the dotnet binary: local portable first, then system PATH.
+func findDotnetBin(toolDestDir string) (string, error) {
+	// Walk up from toolDestDir to baseDir (toolDestDir = baseDir/<toolName>)
+	baseDir := filepath.Dir(toolDestDir)
+	localBin := filepath.Join(baseDir, "runtimes", "dotnet", "dotnet.exe")
+	if _, err := os.Stat(localBin); err == nil {
+		return localBin, nil
+	}
+
+	if sysPath, err := exec.LookPath("dotnet"); err == nil {
+		return sysPath, nil
+	}
+
+	return "", fmt.Errorf("dotnet SDK not found — install via Tools page")
 }

@@ -121,6 +121,23 @@
     pipelineOpAdded = true;
 
     try {
+      // Preflight: check runtimes
+      try {
+        const rtStatuses = await ToolsService.CheckRuntimes();
+        const missingRequired = (rtStatuses || []).filter((s: any) =>
+          (s.Required || s.required) && !(s.Available || s.available)
+        );
+        if (missingRequired.length > 0) {
+          errorMessage = t(lang, 'runtimes.missingForPipeline');
+          phase = 'error';
+          updateOperation('pipeline', { status: 'failed', error: errorMessage });
+          busy = false;
+          return;
+        }
+      } catch {
+        // If runtime check fails, continue — pipeline will handle errors
+      }
+
       // Step 1: Classify the input file
       try {
         const result = await ReconService.ClassifyFile(inputPath);

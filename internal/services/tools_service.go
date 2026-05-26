@@ -81,6 +81,28 @@ func (s *ToolsService) InstallAll() error {
 	return nil
 }
 
+// CheckRuntimes returns the status of all runtimes.
+func (s *ToolsService) CheckRuntimes() []tools.RuntimeStatus {
+	return s.manager.CheckRuntimes()
+}
+
+// InstallRuntime downloads and installs a portable runtime.
+func (s *ToolsService) InstallRuntime(kind string) error {
+	rk := tools.RuntimeKind(kind)
+	if app := application.Get(); app != nil {
+		app.Event.Emit("tool:download:start", map[string]string{"tool": string(rk) + "-runtime"})
+	}
+	err := s.manager.InstallRuntime(rk)
+	if app := application.Get(); app != nil {
+		if err != nil {
+			app.Event.Emit("tool:download:complete", map[string]interface{}{"tool": string(rk) + "-runtime", "error": err.Error()})
+		} else {
+			app.Event.Emit("tool:download:complete", map[string]interface{}{"tool": string(rk) + "-runtime", "error": nil})
+		}
+	}
+	return err
+}
+
 // StartupAutoUpdate runs background update checks and auto-applies if configured.
 // Called once from the frontend on mount. Returns a summary for the caller.
 func (s *ToolsService) StartupAutoUpdate() map[string]interface{} {
