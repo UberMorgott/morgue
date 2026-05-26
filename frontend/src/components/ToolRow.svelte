@@ -12,11 +12,12 @@
   export let description: string = '';
   export let busy: boolean = false;
   export let checking: boolean = false;
+  export let runtimeDeps: Array<{kind: string, available: boolean, version: string, local: boolean}> = [];
 
   const dispatch = createEventDispatcher();
 </script>
 
-<div class="tool-row" class:dimmed={!installed}>
+<div class="tool-row" class:dimmed={!installed} class:has-deps={runtimeDeps.length > 0}>
   <div class="tool-info">
     <span class="tool-name">{name}</span>
     {#if category}
@@ -64,6 +65,25 @@
     {/if}
   </div>
 </div>
+{#if runtimeDeps.length > 0}
+  {#each runtimeDeps as dep}
+    <div class="runtime-dep-row">
+      <span class="dep-branch">&nbsp;</span>
+      <span class="dep-name">{dep.kind === 'dotnet' ? '.NET SDK' : dep.kind === 'java' ? 'Java JRE' : dep.kind}</span>
+      {#if dep.available}
+        <span class="dep-indicator dep-ok"></span>
+        <span class="dep-version">{dep.version || '—'}</span>
+        <span class="dep-source">{dep.local ? t(lang, 'runtimes.local') : t(lang, 'runtimes.system')}</span>
+      {:else}
+        <span class="dep-indicator dep-missing"></span>
+        <span class="dep-missing-text">{t(lang, 'runtimes.missing')}</span>
+        <button class="dep-install-btn" on:click={() => dispatch('install-runtime', { kind: dep.kind })} disabled={busy}>
+          {t(lang, 'runtimes.install')}
+        </button>
+      {/if}
+    </div>
+  {/each}
+{/if}
 
 <style>
   .tool-row {
@@ -73,6 +93,7 @@
     transition: all 0.15s;
   }
   .tool-row.dimmed { opacity: 0.5; }
+  .tool-row.has-deps { border-radius: 6px 6px 0 0; border-bottom: none; }
   .tool-row:hover { border-color: var(--border); }
   .tool-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
   .tool-name { font-size: clamp(14px, 1.5vw, 22px); font-weight: 600; color: var(--text-primary); font-family: ui-monospace, monospace; }
@@ -101,4 +122,28 @@
     border-radius: 50%; animation: spin 0.8s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  .runtime-dep-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 12px 4px 24px; margin-top: -1px;
+    font-size: 11px; color: var(--text-muted);
+    background: color-mix(in srgb, var(--bg-card) 60%, transparent);
+    border: 1px solid var(--border-subtle); border-top: none;
+    border-radius: 0 0 6px 6px;
+  }
+  .dep-branch { color: var(--text-muted); font-family: ui-monospace, monospace; user-select: none; }
+  .dep-name { font-weight: 600; font-family: ui-monospace, monospace; color: var(--text-secondary); min-width: 70px; }
+  .dep-indicator { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .dep-ok { background: var(--success, #22c55e); }
+  .dep-missing { background: var(--error, #ef4444); }
+  .dep-version { font-family: ui-monospace, monospace; color: var(--text-secondary); }
+  .dep-source { font-size: 9px; padding: 1px 4px; border-radius: 3px; background: var(--border-subtle); color: var(--text-muted); }
+  .dep-missing-text { color: var(--text-muted); font-style: italic; }
+  .dep-install-btn {
+    all: unset; font-size: 10px; padding: 2px 8px; border-radius: 3px;
+    border: 1px solid var(--accent); color: var(--accent); cursor: pointer;
+    transition: all 0.15s;
+  }
+  .dep-install-btn:hover:not(:disabled) { background: var(--accent-dim); }
+  .dep-install-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

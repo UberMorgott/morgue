@@ -89,6 +89,7 @@ func (m *Manager) Check(name string) ToolStatus {
 		Category:    tool.Category.String(),
 		Description: tool.Description,
 		Optional:    tool.Optional,
+		RuntimeDeps: tool.RuntimeDeps,
 	}
 }
 

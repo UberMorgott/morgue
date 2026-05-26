@@ -60,8 +60,9 @@ type ToolDef struct {
 	URL         string // Direct download URL (for MethodDirectURL)
 	DotnetID    string // dotnet tool ID (for MethodDotnetTool)
 	AssetGlob   string // Glob pattern for matching GitHub release assets
-	Binary      string // Expected executable name after install
+	Binary      string        // Expected executable name after install
 	Optional    bool
+	RuntimeDeps []RuntimeKind `json:"RuntimeDeps,omitempty"`
 }
 
 // ToolStatus holds the installed state of a tool.
@@ -72,7 +73,8 @@ type ToolStatus struct {
 	Version         string `json:"Version"`
 	LatestVersion   string `json:"LatestVersion"`
 	UpdateAvailable bool   `json:"UpdateAvailable"`
-	Category        string `json:"Category"`
-	Description     string `json:"Description"`
-	Optional        bool   `json:"Optional"`
+	Category        string        `json:"Category"`
+	Description     string        `json:"Description"`
+	Optional        bool          `json:"Optional"`
+	RuntimeDeps     []RuntimeKind `json:"RuntimeDeps,omitempty"`
 }
