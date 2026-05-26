@@ -46,7 +46,7 @@ func runGUI() {
 		},
 	})
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Morgue",
 		Width:            1024,
 		Height:           700,
@@ -55,6 +55,26 @@ func runGUI() {
 		BackgroundColour: application.NewRGB(10, 10, 15),
 		URL:              "/",
 	})
+
+	// System tray
+	tray := app.SystemTray.New()
+	tray.SetTooltip("Morgue — Binary Decompiler")
+
+	trayMenu := app.NewMenu()
+	trayMenu.Add("Show/Hide").OnClick(func(ctx *application.Context) {
+		if window.IsVisible() {
+			window.Hide()
+		} else {
+			window.Show()
+			window.Focus()
+		}
+	})
+	trayMenu.AddSeparator()
+	trayMenu.Add("Quit").OnClick(func(ctx *application.Context) {
+		app.Quit()
+	})
+
+	tray.SetMenu(trayMenu)
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
