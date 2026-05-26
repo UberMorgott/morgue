@@ -25,6 +25,10 @@ type RunOptions struct {
 
 // Run executes the decompilation pipeline from CLI.
 func Run(opts RunOptions) error {
+	if opts.Watch {
+		return RunWatch(opts)
+	}
+
 	cfg, err := config.Load(util.ConfigPath())
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
