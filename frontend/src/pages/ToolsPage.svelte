@@ -2,12 +2,10 @@
   import { onMount } from 'svelte';
   import ToolRow from '../components/ToolRow.svelte';
   import { ToolsService } from '../lib/api';
+  import { addOperation, updateOperation } from '../lib/operations';
   import { t, type Lang } from '../lib/i18n';
 
   export let lang: Lang = 'en';
-  export let statusPhase = '';
-  export let statusProgress = 0;
-  export let statusLabel = '';
 
   let tools: Array<{
     name: string; installed: boolean; path: string; version: string;
@@ -34,30 +32,52 @@
   }
 
   async function installTool(e: CustomEvent<{ name: string }>) {
+    const name = e.detail.name;
+    const opId = `install-${name}`;
     busy = true;
-    statusPhase = t(lang, 'status.downloading'); statusLabel = e.detail.name;
-    try { await ToolsService.Install(e.detail.name); await loadTools(); }
-    catch (e: any) { console.error('Install failed:', e); }
-    finally { busy = false; statusPhase = ''; statusLabel = ''; }
+    addOperation({ id: opId, type: 'download', label: `${t(lang, 'status.downloading')} ${name}`, status: 'running', progress: 0 });
+    try {
+      await ToolsService.Install(name);
+      updateOperation(opId, { status: 'success', progress: 100 });
+      await loadTools();
+    } catch (err: any) {
+      console.error('Install failed:', err);
+      updateOperation(opId, { status: 'failed', error: err.message || String(err) });
+    } finally { busy = false; }
   }
 
   async function deleteTool(e: CustomEvent<{ name: string }>) {
+    const name = e.detail.name;
+    const opId = `delete-${name}`;
     busy = true;
-    try { await ToolsService.Delete(e.detail.name); await loadTools(); }
-    catch (e: any) { console.error('Delete failed:', e); }
-    finally { busy = false; }
+    addOperation({ id: opId, type: 'delete', label: `${t(lang, 'tools.delete')} ${name}`, status: 'running', progress: 0 });
+    try {
+      await ToolsService.Delete(name);
+      updateOperation(opId, { status: 'success', progress: 100 });
+      await loadTools();
+    } catch (err: any) {
+      console.error('Delete failed:', err);
+      updateOperation(opId, { status: 'failed', error: err.message || String(err) });
+    } finally { busy = false; }
   }
 
   async function downloadAll() {
     busy = true;
     const missing = tools.filter(t => !t.installed);
     for (let i = 0; i < missing.length; i++) {
-      statusPhase = t(lang, 'status.downloading');
-      statusLabel = `${missing[i].name} (${i + 1}/${missing.length})`;
-      statusProgress = ((i) / missing.length) * 100;
-      try { await ToolsService.Install(missing[i].name); } catch (e) { console.error('Install failed:', missing[i].name, e); }
+      const name = missing[i].name;
+      const opId = `download-${name}`;
+      const label = `${t(lang, 'status.downloading')} ${name} (${i + 1}/${missing.length})`;
+      addOperation({ id: opId, type: 'download', label, status: 'running', progress: 0 });
+      try {
+        await ToolsService.Install(name);
+        updateOperation(opId, { status: 'success', progress: 100 });
+      } catch (e: any) {
+        console.error('Install failed:', name, e);
+        updateOperation(opId, { status: 'failed', error: e.message || String(e) });
+      }
     }
-    statusPhase = ''; statusProgress = 0; statusLabel = ''; busy = false;
+    busy = false;
     await loadTools();
   }
 
@@ -65,12 +85,19 @@
     busy = true;
     const outdated = tools.filter(t => t.updateAvailable);
     for (let i = 0; i < outdated.length; i++) {
-      statusPhase = t(lang, 'status.downloading');
-      statusLabel = `${outdated[i].name} (${i + 1}/${outdated.length})`;
-      statusProgress = ((i) / outdated.length) * 100;
-      try { await ToolsService.Install(outdated[i].name); } catch (e) { console.error('Update failed:', outdated[i].name, e); }
+      const name = outdated[i].name;
+      const opId = `update-${name}`;
+      const label = `${t(lang, 'tools.update')} ${name} (${i + 1}/${outdated.length})`;
+      addOperation({ id: opId, type: 'update', label, status: 'running', progress: 0 });
+      try {
+        await ToolsService.Install(name);
+        updateOperation(opId, { status: 'success', progress: 100 });
+      } catch (e: any) {
+        console.error('Update failed:', name, e);
+        updateOperation(opId, { status: 'failed', error: e.message || String(e) });
+      }
     }
-    statusPhase = ''; statusProgress = 0; statusLabel = ''; busy = false;
+    busy = false;
     await loadTools();
   }
 

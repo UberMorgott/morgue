@@ -37,7 +37,7 @@ func runGUI() {
 		Services: []application.Service{
 			application.NewService(&services.ReconService{}),
 			application.NewService(services.NewPipelineService()),
-			application.NewService(services.NewToolsService()),
+			application.NewService(services.NewToolsService(Version)),
 			application.NewService(&services.ConfigService{}),
 			application.NewService(&services.UpdateService{Version: Version}),
 		},

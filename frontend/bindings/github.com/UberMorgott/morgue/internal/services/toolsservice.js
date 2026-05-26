@@ -61,6 +61,14 @@ export function InstallAll() {
     return $Call.ByID(1218192679);
 }
 
+/**
+ * StartupAutoUpdate returns the auto-update status map.
+ * @returns {$CancellablePromise<{[key: string]: any}>}
+ */
+export function StartupAutoUpdate() {
+    return $Call.ByID(2736498612);
+}
+
 // Private type creation functions
 const $$createType0 = tools$0.ToolStatus.createFrom;
 const $$createType1 = $Create.Array($$createType0);

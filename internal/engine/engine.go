@@ -20,7 +20,7 @@ type Engine struct {
 func New(cfg config.Config, toolBaseDir string) *Engine {
 	return &Engine{
 		cfg:      cfg,
-		tools:    tools.NewManager(toolBaseDir),
+		tools:    tools.NewManager(toolBaseDir, cfg),
 		skipList: skiplist.New(cfg),
 	}
 }
