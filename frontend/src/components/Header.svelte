@@ -2,8 +2,13 @@
   import { onMount } from 'svelte';
   import { UpdateService } from '../lib/api';
   import { t, type Lang } from '../lib/i18n';
+  import { currentLang } from '../lib/stores';
 
   export let lang: Lang = 'en';
+
+  function switchLang(l: Lang) {
+    currentLang.set(l);
+  }
 
   let version = 'dev';
   let updateStatus = '';
@@ -44,6 +49,10 @@
         {updateStatus}
       </span>
     {/if}
+    <div class="lang-switcher">
+      <button class="lang-btn" class:lang-active={lang === 'en'} on:click={() => switchLang('en')} title="English">🇺🇸</button>
+      <button class="lang-btn" class:lang-active={lang === 'ru'} on:click={() => switchLang('ru')} title="Русский">🇷🇺</button>
+    </div>
   </div>
 </header>
 
@@ -88,5 +97,27 @@
   }
   .update-available {
     color: var(--accent);
+  }
+  .lang-switcher {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .lang-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    opacity: 0.4;
+    transition: opacity 0.15s;
+  }
+  .lang-btn:hover {
+    opacity: 0.8;
+  }
+  .lang-active {
+    opacity: 1;
+    background: var(--bg-hover, rgba(255,255,255,0.06));
   }
 </style>
