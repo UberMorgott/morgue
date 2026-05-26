@@ -225,49 +225,6 @@
       {/if}
     </div>
   </div>
-  <div class="runtimes-section">
-    <h3 class="section-title">{t(lang, 'runtimes.title')}</h3>
-    {#if runtimesLoading}
-      <div class="tools-loading">{t(lang, 'tools.checking')}</div>
-    {:else if runtimes.length === 0}
-      <div class="tools-loading">{t(lang, 'runtimes.missing')}</div>
-    {:else}
-      <div class="runtimes-list">
-        {#each runtimes as rt}
-          <div class="runtime-row" class:runtime-ok={rt.available} class:runtime-missing={!rt.available}>
-            <div class="runtime-info">
-              <span class="runtime-name">{rt.kind === 'dotnet' ? '.NET SDK' : 'Java JRE'}</span>
-              {#if rt.required}
-                <span class="runtime-badge badge-required">{t(lang, 'runtimes.required')}</span>
-              {:else}
-                <span class="runtime-badge badge-optional">{t(lang, 'runtimes.optional')}</span>
-              {/if}
-            </div>
-            <div class="runtime-status">
-              {#if rt.available}
-                <span class="runtime-indicator indicator-ok"></span>
-                <span class="runtime-ver">{rt.version || '—'}</span>
-                <span class="runtime-source">{rt.local ? t(lang, 'runtimes.local') : t(lang, 'runtimes.system')}</span>
-              {:else}
-                <span class="runtime-indicator indicator-missing"></span>
-                <span class="runtime-missing-text">{t(lang, 'runtimes.missing')}</span>
-              {/if}
-            </div>
-            <div class="runtime-actions">
-              {#if !rt.available}
-                <button class="action-btn action-download" on:click={() => installRuntime(rt.kind)} disabled={runtimeBusy[rt.kind]}>
-                  {runtimeBusy[rt.kind] ? t(lang, 'runtimes.installing') : t(lang, 'runtimes.install')}
-                </button>
-              {:else}
-                <span class="runtime-ok-text">{t(lang, 'runtimes.available')}</span>
-              {/if}
-            </div>
-          </div>
-        {/each}
-      </div>
-    {/if}
-  </div>
-
   {#if loading}
     <div class="tools-loading">{t(lang, 'tools.checking')}</div>
   {:else}
@@ -298,31 +255,6 @@
   .tools-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
   .tools-loading { color: var(--text-muted); padding: 24px; text-align: center; }
 
-  .runtimes-section { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
-  .section-title { font-size: clamp(13px, 1.5vw, 18px); font-weight: 600; color: var(--text-secondary); margin: 0; text-transform: uppercase; letter-spacing: 0.5px; }
-  .runtimes-list { display: flex; flex-direction: column; gap: 6px; }
-  .runtime-row {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 12px; border-radius: 6px;
-    background: var(--bg-card); border: 1px solid var(--border-subtle);
-    transition: all 0.15s;
-  }
-  .runtime-row:hover { border-color: var(--border); }
-  .runtime-row.runtime-missing { opacity: 0.7; }
-  .runtime-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
-  .runtime-name { font-size: 13px; font-weight: 600; color: var(--text-primary); font-family: ui-monospace, monospace; }
-  .runtime-badge { font-size: 9px; padding: 1px 5px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .badge-required { background: var(--accent-dim); color: var(--accent); }
-  .badge-optional { background: var(--border-subtle); color: var(--text-muted); }
-  .runtime-status { display: flex; align-items: center; gap: 6px; min-width: 160px; flex-shrink: 0; }
-  .runtime-indicator { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .indicator-ok { background: var(--success, #22c55e); }
-  .indicator-missing { background: var(--error, #ef4444); }
-  .runtime-ver { font-size: 11px; font-family: ui-monospace, monospace; color: var(--text-secondary); }
-  .runtime-source { font-size: 10px; color: var(--text-muted); padding: 1px 5px; border-radius: 3px; background: var(--border-subtle); }
-  .runtime-missing-text { font-size: 11px; color: var(--text-muted); font-style: italic; }
-  .runtime-actions { display: flex; gap: 6px; flex-shrink: 0; }
-  .runtime-ok-text { font-size: 10px; color: var(--text-muted); }
   .action-btn { all: unset; font-size: 11px; padding: 4px 10px; border-radius: 4px; cursor: pointer; transition: all 0.15s; }
   .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .action-download { border: 1px solid var(--accent); color: var(--accent); }
