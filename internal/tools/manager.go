@@ -5,11 +5,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/UberMorgott/morgue/internal/config"
 )
+
+const updateCheckInterval = 6 * time.Hour
 
 // Manager handles tool installation and resolution.
 type Manager struct {
@@ -306,6 +309,27 @@ func (m *Manager) RuntimeEnv() []string {
 	}
 
 	return env
+}
+
+// ShouldCheckUpdates returns true if enough time has passed since the last update check.
+func (m *Manager) ShouldCheckUpdates() bool {
+	data, err := os.ReadFile(filepath.Join(m.baseDir, ".last-check"))
+	if err != nil {
+		return true // no file = never checked
+	}
+
+	ts, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil {
+		return true
+	}
+
+	return time.Since(time.Unix(ts, 0)) > updateCheckInterval
+}
+
+// MarkUpdateChecked writes the current timestamp to the last-check file.
+func (m *Manager) MarkUpdateChecked() {
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
+	os.WriteFile(filepath.Join(m.baseDir, ".last-check"), []byte(ts), 0644)
 }
 
 // Delete removes a tool's directory from disk.

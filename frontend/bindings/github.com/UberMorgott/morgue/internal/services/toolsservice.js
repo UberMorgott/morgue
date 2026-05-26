@@ -92,6 +92,22 @@ export function InstallRuntime(kind) {
 }
 
 /**
+ * ShouldCheckUpdates returns true if enough time has passed since the last update check.
+ * @returns {$CancellablePromise<boolean>}
+ */
+export function ShouldCheckUpdates() {
+    return $Call.ByID(3678164978);
+}
+
+/**
+ * MarkUpdateChecked saves the current time as the last update check timestamp.
+ * @returns {$CancellablePromise<void>}
+ */
+export function MarkUpdateChecked() {
+    return $Call.ByID(1125193968);
+}
+
+/**
  * StartupAutoUpdate runs background update checks and auto-applies if configured.
  * Called once from the frontend on mount. Returns a summary for the caller.
  * @returns {$CancellablePromise<{ [_: string]: any }>}

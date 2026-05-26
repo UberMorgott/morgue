@@ -151,6 +151,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'tools.available': { en: 'available', ru: 'доступна' },
   'tools.upToDate': { en: 'Up to date', ru: 'Актуален' },
   'tools.checking': { en: 'Checking updates...', ru: 'Проверка обновлений...' },
+  'tools.checkUpdates': { en: 'Check updates', ru: 'Проверить обновления' },
 
   // StatusBar enhanced
   'status.downloading': { en: 'Downloading', ru: 'Скачивание' },

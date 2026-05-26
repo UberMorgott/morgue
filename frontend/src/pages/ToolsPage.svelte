@@ -83,18 +83,33 @@
         path: s.Path ?? s.path ?? '', version: s.Version ?? s.version ?? '',
         latestVersion: '', updateAvailable: false,
         category: s.Category ?? s.category ?? '', description: s.Description ?? s.description ?? '',
-        checking: true, runtimeDeps: s.RuntimeDeps ?? s.runtimeDeps ?? [],
+        checking: false, runtimeDeps: s.RuntimeDeps ?? s.runtimeDeps ?? [],
       }));
       loading = false;
 
-      // Phase 2: check latest versions per tool (non-blocking)
-      for (const tool of tools) {
-        checkLatestVersion(tool.name);
+      // Phase 2: only auto-check if enough time has passed
+      const shouldCheck = await ToolsService.ShouldCheckUpdates();
+      if (shouldCheck) {
+        tools = tools.map(t => ({ ...t, checking: true }));
+        for (const tool of tools) {
+          checkLatestVersion(tool.name);
+        }
+        await ToolsService.MarkUpdateChecked();
       }
     } catch (e) {
       console.error('CheckAll failed:', e);
       loading = false;
     }
+  }
+
+  $: anyChecking = tools.some(t => t.checking);
+
+  async function forceCheckUpdates() {
+    tools = tools.map(t => ({ ...t, checking: true, latestVersion: '', updateAvailable: false }));
+    for (const tool of tools) {
+      checkLatestVersion(tool.name);
+    }
+    await ToolsService.MarkUpdateChecked();
   }
 
   async function checkLatestVersion(name: string) {
@@ -217,6 +232,7 @@
   <div class="tools-header">
     <h2 class="tools-title">{t(lang, 'tools.title')}</h2>
     <div class="tools-actions">
+      <button class="header-btn" on:click={forceCheckUpdates} disabled={busy || anyChecking}>{t(lang, 'tools.checkUpdates')}</button>
       {#if missingCount > 0}
         <button class="header-btn" on:click={downloadAll} disabled={busy}>{t(lang, 'tools.downloadAll')} ({missingCount})</button>
       {/if}
