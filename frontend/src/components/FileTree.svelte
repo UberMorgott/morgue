@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { t, type Lang } from '../lib/i18n';
+
+  export let lang: Lang = 'en';
   export let items: Array<{
     path: string;
     group: string;
@@ -35,10 +38,10 @@
 
 <div class="file-tree">
   <div class="tree-toolbar">
-    <span class="tree-count">{selectedCount}/{totalCount} selected</span>
+    <span class="tree-count">{selectedCount}/{totalCount} {t(lang, 'filetree.selected')}</span>
     <div class="tree-actions">
-      <button class="tree-btn" on:click={selectAll}>All</button>
-      <button class="tree-btn" on:click={deselectAll}>None</button>
+      <button class="tree-btn" on:click={selectAll}>{t(lang, 'filetree.all')}</button>
+      <button class="tree-btn" on:click={deselectAll}>{t(lang, 'filetree.none')}</button>
     </div>
   </div>
 

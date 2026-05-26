@@ -1,6 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { ConfigService } from '../lib/api';
+  import { t, type Lang } from '../lib/i18n';
+  import { currentLang } from '../lib/stores';
+
+  export let lang: Lang = 'en';
 
   let config: any = {};
   let loading = true;
@@ -36,18 +40,30 @@
 </script>
 
 <div class="settings-page">
-  <h2 class="settings-title">Settings</h2>
+  <h2 class="settings-title">{t(lang, 'settings.title')}</h2>
 
   {#if loading}
-    <div class="settings-loading">Loading configuration...</div>
+    <div class="settings-loading">{t(lang, 'settings.loading')}</div>
   {:else}
     <div class="settings-content">
+      <!-- Language section -->
+      <section class="settings-section">
+        <h3 class="section-title">{t(lang, 'settings.language')}</h3>
+        <label class="setting-row">
+          <span class="setting-label">{t(lang, 'settings.language')}</span>
+          <select class="setting-select" bind:value={$currentLang}>
+            <option value="en">English</option>
+            <option value="ru">Русский</option>
+          </select>
+        </label>
+      </section>
+
       <!-- Pipeline section -->
       <section class="settings-section">
-        <h3 class="section-title">Pipeline</h3>
+        <h3 class="section-title">{t(lang, 'settings.pipeline')}</h3>
 
         <label class="setting-row">
-          <span class="setting-label">Default output directory</span>
+          <span class="setting-label">{t(lang, 'settings.outputDir')}</span>
           <input
             class="setting-input"
             type="text"
@@ -58,7 +74,7 @@
         </label>
 
         <label class="setting-row">
-          <span class="setting-label">Step timeout (minutes)</span>
+          <span class="setting-label">{t(lang, 'settings.stepTimeout')}</span>
           <input
             class="setting-input setting-input-sm"
             type="number"
@@ -69,7 +85,7 @@
         </label>
 
         <label class="setting-row">
-          <span class="setting-label">Concurrent targets</span>
+          <span class="setting-label">{t(lang, 'settings.concurrentTargets')}</span>
           <input
             class="setting-input setting-input-sm"
             type="number"
@@ -81,31 +97,31 @@
 
         <label class="setting-toggle">
           <input type="checkbox" bind:checked={config.stop_on_first_error} on:change={onConfigChange} />
-          <span class="toggle-label">Stop on first error</span>
+          <span class="toggle-label">{t(lang, 'settings.stopOnFirstError')}</span>
         </label>
 
         <label class="setting-toggle">
           <input type="checkbox" bind:checked={config.keep_intermediates} on:change={onConfigChange} />
-          <span class="toggle-label">Keep intermediate files</span>
+          <span class="toggle-label">{t(lang, 'settings.keepIntermediates')}</span>
         </label>
       </section>
 
       <!-- Skip-list section -->
       <section class="settings-section">
-        <h3 class="section-title">Skip List</h3>
+        <h3 class="section-title">{t(lang, 'settings.skipList')}</h3>
 
         <label class="setting-toggle">
           <input type="checkbox" bind:checked={config.skip_system_libs} on:change={onConfigChange} />
-          <span class="toggle-label">Skip system libraries</span>
+          <span class="toggle-label">{t(lang, 'settings.skipSystemLibs')}</span>
         </label>
       </section>
 
       <!-- Decompiler section -->
       <section class="settings-section">
-        <h3 class="section-title">Decompiler</h3>
+        <h3 class="section-title">{t(lang, 'settings.decompiler')}</h3>
 
         <label class="setting-row">
-          <span class="setting-label">C# language version</span>
+          <span class="setting-label">{t(lang, 'settings.csharpVersion')}</span>
           <input
             class="setting-input setting-input-sm"
             type="text"
@@ -117,26 +133,26 @@
 
         <label class="setting-toggle">
           <input type="checkbox" bind:checked={config.generate_pdb} on:change={onConfigChange} />
-          <span class="toggle-label">Generate PDB files</span>
+          <span class="toggle-label">{t(lang, 'settings.generatePdb')}</span>
         </label>
 
         <label class="setting-toggle">
           <input type="checkbox" bind:checked={config.decompile_project_mode} on:change={onConfigChange} />
-          <span class="toggle-label">Decompile as project</span>
+          <span class="toggle-label">{t(lang, 'settings.decompileProject')}</span>
         </label>
 
         <label class="setting-toggle">
           <input type="checkbox" bind:checked={config.generate_callgraph} on:change={onConfigChange} />
-          <span class="toggle-label">Generate call graph</span>
+          <span class="toggle-label">{t(lang, 'settings.generateCallgraph')}</span>
         </label>
       </section>
 
       <!-- Network section -->
       <section class="settings-section">
-        <h3 class="section-title">Network</h3>
+        <h3 class="section-title">{t(lang, 'settings.network')}</h3>
 
         <label class="setting-row">
-          <span class="setting-label">GitHub token</span>
+          <span class="setting-label">{t(lang, 'settings.githubToken')}</span>
           <input
             class="setting-input"
             type="password"
@@ -147,7 +163,7 @@
         </label>
 
         <label class="setting-row">
-          <span class="setting-label">Download retries</span>
+          <span class="setting-label">{t(lang, 'settings.downloadRetries')}</span>
           <input
             class="setting-input setting-input-sm"
             type="number"
@@ -159,16 +175,16 @@
 
         <label class="setting-toggle">
           <input type="checkbox" bind:checked={config.auto_update_check} on:change={onConfigChange} />
-          <span class="toggle-label">Auto-check for updates</span>
+          <span class="toggle-label">{t(lang, 'settings.autoUpdateCheck')}</span>
         </label>
       </section>
 
       <!-- Logging section -->
       <section class="settings-section">
-        <h3 class="section-title">Logging</h3>
+        <h3 class="section-title">{t(lang, 'settings.logging')}</h3>
 
         <label class="setting-row">
-          <span class="setting-label">Log level</span>
+          <span class="setting-label">{t(lang, 'settings.logLevel')}</span>
           <select class="setting-select" bind:value={config.log_level} on:change={onConfigChange}>
             <option value="debug">Debug</option>
             <option value="info">Info</option>
@@ -179,13 +195,13 @@
 
         <label class="setting-toggle">
           <input type="checkbox" bind:checked={config.log_to_file} on:change={onConfigChange} />
-          <span class="toggle-label">Log to file</span>
+          <span class="toggle-label">{t(lang, 'settings.logToFile')}</span>
         </label>
       </section>
     </div>
 
     {#if saving}
-      <div class="save-indicator">Saving...</div>
+      <div class="save-indicator">{t(lang, 'settings.saving')}</div>
     {/if}
   {/if}
 </div>

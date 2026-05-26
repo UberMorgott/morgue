@@ -5,6 +5,9 @@
   import JobCard from '../components/JobCard.svelte';
   import { PipelineService } from '../lib/api';
   import { onEvent } from '../lib/events';
+  import { t, type Lang } from '../lib/i18n';
+
+  export let lang: Lang = 'en';
 
   let status = { running: false, phase: '', target: '' };
   let progress = 0;
@@ -41,7 +44,7 @@
           const total = p.Total || p.total || 1;
           const step = p.Step || p.step || 0;
           progress = ((step + 1) / total) * 100;
-          stepLabel = `Step ${step + 1}/${total}: ${p.Name || p.name || ''}`;
+          stepLabel = `${t(lang, 'jobs.step')} ${step + 1}/${total}: ${p.Name || p.name || ''}`;
         }
         if (data.Done || data.done) {
           status = { running: false, phase: '', target: '' };
@@ -95,34 +98,34 @@
 </script>
 
 <div class="jobs-page">
-  <h2 class="jobs-title">Jobs</h2>
+  <h2 class="jobs-title">{t(lang, 'jobs.title')}</h2>
 
   {#if status.running}
     <div class="active-job">
       <div class="active-job-header">
-        <span class="active-label">Active</span>
+        <span class="active-label">{t(lang, 'jobs.active')}</span>
         <span class="active-phase">{status.phase}</span>
         {#if status.target}
           <span class="active-target selectable">{status.target}</span>
         {/if}
-        <button class="cancel-btn" on:click={cancelPipeline}>Cancel</button>
+        <button class="cancel-btn" on:click={cancelPipeline}>{t(lang, 'jobs.cancel')}</button>
       </div>
 
       <ProgressBar percent={progress} label={stepLabel} elapsed={elapsed} />
 
       <div class="active-log">
-        <LogViewer entries={logEntries} />
+        <LogViewer {lang} entries={logEntries} />
       </div>
     </div>
   {:else}
     <div class="no-active">
-      <span class="no-active-text">No active pipeline</span>
+      <span class="no-active-text">{t(lang, 'jobs.noActive')}</span>
     </div>
   {/if}
 
   {#if pastJobs.length > 0}
     <div class="past-jobs">
-      <h3 class="past-title">History</h3>
+      <h3 class="past-title">{t(lang, 'jobs.history')}</h3>
       <div class="past-list">
         {#each pastJobs as job}
           <JobCard

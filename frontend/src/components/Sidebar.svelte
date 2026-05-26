@@ -1,13 +1,16 @@
 <script lang="ts">
+  import { t, type Lang } from '../lib/i18n';
+
   export let currentPage: string = 'home';
+  export let lang: Lang = 'en';
   let collapsed = false;
 
   const items = [
-    { id: 'home',     icon: '\u2302', label: 'Home' },
-    { id: 'scan',     icon: '\u2315', label: 'Scan' },
-    { id: 'tools',    icon: '\u2699', label: 'Tools' },
-    { id: 'jobs',     icon: '\u25B6', label: 'Jobs' },
-    { id: 'settings', icon: '\u2630', label: 'Settings' },
+    { id: 'home',     icon: '\u2302', key: 'sidebar.home' },
+    { id: 'scan',     icon: '\u2315', key: 'sidebar.scan' },
+    { id: 'tools',    icon: '\u2699', key: 'sidebar.tools' },
+    { id: 'jobs',     icon: '\u25B6', key: 'sidebar.jobs' },
+    { id: 'settings', icon: '\u2630', key: 'sidebar.settings' },
   ];
 
   function navigate(id: string) {
@@ -22,17 +25,17 @@
         class="nav-item"
         class:active={currentPage === item.id}
         on:click={() => navigate(item.id)}
-        title={item.label}
+        title={t(lang, item.key)}
       >
         <span class="nav-icon">{item.icon}</span>
         {#if !collapsed}
-          <span class="nav-label">{item.label}</span>
+          <span class="nav-label">{t(lang, item.key)}</span>
         {/if}
       </button>
     {/each}
   </div>
 
-  <button class="collapse-btn" on:click={() => collapsed = !collapsed} title={collapsed ? 'Expand' : 'Collapse'}>
+  <button class="collapse-btn" on:click={() => collapsed = !collapsed} title={collapsed ? t(lang, 'sidebar.expand') : t(lang, 'sidebar.collapse')}>
     <span class="collapse-icon">{collapsed ? '\u00BB' : '\u00AB'}</span>
   </button>
 </nav>

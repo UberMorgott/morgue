@@ -1,9 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { UpdateService } from '../lib/api';
+  import { t, type Lang } from '../lib/i18n';
+
+  export let lang: Lang = 'en';
 
   let version = 'dev';
   let updateStatus = '';
+  let updateRaw = '';
 
   onMount(async () => {
     try {
@@ -12,9 +16,21 @@
 
     try {
       const result = await UpdateService.Check();
-      updateStatus = result.available ? `Update: ${result.version}` : result.status;
+      if (result.available) {
+        updateRaw = 'available';
+        updateStatus = `${t(lang, 'header.update')}: ${result.version}`;
+      } else {
+        updateRaw = result.status;
+        updateStatus = result.status;
+      }
     } catch (e) { console.error('Check failed:', e); }
   });
+
+  $: {
+    if (updateRaw === 'available') {
+      updateStatus = `${t(lang, 'header.update')}: ${updateStatus.split(': ')[1] || ''}`;
+    }
+  }
 </script>
 
 <header class="header">
@@ -24,7 +40,7 @@
   </div>
   <div class="header-right">
     {#if updateStatus}
-      <span class="update-status" class:update-available={updateStatus.startsWith('Update')}>
+      <span class="update-status" class:update-available={updateRaw === 'available'}>
         {updateStatus}
       </span>
     {/if}
