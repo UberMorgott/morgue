@@ -11,7 +11,7 @@
   let tools: Array<{
     name: string; installed: boolean; path: string; version: string;
     latestVersion: string; updateAvailable: boolean; category: string; description: string;
-    checking: boolean;
+    checking: boolean; runtimeDeps: string[];
   }> = [];
   let runtimes: Array<{
     kind: string; available: boolean; version: string; path: string; local: boolean; required: boolean;
@@ -83,7 +83,7 @@
         path: s.Path ?? s.path ?? '', version: s.Version ?? s.version ?? '',
         latestVersion: '', updateAvailable: false,
         category: s.Category ?? s.category ?? '', description: s.Description ?? s.description ?? '',
-        checking: true,
+        checking: true, runtimeDeps: s.RuntimeDeps ?? s.runtimeDeps ?? [],
       }));
       loading = false;
 
@@ -198,6 +198,17 @@
     busy = false;
   }
 
+  // Reactive: recomputes when runtimes or tools change
+  $: runtimeDepsMap = Object.fromEntries(tools.map(tool => [
+    tool.name,
+    (tool.runtimeDeps || []).map(kind => {
+      const rt = runtimes.find(r => r.kind === kind);
+      return rt
+        ? { kind, available: rt.available, version: rt.version, local: rt.local }
+        : { kind, available: false, version: '', local: false };
+    })
+  ]));
+
   $: missingCount = tools.filter(t => !t.installed).length;
   $: outdatedCount = tools.filter(t => t.updateAvailable).length;
 </script>
@@ -266,7 +277,9 @@
           latestVersion={tool.latestVersion} updateAvailable={tool.updateAvailable}
           category={tool.category} description={tool.description} {busy}
           checking={tool.checking}
-          on:install={installTool} on:delete={deleteTool} />
+          runtimeDeps={runtimeDepsMap[tool.name] || []}
+          on:install={installTool} on:delete={deleteTool}
+          on:install-runtime={(e) => installRuntime(e.detail.kind)} />
       {/each}
     </div>
   {/if}

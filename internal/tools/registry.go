@@ -18,6 +18,7 @@ var Registry = []ToolDef{
 		Method:      MethodDotnetTool,
 		DotnetID:    "ilspycmd",
 		Binary:      "ilspycmd.exe",
+		RuntimeDeps: []RuntimeKind{RuntimeDotnet},
 	},
 	{
 		Name:        "strings",
@@ -46,6 +47,7 @@ var Registry = []ToolDef{
 		AssetGlob:   "ghidra_*_PUBLIC_*.zip",
 		Binary:      "ghidraRun.bat",
 		Optional:    true,
+		RuntimeDeps: []RuntimeKind{RuntimeJava},
 	},
 	{
 		Name:        "nofuserex",
@@ -54,6 +56,7 @@ var Registry = []ToolDef{
 		Method:      MethodGitBuild,
 		Repo:        "undebel/NoFuserEx",
 		Binary:      "NoFuserEx.exe",
+		RuntimeDeps: []RuntimeKind{RuntimeDotnet},
 	},
 	{
 		Name:        "confuserex-killer",
@@ -62,6 +65,7 @@ var Registry = []ToolDef{
 		Method:      MethodGitBuild,
 		Repo:        "wwh1004/ConfuserExTools",
 		Binary:      "ConfuserExKiller.exe",
+		RuntimeDeps: []RuntimeKind{RuntimeDotnet},
 	},
 	{
 		Name:        "proxycall-remover",
@@ -70,6 +74,7 @@ var Registry = []ToolDef{
 		Method:      MethodGitBuild,
 		Repo:        "wwh1004/ConfuserExTools",
 		Binary:      "ProxyKiller.exe",
+		RuntimeDeps: []RuntimeKind{RuntimeDotnet},
 	},
 	{
 		Name:        "idr",
