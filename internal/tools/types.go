@@ -64,8 +64,13 @@ type ToolDef struct {
 
 // ToolStatus holds the installed state of a tool.
 type ToolStatus struct {
-	Name      string
-	Installed bool
-	Path      string
-	Version   string
+	Name            string `json:"Name"`
+	Installed       bool   `json:"Installed"`
+	Path            string `json:"Path"`
+	Version         string `json:"Version"`
+	LatestVersion   string `json:"LatestVersion"`
+	UpdateAvailable bool   `json:"UpdateAvailable"`
+	Category        string `json:"Category"`
+	Description     string `json:"Description"`
+	Optional        bool   `json:"Optional"`
 }
