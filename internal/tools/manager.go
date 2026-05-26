@@ -204,11 +204,10 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 				st.LatestVersion = ver
 			}
 		case t.Method == MethodGitBuild && t.Repo != "":
-			tagName, err := fetchLatestVersion(t.Repo)
-			if err == nil {
-				tagName = cleanVersionTag(tagName)
-				st.LatestVersion = tagName
-				if st.Installed && st.Version != "" && st.Version != tagName {
+			commit, err := fetchLatestCommit(t.Repo)
+			if err == nil && commit != "" {
+				st.LatestVersion = commit
+				if st.Installed && st.Version != "" && st.Version != commit {
 					st.UpdateAvailable = true
 				}
 			}
