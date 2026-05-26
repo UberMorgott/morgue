@@ -10,7 +10,12 @@ tasks:
   dev:
     desc: Run Wails dev mode
     cmds:
-      - wails3 dev
+      - wails3 dev -port 34115
+
+  bindings:
+    desc: Regenerate Wails bindings from Go services
+    cmds:
+      - wails3 generate bindings ./...
 
   build:
     desc: Build production binary with embedded frontend
