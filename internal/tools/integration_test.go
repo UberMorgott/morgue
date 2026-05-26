@@ -85,6 +85,70 @@ func TestCheckAllWithUpdatesNoAPI(t *testing.T) {
 	}
 }
 
+func TestScrapeReleaseAssets(t *testing.T) {
+	// Verify we can scrape asset lists from the HTML page
+	tests := []struct {
+		repo string
+		tag  string
+	}{
+		{"mandiant/GoReSym", "v3.3"},
+	}
+	for _, tt := range tests {
+		assets, err := scrapeReleaseAssets(tt.repo, tt.tag)
+		if err != nil {
+			t.Fatalf("scrapeReleaseAssets(%s, %s): %v", tt.repo, tt.tag, err)
+		}
+		if len(assets) == 0 {
+			t.Fatalf("no assets found for %s %s", tt.repo, tt.tag)
+		}
+		for _, a := range assets {
+			t.Logf("  asset: %s → %s", a.Name, a.URL)
+		}
+	}
+}
+
+func TestInstallGitHubToolDirect(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping download test in short mode")
+	}
+
+	baseDir := filepath.Join(os.TempDir(), "morgue-test-direct-dl")
+	os.MkdirAll(baseDir, 0755)
+	defer os.RemoveAll(baseDir)
+
+	// Use goresym — small tool, fast download
+	tool, ok := FindByName("goresym")
+	if !ok {
+		t.Fatal("goresym not in registry")
+	}
+
+	version, err := fetchLatestVersion(tool.Repo)
+	if err != nil {
+		t.Fatalf("fetchLatestVersion: %v", err)
+	}
+	t.Logf("latest version: %s", version)
+
+	destDir := filepath.Join(baseDir, tool.Name)
+	os.MkdirAll(destDir, 0755)
+
+	err = tryDirectDownload(tool, version, destDir, func(down, total int64) {
+		if total > 0 {
+			t.Logf("  download: %d/%d (%d%%)", down, total, down*100/total)
+		}
+	})
+	if err != nil {
+		t.Fatalf("tryDirectDownload: %v", err)
+	}
+
+	// Verify binary exists
+	found := findBinaryRecursive(destDir, tool.Binary)
+	if found == "" {
+		t.Errorf("binary %s not found in %s after direct download", tool.Binary, destDir)
+	} else {
+		t.Logf("binary found: %s", found)
+	}
+}
+
 func TestCheckRuntimes(t *testing.T) {
 	baseDir := filepath.Join(os.TempDir(), "morgue-test-rt")
 	os.MkdirAll(baseDir, 0755)

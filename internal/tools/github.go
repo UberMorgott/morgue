@@ -101,13 +101,18 @@ func fetchLatestVersion(repo string) (string, error) {
 
 // fetchLatestRelease gets the latest release info from GitHub API.
 // This consumes API rate limit — prefer fetchLatestVersion + cache.
-func fetchLatestRelease(repo string) (tagName string, assets []assetInfo, err error) {
+func fetchLatestRelease(repo, token string) (tagName string, assets []assetInfo, err error) {
 	parts := strings.SplitN(repo, "/", 2)
 	if len(parts) != 2 {
 		return "", nil, fmt.Errorf("invalid repo: %s", repo)
 	}
 
-	client := github.NewClient(nil)
+	var client *github.Client
+	if token != "" {
+		client = github.NewClient(nil).WithAuthToken(token)
+	} else {
+		client = github.NewClient(nil)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -130,7 +135,7 @@ func fetchLatestRelease(repo string) (tagName string, assets []assetInfo, err er
 // fetchReleaseCached returns release info, using cache when available.
 // On cache miss it calls the GitHub API and saves the result.
 // On API error it falls back to stale cache if available.
-func fetchReleaseCached(baseDir, repo string) (string, []assetInfo, error) {
+func fetchReleaseCached(baseDir, repo, token string) (string, []assetInfo, error) {
 	cacheMu.Lock()
 	defer cacheMu.Unlock()
 
@@ -142,7 +147,7 @@ func fetchReleaseCached(baseDir, repo string) (string, []assetInfo, error) {
 	}
 
 	// Cache miss or stale — call API
-	tag, assets, err := fetchLatestRelease(repo)
+	tag, assets, err := fetchLatestRelease(repo, token)
 	if err != nil {
 		// API failed — use stale cache if available
 		if entry, ok := cache.Entries[repo]; ok {
@@ -194,62 +199,163 @@ func matchAsset(assets []assetInfo, glob string) (assetInfo, bool) {
 
 // installFromGitHub downloads and extracts a GitHub release asset.
 // Uses cached release info to avoid API rate limits.
+// Falls back to direct URL download when API is unavailable.
 // Returns the version tag on success.
-func installFromGitHub(tool ToolDef, destDir string, onProgress func(bytesDown, bytesTotal int64)) (string, error) {
+func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(bytesDown, bytesTotal int64)) (string, error) {
 	baseDir := filepath.Dir(destDir)
 
-	tagName, assets, err := fetchReleaseCached(baseDir, tool.Repo)
+	tagName, assets, err := fetchReleaseCached(baseDir, tool.Repo, token)
+	if err == nil {
+		asset, found := matchAsset(assets, tool.AssetGlob)
+		if found {
+			archivePath := filepath.Join(destDir, asset.Name)
+
+			client := grab.NewClient()
+			req, _ := grab.NewRequest(archivePath, asset.URL)
+
+			resp := client.Do(req)
+
+			// Progress reporting loop
+			t := time.NewTicker(200 * time.Millisecond)
+			defer t.Stop()
+
+			done := false
+			for !done {
+				select {
+				case <-t.C:
+					if onProgress != nil {
+						onProgress(resp.BytesComplete(), resp.Size())
+					}
+				case <-resp.Done:
+					done = true
+				}
+			}
+
+			// Final progress report
+			if onProgress != nil {
+				onProgress(resp.BytesComplete(), resp.Size())
+			}
+
+			if err := resp.Err(); err != nil {
+				os.Remove(archivePath)
+				return "", fmt.Errorf("download %s: %w", asset.Name, err)
+			}
+
+			defer os.Remove(archivePath)
+
+			if err := extractArchive(archivePath, destDir); err != nil {
+				return "", err
+			}
+
+			versionFile := filepath.Join(destDir, ".version")
+			os.WriteFile(versionFile, []byte(tagName), 0644)
+
+			return tagName, nil
+		}
+	}
+
+	// Fallback: direct download without API
+	version, verErr := fetchLatestVersion(tool.Repo)
+	if verErr != nil {
+		// Return original API error if version redirect also fails
+		if err != nil {
+			return "", err
+		}
+		return "", verErr
+	}
+
+	if dlErr := tryDirectDownload(tool, version, destDir, onProgress); dlErr != nil {
+		return "", fmt.Errorf("install %s: API unavailable and direct download failed: %w", tool.Name, dlErr)
+	}
+
+	os.WriteFile(filepath.Join(destDir, ".version"), []byte(version), 0644)
+	return version, nil
+}
+
+// tryDirectDownload attempts to download a release asset without using the GitHub API.
+// It scrapes the expanded_assets HTML page to discover real asset names,
+// then matches them using the same glob logic as the API path.
+func tryDirectDownload(tool ToolDef, version, destDir string, onProgress func(bytesDown, bytesTotal int64)) error {
+	assets, err := scrapeReleaseAssets(tool.Repo, version)
 	if err != nil {
-		return "", err
+		return fmt.Errorf("scrape assets for %s %s: %w", tool.Repo, version, err)
 	}
 
 	asset, found := matchAsset(assets, tool.AssetGlob)
 	if !found {
-		return "", fmt.Errorf("no matching asset for %s (glob: %s)", tool.Name, tool.AssetGlob)
+		return fmt.Errorf("no matching asset for %s in scraped list (glob: %s, found %d assets)",
+			tool.Name, tool.AssetGlob, len(assets))
 	}
 
 	archivePath := filepath.Join(destDir, asset.Name)
-
-	client := grab.NewClient()
-	req, _ := grab.NewRequest(archivePath, asset.URL)
-
-	resp := client.Do(req)
-
-	// Progress reporting loop
-	t := time.NewTicker(200 * time.Millisecond)
-	defer t.Stop()
-
-	done := false
-	for !done {
-		select {
-		case <-t.C:
-			if onProgress != nil {
-				onProgress(resp.BytesComplete(), resp.Size())
-			}
-		case <-resp.Done:
-			done = true
-		}
-	}
-
-	// Final progress report
-	if onProgress != nil {
-		onProgress(resp.BytesComplete(), resp.Size())
-	}
-
-	if err := resp.Err(); err != nil {
+	if err := downloadFile(asset.URL, archivePath, onProgress); err != nil {
 		os.Remove(archivePath)
-		return "", fmt.Errorf("download %s: %w", asset.Name, err)
+		return fmt.Errorf("download %s: %w", asset.Name, err)
 	}
 
 	defer os.Remove(archivePath)
+	return extractArchive(archivePath, destDir)
+}
 
-	if err := extractArchive(archivePath, destDir); err != nil {
-		return "", err
+// scrapeReleaseAssets fetches the expanded_assets HTML fragment for a GitHub release
+// and extracts download links. This does not use the GitHub API and is not rate-limited.
+func scrapeReleaseAssets(repo, tag string) ([]assetInfo, error) {
+	url := fmt.Sprintf("https://github.com/%s/releases/expanded_assets/%s", repo, tag)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("expanded_assets returned %d", resp.StatusCode)
 	}
 
-	// Save version to .version file
-	versionFile := filepath.Join(destDir, ".version")
-	os.WriteFile(versionFile, []byte(tagName), 0644)
+	// Read body as string — these pages are small (typically < 100KB)
+	buf := make([]byte, 512*1024)
+	n, _ := resp.Body.Read(buf)
+	body := string(buf[:n])
+	// Read remaining if any
+	for n == len(buf) {
+		n2, _ := resp.Body.Read(buf)
+		if n2 == 0 {
+			break
+		}
+		body += string(buf[:n2])
+	}
 
-	return tagName, nil
+	// Parse href="/owner/repo/releases/download/tag/filename"
+	prefix := fmt.Sprintf("/%s/releases/download/", repo)
+	var assets []assetInfo
+	for {
+		idx := strings.Index(body, prefix)
+		if idx < 0 {
+			break
+		}
+		body = body[idx:]
+		// Find the closing quote
+		end := strings.IndexByte(body[1:], '"')
+		if end < 0 {
+			break
+		}
+		path := body[:end+1]
+		body = body[end+1:]
+
+		// Extract filename (last path segment)
+		parts := strings.Split(path, "/")
+		name := parts[len(parts)-1]
+		if name == "" {
+			continue
+		}
+
+		dlURL := "https://github.com" + path
+		assets = append(assets, assetInfo{Name: name, URL: dlURL})
+	}
+
+	if len(assets) == 0 {
+		return nil, fmt.Errorf("no download links found on expanded_assets page")
+	}
+	return assets, nil
 }
