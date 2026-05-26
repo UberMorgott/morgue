@@ -5,113 +5,84 @@
   export let lang: Lang = 'en';
   export let name: string;
   export let installed: boolean = false;
-  export let path: string = '';
-  export let installing: boolean = false;
+  export let version: string = '';
+  export let latestVersion: string = '';
+  export let updateAvailable: boolean = false;
+  export let category: string = '';
+  export let description: string = '';
+  export let busy: boolean = false;
 
   const dispatch = createEventDispatcher();
-
-  function handleInstall() {
-    dispatch('install', { name });
-  }
 </script>
 
-<div class="tool-row" class:installed>
-  <div class="tool-status">
-    {#if installed}
-      <span class="status-dot installed-dot"></span>
-    {:else}
-      <span class="status-dot missing-dot"></span>
-    {/if}
-  </div>
-
+<div class="tool-row" class:dimmed={!installed}>
   <div class="tool-info">
     <span class="tool-name">{name}</span>
-    {#if installed && path}
-      <span class="tool-path selectable">{path}</span>
+    {#if category}
+      <span class="tool-category">{category}</span>
+    {/if}
+    {#if description}
+      <span class="tool-desc">{description}</span>
     {/if}
   </div>
-
+  <div class="tool-version">
+    {#if installed}
+      <span class="ver-current">{version || '—'}</span>
+      {#if latestVersion}
+        <span class="ver-sep">→</span>
+        <span class="ver-latest" class:ver-new={updateAvailable}>{latestVersion}</span>
+      {/if}
+    {:else}
+      <span class="ver-none">{t(lang, 'tools.notInstalled')}</span>
+    {/if}
+  </div>
   <div class="tool-actions">
     {#if !installed}
-      <button class="install-btn" on:click={handleInstall} disabled={installing}>
-        {installing ? t(lang, 'tools.installing') : t(lang, 'tools.install')}
+      <button class="action-btn action-download" on:click={() => dispatch('install', { name })} disabled={busy}>
+        {t(lang, 'tools.download')}
+      </button>
+    {:else if updateAvailable}
+      <button class="action-btn action-update" on:click={() => dispatch('install', { name })} disabled={busy}>
+        {t(lang, 'tools.update')}
       </button>
     {:else}
-      <span class="installed-label">{t(lang, 'tools.installed')}</span>
+      <span class="up-to-date">{t(lang, 'tools.upToDate')}</span>
+    {/if}
+    {#if installed}
+      <button class="action-btn action-delete" on:click={() => dispatch('delete', { name })} disabled={busy}>
+        {t(lang, 'tools.delete')}
+      </button>
     {/if}
   </div>
 </div>
 
 <style>
   .tool-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 12px;
-    border: 1px solid var(--border-subtle);
-    border-radius: 6px;
-    background: var(--bg-card);
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; border-radius: 6px;
+    background: var(--bg-card); border: 1px solid var(--border-subtle);
     transition: all 0.15s;
   }
-  .tool-row:hover {
-    border-color: var(--border);
-  }
-  .status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .installed-dot {
-    background: var(--accent);
-    box-shadow: 0 0 6px var(--accent-dim);
-  }
-  .missing-dot {
-    background: var(--error);
-    box-shadow: 0 0 6px rgba(255, 51, 102, 0.2);
-  }
-  .tool-info {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    overflow: hidden;
-  }
-  .tool-name {
-    font-size: 13px;
-    color: var(--text-primary);
-    font-weight: 500;
-  }
-  .tool-path {
-    font-size: 10px;
-    color: var(--text-muted);
-    font-family: ui-monospace, monospace;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .tool-actions {
-    flex-shrink: 0;
-  }
-  .install-btn {
-    all: unset;
-    font-size: 11px;
-    padding: 4px 12px;
-    border-radius: 4px;
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .install-btn:hover:not(:disabled) {
-    background: var(--accent-dim);
-  }
-  .install-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  .installed-label {
-    font-size: 11px;
-    color: var(--text-muted);
-  }
+  .tool-row.dimmed { opacity: 0.5; }
+  .tool-row:hover { border-color: var(--border); }
+  .tool-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+  .tool-name { font-size: 13px; font-weight: 600; color: var(--text-primary); font-family: ui-monospace, monospace; }
+  .tool-category { font-size: 9px; padding: 1px 5px; border-radius: 3px; background: var(--accent-dim); color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
+  .tool-desc { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tool-version { display: flex; align-items: center; gap: 4px; font-size: 11px; font-family: ui-monospace, monospace; flex-shrink: 0; min-width: 120px; }
+  .ver-current { color: var(--text-secondary); }
+  .ver-sep { color: var(--text-muted); }
+  .ver-latest { color: var(--text-muted); }
+  .ver-new { color: var(--accent); font-weight: 600; }
+  .ver-none { color: var(--text-muted); font-style: italic; }
+  .tool-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .action-btn { all: unset; font-size: 11px; padding: 4px 10px; border-radius: 4px; cursor: pointer; transition: all 0.15s; }
+  .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .action-download { border: 1px solid var(--accent); color: var(--accent); }
+  .action-download:hover:not(:disabled) { background: var(--accent-dim); }
+  .action-update { background: var(--accent); color: var(--bg-page); font-weight: 600; }
+  .action-update:hover:not(:disabled) { box-shadow: 0 0 8px var(--accent-dim); }
+  .action-delete { border: 1px solid var(--error); color: var(--error); }
+  .action-delete:hover:not(:disabled) { background: rgba(255, 51, 102, 0.1); }
+  .up-to-date { font-size: 10px; color: var(--text-muted); }
 </style>
