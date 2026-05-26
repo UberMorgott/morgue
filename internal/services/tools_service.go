@@ -114,6 +114,16 @@ func (s *ToolsService) InstallRuntime(kind string) error {
 	return err
 }
 
+// ShouldCheckUpdates returns true if enough time has passed since the last update check.
+func (s *ToolsService) ShouldCheckUpdates() bool {
+	return s.manager.ShouldCheckUpdates()
+}
+
+// MarkUpdateChecked saves the current time as the last update check timestamp.
+func (s *ToolsService) MarkUpdateChecked() {
+	s.manager.MarkUpdateChecked()
+}
+
 // StartupAutoUpdate runs background update checks and auto-applies if configured.
 func (s *ToolsService) StartupAutoUpdate() map[string]interface{} {
 	result := map[string]interface{}{
