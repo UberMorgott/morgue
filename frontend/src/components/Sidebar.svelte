@@ -7,9 +7,8 @@
 
   const items = [
     { id: 'home',     icon: '\u2302', key: 'sidebar.home' },
-    { id: 'scan',     icon: '\u2315', key: 'sidebar.scan' },
+    { id: 'pipeline', icon: '\u25B6', key: 'sidebar.pipeline' },
     { id: 'tools',    icon: '\u2699', key: 'sidebar.tools' },
-    { id: 'jobs',     icon: '\u25B6', key: 'sidebar.jobs' },
     { id: 'settings', icon: '\u2630', key: 'sidebar.settings' },
   ];
 
