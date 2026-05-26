@@ -135,6 +135,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.header.SetUpdateStatus(msg.status)
 		return m, nil
 
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseLeft {
+			// Check header settings button (always at row 0)
+			if msg.Y == 0 && msg.X >= m.header.SettingsX && msg.X < m.header.SettingsX+m.header.SettingsWidth {
+				m.statusBar.SetRight("⚙ Settings (not yet implemented)")
+				return m, nil
+			}
+			// Route click to active screen
+			if m.step == StepInputPicker {
+				if handled, cmd := m.inputPicker.HandleClick(msg.X, msg.Y); handled {
+					return m, cmd
+				}
+			}
+		}
+
 	case tea.KeyPressMsg:
 		key := tea.Key(msg)
 		// Settings shortcut
@@ -352,6 +367,7 @@ func (m Model) View() tea.View {
 
 	v := tea.NewView(b.String())
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	return v
 }
 
