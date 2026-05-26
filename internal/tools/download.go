@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"archive/zip"
 	"context"
 	"fmt"
 	"io"
@@ -46,23 +47,64 @@ func downloadFile(url, destPath string) error {
 }
 
 // extractArchive extracts an archive file into destDir.
-// Supports .zip archives via Go's archive/zip.
 func extractArchive(archivePath, destDir string) error {
-	// Use platform unzip for simplicity and reliability
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
 	ext := filepath.Ext(archivePath)
 	switch ext {
 	case ".zip":
-		_, err := util.RunCmd(ctx, "powershell", []string{
-			"-NoProfile", "-Command",
-			fmt.Sprintf("Expand-Archive -Force -Path '%s' -DestinationPath '%s'", archivePath, destDir),
-		}, "")
-		return err
+		return extractZip(archivePath, destDir)
 	default:
 		return fmt.Errorf("unsupported archive format: %s", ext)
 	}
+}
+
+// extractZip extracts a ZIP archive using Go's archive/zip stdlib.
+func extractZip(archivePath, destDir string) error {
+	r, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return fmt.Errorf("open zip %s: %w", archivePath, err)
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		target := filepath.Join(destDir, f.Name)
+
+		// Prevent zip slip
+		if !filepath.IsAbs(target) {
+			target = filepath.Clean(target)
+		}
+		rel, err := filepath.Rel(destDir, target)
+		if err != nil || rel == ".." || (len(rel) > 2 && rel[:3] == ".."+string(filepath.Separator)) {
+			continue // skip entries that escape destDir
+		}
+
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(target, 0755)
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return fmt.Errorf("mkdir for %s: %w", target, err)
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			return fmt.Errorf("open entry %s: %w", f.Name, err)
+		}
+
+		out, err := os.Create(target)
+		if err != nil {
+			rc.Close()
+			return fmt.Errorf("create %s: %w", target, err)
+		}
+
+		_, copyErr := io.Copy(out, rc)
+		rc.Close()
+		out.Close()
+		if copyErr != nil {
+			return fmt.Errorf("extract %s: %w", f.Name, copyErr)
+		}
+	}
+	return nil
 }
 
 // installFromURL downloads a tool from a direct URL.

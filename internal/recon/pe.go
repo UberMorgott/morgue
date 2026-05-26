@@ -66,11 +66,18 @@ func Classify(path string) (Result, error) {
 	// Run DiE if available (best-effort)
 	diecPath := util.ToolPath("diec", "diec.exe")
 	if _, statErr := os.Stat(diecPath); statErr == nil {
-		_ = RunDiE(diecPath, path)
+		RunDiE(&r, diecPath, path)
 	}
 
-	// Read file data for embedded signal detection
-	fileData, _ := os.ReadFile(path)
+	// Read capped file data for embedded signal detection (max 10MB to avoid OOM)
+	const maxHeuristicScan = 10 * 1024 * 1024
+	var fileData []byte
+	if hf, err := os.Open(path); err == nil {
+		buf := make([]byte, maxHeuristicScan)
+		n, _ := hf.Read(buf)
+		fileData = buf[:n]
+		hf.Close()
+	}
 
 	// Enrich with heuristics
 	EnrichWithHeuristics(&r, sectionNames, importNames, nil, fileData)
