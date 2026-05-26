@@ -233,7 +233,7 @@
 <style>
   .tools-page { display: flex; flex-direction: column; height: 100%; padding: 20px; gap: 16px; }
   .tools-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-  .tools-title { font-size: 18px; font-weight: 600; color: var(--text-primary); margin: 0; }
+  .tools-title { font-size: clamp(18px, 2.5vw, 28px); font-weight: 600; color: var(--text-primary); margin: 0; }
   .tools-actions { display: flex; gap: 8px; }
   .header-btn { all: unset; font-size: 12px; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--accent); color: var(--accent); cursor: pointer; transition: all 0.15s; }
   .header-btn:hover:not(:disabled) { background: var(--accent-dim); }
@@ -244,7 +244,7 @@
   .tools-loading { color: var(--text-muted); padding: 24px; text-align: center; }
 
   .runtimes-section { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
-  .section-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 0; text-transform: uppercase; letter-spacing: 0.5px; }
+  .section-title { font-size: clamp(13px, 1.5vw, 18px); font-weight: 600; color: var(--text-secondary); margin: 0; text-transform: uppercase; letter-spacing: 0.5px; }
   .runtimes-list { display: flex; flex-direction: column; gap: 6px; }
   .runtime-row {
     display: flex; align-items: center; gap: 12px;
