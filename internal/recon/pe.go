@@ -56,6 +56,25 @@ func Classify(path string) (Result, error) {
 		r.Compiler = classifyNativeCompiler(f)
 	}
 
+	// Extract section and import names for heuristics
+	var sectionNames []string
+	for _, sec := range f.Sections {
+		sectionNames = append(sectionNames, strings.TrimRight(string(sec.Header.Name[:]), "\x00"))
+	}
+	importNames := importedDLLNames(f)
+
+	// Run DiE if available (best-effort)
+	diecPath := util.ToolPath("diec", "diec.exe")
+	if _, statErr := os.Stat(diecPath); statErr == nil {
+		_ = RunDiE(diecPath, path)
+	}
+
+	// Read file data for embedded signal detection
+	fileData, _ := os.ReadFile(path)
+
+	// Enrich with heuristics
+	EnrichWithHeuristics(&r, sectionNames, importNames, nil, fileData)
+
 	return r, nil
 }
 

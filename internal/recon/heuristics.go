@@ -1,6 +1,7 @@
 package recon
 
 import (
+	"bytes"
 	"strings"
 	"unicode"
 )
@@ -39,6 +40,7 @@ func detectObfuscatorByStrings(strs []string) string {
 		{"Babel", "Babel"},
 		{"Crypto Obfuscator", "CryptoObfuscator"},
 		{".Protect", "DotNetProtect"},
+		{".NET Reactor", ".NET Reactor"},
 		{"Themida", "Themida"},
 		{"VMProtect", "VMProtect"},
 	}
@@ -69,41 +71,40 @@ func hasDelphiMarkers(sectionNames, importNames []string) bool {
 	return false
 }
 
-// detectEmbeddedSignals looks for section names that suggest embedded payloads or packers.
-func detectEmbeddedSignals(sectionNames []string) []string {
-	suspicious := map[string]string{
-		".rsrc":    "resource section (may contain embedded binaries)",
-		".themida": "Themida packer section",
-		".vmp":     "VMProtect section",
-		".upx":     "UPX packer section",
-		"UPX0":     "UPX packer section",
-		"UPX1":     "UPX packer section",
-		".aspack":  "ASPack section",
-		".adata":   "ASPack data section",
+// detectEmbeddedSignals scans file data for byte patterns indicating embedded payloads.
+func detectEmbeddedSignals(data []byte) []string {
+	markers := []struct {
+		needle string
+		signal string
+	}{
+		{"costura.", "Costura.Fody resources"},
+		{"Costura.AssemblyLoader", "Costura.Fody loader"},
+		{"AssemblyResolve", "AssemblyResolve hook"},
+		{"ILMerge", "ILMerge signature"},
+		{"ILRepack", "ILRepack signature"},
 	}
 
 	var signals []string
-	for _, name := range sectionNames {
-		if sig, ok := suspicious[name]; ok {
-			signals = append(signals, sig)
+	for _, m := range markers {
+		if bytes.Contains(data, []byte(m.needle)) {
+			signals = append(signals, m.signal)
 		}
 	}
 	return signals
 }
 
-// detectObfuscatorFeatures detects specific obfuscation techniques from string patterns.
+// detectObfuscatorFeatures detects specific ConfuserEx protection features from string patterns.
 func detectObfuscatorFeatures(strs []string) []string {
 	markers := []struct {
 		pattern string
 		feature string
 	}{
-		{"IsDebuggerPresent", "anti-debug"},
-		{"CheckRemoteDebuggerPresent", "anti-debug"},
-		{"proxy_call", "proxy calls"},
-		{"ProxyCall", "proxy calls"},
-		{"<Module>", "module initializer"},
-		{"ConfuserEx.Runtime", "confuserex runtime"},
-		{"cctor", "static constructor injection"},
+		{"AntiTamper", "anti_tamper"},
+		{"AntiDebug", "anti_debug"},
+		{"Constants", "constants"},
+		{"ControlFlow", "ctrl_flow"},
+		{"ReferenceProxy", "ref_proxy"},
+		{"Resources", "resources"},
 	}
 
 	seen := map[string]bool{}
@@ -120,17 +121,18 @@ func detectObfuscatorFeatures(strs []string) []string {
 }
 
 // EnrichWithHeuristics adds heuristic-based detections to a Result.
-func EnrichWithHeuristics(r *Result, sectionNames, importNames, strings []string) {
+// fileData is the raw bytes of the file for embedded signal detection.
+func EnrichWithHeuristics(r *Result, sectionNames, importNames, strs []string, fileData []byte) {
 	if r.Obfuscator == "" {
-		r.Obfuscator = detectObfuscatorByStrings(strings)
+		r.Obfuscator = detectObfuscatorByStrings(strs)
 	}
 
-	features := detectObfuscatorFeatures(strings)
+	features := detectObfuscatorFeatures(strs)
 	if len(features) > 0 {
 		r.ObfuscatorFeatures = append(r.ObfuscatorFeatures, features...)
 	}
 
-	signals := detectEmbeddedSignals(sectionNames)
+	signals := detectEmbeddedSignals(fileData)
 	if len(signals) > 0 {
 		r.EmbeddedSignals = append(r.EmbeddedSignals, signals...)
 		r.EmbeddedSuspected = true
