@@ -148,6 +148,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'tools.delete': { en: 'Delete', ru: 'Удалить' },
   'tools.download': { en: 'Download', ru: 'Скачать' },
   'tools.notInstalled': { en: 'Not installed', ru: 'Не установлен' },
+  'tools.available': { en: 'available', ru: 'доступна' },
   'tools.upToDate': { en: 'Up to date', ru: 'Актуален' },
   'tools.checking': { en: 'Checking updates...', ru: 'Проверка обновлений...' },
 
@@ -161,6 +162,9 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // Settings — folder picker
   'settings.browse': { en: 'Browse...', ru: 'Обзор...' },
+  'settings.githubToken': { en: 'GitHub Token (optional)', ru: 'GitHub Token (опционально)' },
+  'settings.githubTokenHint': { en: 'Increases API limit from 60 to 5000 requests/hour', ru: 'Увеличивает лимит API с 60 до 5000 запросов/час' },
+  'settings.createToken': { en: 'Create token', ru: 'Создать токен' },
 
   // Sidebar — pipeline
   'sidebar.pipeline': { en: 'Pipeline', ru: 'Pipeline' },

@@ -140,6 +140,16 @@
                 <button class="browse-btn" on:click={pickOutputDir}>{t(lang, 'settings.browse')}</button>
               </div>
             </div>
+            <div class="setting-row-block">
+              <div class="setting-row">
+                <span class="setting-label">{t(lang, 'settings.githubToken')}</span>
+                <div class="setting-with-browse">
+                  <input class="setting-input setting-input-wide" type="password" bind:value={config.GitHubToken} on:input={onConfigChange} />
+                  <button class="browse-btn" on:click={() => window.open('https://github.com/settings/tokens/new?description=Morgue+Decompiler&scopes=public_repo', '_blank')}>{t(lang, 'settings.createToken')}</button>
+                </div>
+              </div>
+              <span class="setting-hint">{t(lang, 'settings.githubTokenHint')}</span>
+            </div>
           </div>
         </section>
 
@@ -299,6 +309,18 @@
   .setting-input-wide {
     width: 200px;
     flex-shrink: 0;
+  }
+
+  .setting-row-block {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .setting-hint {
+    font-size: clamp(9px, 0.7vw, 11px);
+    color: var(--text-muted);
+    padding-left: 2px;
   }
 
   .setting-select {

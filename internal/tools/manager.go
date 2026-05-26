@@ -136,7 +136,7 @@ func (m *Manager) Install(name string) (string, error) {
 
 	switch tool.Method {
 	case MethodGitHubRelease:
-		version, err := installFromGitHub(tool, destDir, progressCb)
+		version, err := installFromGitHub(tool, destDir, m.cfg.GitHubToken, progressCb)
 		return version, err
 	case MethodDirectURL:
 		err := installFromURL(tool, destDir, progressCb)

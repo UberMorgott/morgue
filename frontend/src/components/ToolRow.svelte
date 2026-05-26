@@ -33,7 +33,11 @@
         <span class="ver-latest" class:ver-new={updateAvailable}>{latestVersion}</span>
       {/if}
     {:else}
-      <span class="ver-none">{t(lang, 'tools.notInstalled')}</span>
+      {#if latestVersion}
+        <span class="ver-available">{latestVersion} {t(lang, 'tools.available')}</span>
+      {:else}
+        <span class="ver-none">—</span>
+      {/if}
     {/if}
   </div>
   <div class="tool-actions">
@@ -75,6 +79,7 @@
   .ver-latest { color: var(--text-muted); }
   .ver-new { color: var(--accent); font-weight: 600; }
   .ver-none { color: var(--text-muted); font-style: italic; }
+  .ver-available { color: var(--text-muted); font-style: italic; }
   .tool-actions { display: flex; gap: 6px; flex-shrink: 0; }
   .action-btn { all: unset; font-size: 11px; padding: 4px 10px; border-radius: 4px; cursor: pointer; transition: all 0.15s; }
   .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
