@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { ConfigService } from '../lib/api';
+  import { ConfigService, ReconService } from '../lib/api';
   import { t, type Lang } from '../lib/i18n';
   import { currentLang } from '../lib/stores';
 
@@ -37,6 +37,18 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveConfig, 500);
   }
+
+  async function pickOutputDir() {
+    try {
+      const dir = await ReconService.PickDirectory();
+      if (dir) {
+        config.DefaultOutputDir = dir;
+        onConfigChange();
+      }
+    } catch (e) {
+      console.error('PickDirectory failed:', e);
+    }
+  }
 </script>
 
 <div class="settings-page">
@@ -62,23 +74,26 @@
       <section class="settings-section">
         <h3 class="section-title">{t(lang, 'settings.pipeline')}</h3>
 
-        <label class="setting-row">
+        <div class="setting-row">
           <span class="setting-label">{t(lang, 'settings.outputDir')}</span>
-          <input
-            class="setting-input"
-            type="text"
-            bind:value={config.default_output_dir}
-            on:input={onConfigChange}
-            placeholder="./decompiled"
-          />
-        </label>
+          <div class="setting-with-browse">
+            <input
+              class="setting-input"
+              type="text"
+              bind:value={config.DefaultOutputDir}
+              on:input={onConfigChange}
+              placeholder="./decompiled"
+            />
+            <button class="browse-btn" on:click={pickOutputDir}>{t(lang, 'settings.browse')}</button>
+          </div>
+        </div>
 
         <label class="setting-row">
           <span class="setting-label">{t(lang, 'settings.stepTimeout')}</span>
           <input
             class="setting-input setting-input-sm"
             type="number"
-            bind:value={config.step_timeout_minutes}
+            bind:value={config.StepTimeoutMinutes}
             on:input={onConfigChange}
             min="1"
           />
@@ -89,19 +104,19 @@
           <input
             class="setting-input setting-input-sm"
             type="number"
-            bind:value={config.concurrent_targets}
+            bind:value={config.ConcurrentTargets}
             on:input={onConfigChange}
             min="1" max="8"
           />
         </label>
 
         <label class="setting-toggle">
-          <input type="checkbox" bind:checked={config.stop_on_first_error} on:change={onConfigChange} />
+          <input type="checkbox" bind:checked={config.StopOnFirstError} on:change={onConfigChange} />
           <span class="toggle-label">{t(lang, 'settings.stopOnFirstError')}</span>
         </label>
 
         <label class="setting-toggle">
-          <input type="checkbox" bind:checked={config.keep_intermediates} on:change={onConfigChange} />
+          <input type="checkbox" bind:checked={config.KeepIntermediates} on:change={onConfigChange} />
           <span class="toggle-label">{t(lang, 'settings.keepIntermediates')}</span>
         </label>
       </section>
@@ -111,7 +126,7 @@
         <h3 class="section-title">{t(lang, 'settings.skipList')}</h3>
 
         <label class="setting-toggle">
-          <input type="checkbox" bind:checked={config.skip_system_libs} on:change={onConfigChange} />
+          <input type="checkbox" bind:checked={config.SkipSystemLibs} on:change={onConfigChange} />
           <span class="toggle-label">{t(lang, 'settings.skipSystemLibs')}</span>
         </label>
       </section>
@@ -125,24 +140,24 @@
           <input
             class="setting-input setting-input-sm"
             type="text"
-            bind:value={config.csharp_language_version}
+            bind:value={config.CSharpLanguageVersion}
             on:input={onConfigChange}
             placeholder="Latest"
           />
         </label>
 
         <label class="setting-toggle">
-          <input type="checkbox" bind:checked={config.generate_pdb} on:change={onConfigChange} />
+          <input type="checkbox" bind:checked={config.GeneratePDB} on:change={onConfigChange} />
           <span class="toggle-label">{t(lang, 'settings.generatePdb')}</span>
         </label>
 
         <label class="setting-toggle">
-          <input type="checkbox" bind:checked={config.decompile_project_mode} on:change={onConfigChange} />
+          <input type="checkbox" bind:checked={config.DecompileProjectMode} on:change={onConfigChange} />
           <span class="toggle-label">{t(lang, 'settings.decompileProject')}</span>
         </label>
 
         <label class="setting-toggle">
-          <input type="checkbox" bind:checked={config.generate_callgraph} on:change={onConfigChange} />
+          <input type="checkbox" bind:checked={config.GenerateCallgraph} on:change={onConfigChange} />
           <span class="toggle-label">{t(lang, 'settings.generateCallgraph')}</span>
         </label>
       </section>
@@ -156,7 +171,7 @@
           <input
             class="setting-input"
             type="password"
-            bind:value={config.github_token}
+            bind:value={config.GitHubToken}
             on:input={onConfigChange}
             placeholder="ghp_..."
           />
@@ -167,14 +182,14 @@
           <input
             class="setting-input setting-input-sm"
             type="number"
-            bind:value={config.download_retries}
+            bind:value={config.DownloadRetries}
             on:input={onConfigChange}
             min="1"
           />
         </label>
 
         <label class="setting-toggle">
-          <input type="checkbox" bind:checked={config.auto_update_check} on:change={onConfigChange} />
+          <input type="checkbox" bind:checked={config.AutoUpdateCheck} on:change={onConfigChange} />
           <span class="toggle-label">{t(lang, 'settings.autoUpdateCheck')}</span>
         </label>
       </section>
@@ -185,7 +200,7 @@
 
         <label class="setting-row">
           <span class="setting-label">{t(lang, 'settings.logLevel')}</span>
-          <select class="setting-select" bind:value={config.log_level} on:change={onConfigChange}>
+          <select class="setting-select" bind:value={config.LogLevel} on:change={onConfigChange}>
             <option value="debug">Debug</option>
             <option value="info">Info</option>
             <option value="warn">Warn</option>
@@ -194,7 +209,7 @@
         </label>
 
         <label class="setting-toggle">
-          <input type="checkbox" bind:checked={config.log_to_file} on:change={onConfigChange} />
+          <input type="checkbox" bind:checked={config.LogToFile} on:change={onConfigChange} />
           <span class="toggle-label">{t(lang, 'settings.logToFile')}</span>
         </label>
       </section>
@@ -325,4 +340,21 @@
     80% { opacity: 1; }
     100% { opacity: 0; }
   }
+  .setting-with-browse {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .browse-btn {
+    all: unset;
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .browse-btn:hover { background: var(--accent-dim); }
 </style>
