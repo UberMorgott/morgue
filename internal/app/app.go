@@ -13,6 +13,7 @@ import (
 	"github.com/UberMorgott/morgue/internal/engine"
 	_ "github.com/UberMorgott/morgue/internal/recipe"
 	"github.com/UberMorgott/morgue/internal/scanner"
+	"github.com/UberMorgott/morgue/internal/selfupdate"
 	"github.com/UberMorgott/morgue/internal/tui"
 	"github.com/UberMorgott/morgue/internal/tui/components"
 	"github.com/UberMorgott/morgue/internal/util"
@@ -42,6 +43,10 @@ type scanDoneMsg struct {
 
 type toolCheckDoneMsg struct{}
 
+type updateCheckMsg struct {
+	status string // "up to date", "update: vX.Y.Z", "offline"
+}
+
 // Model is the top-level Bubble Tea model for the TUI.
 type Model struct {
 	step      WizardStep
@@ -63,10 +68,17 @@ type Model struct {
 
 	inputDir  string
 	outputDir string
+
+	// Header
+	header *components.Header
+
+	// Version info
+	version       string
+	updateStatus  string // "checking...", "up to date", "update: vX.Y.Z", "offline"
 }
 
 // New creates a new TUI app model.
-func New() Model {
+func New(version string) Model {
 	th := CyberpunkTheme()
 	cfg, _ := config.Load(util.ConfigPath())
 	eng := engine.New(cfg, util.BaseDir())
@@ -75,21 +87,34 @@ func New() Model {
 	sb.SetLeft("MORGUE")
 	sb.SetRight("q: quit  esc: back")
 
+	hdr := components.NewHeader(version)
+
 	return Model{
-		step:        StepInputPicker,
-		theme:       th,
-		cfg:         cfg,
-		engine:      eng,
-		statusBar:   sb,
-		width:       80,
-		height:      24,
-		inputPicker: tui.NewInputPicker("./decompiled"),
+		step:         StepInputPicker,
+		theme:        th,
+		cfg:          cfg,
+		engine:       eng,
+		statusBar:    sb,
+		header:       hdr,
+		width:        80,
+		height:       24,
+		inputPicker:  tui.NewInputPicker("./decompiled"),
+		version:      version,
+		updateStatus: "checking...",
 	}
 }
 
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
-	return m.inputPicker.Init()
+	return tea.Batch(m.inputPicker.Init(), checkForUpdate(m.version))
+}
+
+// checkForUpdate returns a tea.Cmd that checks GitHub for updates.
+func checkForUpdate(version string) tea.Cmd {
+	return func() tea.Msg {
+		status := selfupdate.CheckStatus(version)
+		return updateCheckMsg{status: status}
+	}
 }
 
 // Update implements tea.Model.
@@ -99,13 +124,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.statusBar.SetWidth(m.width)
+		m.header.SetWidth(m.width)
 		if m.pipelineView != nil {
 			m.pipelineView.SetSize(m.width, m.height)
 		}
 		return m, nil
 
+	case updateCheckMsg:
+		m.updateStatus = msg.status
+		m.header.SetUpdateStatus(msg.status)
+		return m, nil
+
 	case tea.KeyPressMsg:
 		key := tea.Key(msg)
+		// Settings shortcut
+		if key.Code == 's' || key.Code == 'S' {
+			if m.step != StepInputPicker && m.step != StepPipeline {
+				m.resultMsg = "Settings not yet implemented"
+				// Just flash the status bar briefly
+				m.statusBar.SetRight("Settings not yet implemented")
+				return m, nil
+			}
+		}
 		// Global quit only when not in a form
 		if m.step != StepInputPicker {
 			if key.Code == 'q' || key.Code == 'Q' || key.Code == rune(tea.KeyEscape) {
@@ -273,10 +313,9 @@ func (m Model) View() tea.View {
 
 	var b strings.Builder
 
-	// Header
-	title := m.theme.Title().Render("MORGUE")
-	subtitle := m.theme.Subtitle().Render("Binary Decompiler")
-	b.WriteString(title + " " + subtitle + "\n\n")
+	// Header bar
+	b.WriteString(m.header.View())
+	b.WriteString("\n\n")
 
 	// Step indicator
 	b.WriteString(m.renderStepIndicator())
@@ -341,8 +380,8 @@ func (m Model) renderStepIndicator() string {
 }
 
 // RunTUI launches the TUI application.
-func RunTUI() error {
-	m := New()
+func RunTUI(version string) error {
+	m := New(version)
 	p := tea.NewProgram(m)
 	_, err := p.Run()
 	return err
