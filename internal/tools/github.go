@@ -2,10 +2,13 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cavaliergopher/grab/v3"
@@ -13,11 +16,91 @@ import (
 )
 
 type assetInfo struct {
-	Name string
-	URL  string
+	Name string `json:"name"`
+	URL  string `json:"url"`
 }
 
-// fetchLatestRelease gets the latest release info from GitHub.
+// --- Release cache ---
+
+type releaseCacheEntry struct {
+	Tag      string      `json:"tag"`
+	Assets   []assetInfo `json:"assets"`
+	CachedAt time.Time   `json:"cached_at"`
+}
+
+type releaseCache struct {
+	Entries map[string]releaseCacheEntry `json:"entries"`
+}
+
+const releaseCacheTTL = 1 * time.Hour
+const releaseCacheFile = ".release-cache.json"
+
+var (
+	cacheMu sync.Mutex
+)
+
+func loadReleaseCache(baseDir string) releaseCache {
+	rc := releaseCache{Entries: make(map[string]releaseCacheEntry)}
+	data, err := os.ReadFile(filepath.Join(baseDir, releaseCacheFile))
+	if err != nil {
+		return rc
+	}
+	_ = json.Unmarshal(data, &rc)
+	if rc.Entries == nil {
+		rc.Entries = make(map[string]releaseCacheEntry)
+	}
+	return rc
+}
+
+func saveReleaseCache(baseDir string, rc releaseCache) {
+	data, err := json.MarshalIndent(rc, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(baseDir, releaseCacheFile), data, 0644)
+}
+
+// --- Version check via HTTP redirect (no API) ---
+
+// fetchLatestVersion gets the latest release tag from GitHub without using the API.
+// It issues a GET to /releases/latest and parses the redirect URL.
+func fetchLatestVersion(repo string) (string, error) {
+	url := fmt.Sprintf("https://github.com/%s/releases/latest", repo)
+
+	client := &http.Client{
+		Timeout: 15 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("check latest version %s: %w", repo, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusFound && resp.StatusCode != http.StatusMovedPermanently {
+		return "", fmt.Errorf("expected redirect for %s/releases/latest, got %d", repo, resp.StatusCode)
+	}
+
+	loc := resp.Header.Get("Location")
+	if loc == "" {
+		return "", fmt.Errorf("no Location header in redirect for %s", repo)
+	}
+
+	// Location: https://github.com/owner/repo/releases/tag/v1.2.3
+	parts := strings.Split(loc, "/")
+	if len(parts) == 0 {
+		return "", fmt.Errorf("unexpected redirect URL for %s: %s", repo, loc)
+	}
+	return parts[len(parts)-1], nil
+}
+
+// --- API-based release fetch (fallback, uses rate-limited API) ---
+
+// fetchLatestRelease gets the latest release info from GitHub API.
+// This consumes API rate limit — prefer fetchLatestVersion + cache.
 func fetchLatestRelease(repo string) (tagName string, assets []assetInfo, err error) {
 	parts := strings.SplitN(repo, "/", 2)
 	if len(parts) != 2 {
@@ -42,6 +125,41 @@ func fetchLatestRelease(repo string) (tagName string, assets []assetInfo, err er
 		})
 	}
 	return release.GetTagName(), infos, nil
+}
+
+// fetchReleaseCached returns release info, using cache when available.
+// On cache miss it calls the GitHub API and saves the result.
+// On API error it falls back to stale cache if available.
+func fetchReleaseCached(baseDir, repo string) (string, []assetInfo, error) {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+
+	cache := loadReleaseCache(baseDir)
+
+	// Check fresh cache
+	if entry, ok := cache.Entries[repo]; ok && time.Since(entry.CachedAt) < releaseCacheTTL {
+		return entry.Tag, entry.Assets, nil
+	}
+
+	// Cache miss or stale — call API
+	tag, assets, err := fetchLatestRelease(repo)
+	if err != nil {
+		// API failed — use stale cache if available
+		if entry, ok := cache.Entries[repo]; ok {
+			return entry.Tag, entry.Assets, nil
+		}
+		return "", nil, err
+	}
+
+	// Save to cache
+	cache.Entries[repo] = releaseCacheEntry{
+		Tag:      tag,
+		Assets:   assets,
+		CachedAt: time.Now(),
+	}
+	saveReleaseCache(baseDir, cache)
+
+	return tag, assets, nil
 }
 
 // matchAsset finds the first asset matching a glob pattern.
@@ -75,9 +193,12 @@ func matchAsset(assets []assetInfo, glob string) (assetInfo, bool) {
 }
 
 // installFromGitHub downloads and extracts a GitHub release asset.
+// Uses cached release info to avoid API rate limits.
 // Returns the version tag on success.
 func installFromGitHub(tool ToolDef, destDir string, onProgress func(bytesDown, bytesTotal int64)) (string, error) {
-	tagName, assets, err := fetchLatestRelease(tool.Repo)
+	baseDir := filepath.Dir(destDir)
+
+	tagName, assets, err := fetchReleaseCached(baseDir, tool.Repo)
 	if err != nil {
 		return "", err
 	}
