@@ -16,3 +16,11 @@ error.log
 *.tmp
 .github/summary.json
 .vite/
+
+# Dev artifacts
+.playwright-mcp/
+*.png
+bin/
+runtimes/
+frontend/public/font-compare.html
+font-compare.html
