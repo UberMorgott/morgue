@@ -8,9 +8,9 @@ vars:
 
 tasks:
   dev:
-    desc: Run Wails dev mode
+    desc: Run Wails dev mode (vite + Go backend)
     cmds:
-      - wails3 dev -port 34115
+      - bin/wails3 dev
 
   bindings:
     desc: Regenerate Wails bindings from Go services
