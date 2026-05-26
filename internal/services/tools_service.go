@@ -43,6 +43,17 @@ func (s *ToolsService) CheckAllWithUpdates() []tools.ToolStatus {
 	return s.manager.CheckAllWithUpdates()
 }
 
+// CheckLatestVersion checks the latest version for a single tool.
+// Returns a map with latestVersion and updateAvailable.
+func (s *ToolsService) CheckLatestVersion(name string) map[string]interface{} {
+	latestVersion, updateAvailable := s.manager.CheckLatestVersionSingle(name)
+	return map[string]interface{}{
+		"name":            name,
+		"latestVersion":   latestVersion,
+		"updateAvailable": updateAvailable,
+	}
+}
+
 // Delete removes a tool from disk.
 func (s *ToolsService) Delete(name string) error {
 	return s.manager.Delete(name)

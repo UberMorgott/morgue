@@ -2,9 +2,11 @@ package tools
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/UberMorgott/morgue/internal/config"
 )
@@ -211,12 +213,71 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 					st.UpdateAvailable = true
 				}
 			}
-		case t.Method == MethodDirectURL:
-			st.LatestVersion = "–"
+		case t.Method == MethodDirectURL && t.URL != "":
+			resp, err := http.Head(t.URL)
+			if err == nil {
+				resp.Body.Close()
+				if lm := resp.Header.Get("Last-Modified"); lm != "" {
+					if parsed, err := time.Parse(time.RFC1123, lm); err == nil {
+						st.LatestVersion = parsed.Format("2006.01.02")
+					}
+				}
+			}
+			if st.LatestVersion == "" {
+				st.LatestVersion = "–"
+			}
 		}
 		statuses = append(statuses, st)
 	}
 	return statuses
+}
+
+// CheckLatestVersionSingle checks latest version for one tool by name.
+// Returns the latest version string and whether an update is available.
+func (m *Manager) CheckLatestVersionSingle(name string) (latestVersion string, updateAvailable bool) {
+	tool, ok := FindByName(name)
+	if !ok {
+		return "", false
+	}
+
+	st := m.Check(name)
+	installedVersion := cleanVersionTag(st.Version)
+
+	switch {
+	case tool.Method == MethodGitHubRelease && tool.Repo != "":
+		ver, err := fetchLatestVersion(tool.Repo)
+		if err == nil {
+			latestVersion = cleanVersionTag(ver)
+		}
+	case tool.Method == MethodGitBuild && tool.Repo != "":
+		commit, err := fetchLatestCommit(tool.Repo)
+		if err == nil {
+			latestVersion = commit
+		}
+	case tool.Method == MethodDotnetTool && tool.DotnetID != "":
+		ver, err := fetchNuGetLatestVersion(tool.DotnetID)
+		if err == nil {
+			latestVersion = ver
+		}
+	case tool.Method == MethodDirectURL && tool.URL != "":
+		resp, err := http.Head(tool.URL)
+		if err == nil {
+			resp.Body.Close()
+			if lm := resp.Header.Get("Last-Modified"); lm != "" {
+				if parsed, err := time.Parse(time.RFC1123, lm); err == nil {
+					latestVersion = parsed.Format("2006.01.02")
+				}
+			}
+		}
+		if latestVersion == "" {
+			latestVersion = "–"
+		}
+	}
+
+	if st.Installed && installedVersion != "" && latestVersion != "" && installedVersion != latestVersion {
+		updateAvailable = true
+	}
+	return
 }
 
 // RuntimeEnv returns environment variables for local runtimes (PATH prepend, JAVA_HOME).

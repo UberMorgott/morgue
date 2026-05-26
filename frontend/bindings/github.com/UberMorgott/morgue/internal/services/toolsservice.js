@@ -36,6 +36,27 @@ export function CheckAllWithUpdates() {
 }
 
 /**
+ * CheckLatestVersion checks the latest version for a single tool.
+ * @param {string} name
+ * @returns {$CancellablePromise<{ [_: string]: any }>}
+ */
+export function CheckLatestVersion(name) {
+    return $Call.ByID(3576085684, name).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType4($result);
+    }));
+}
+
+/**
+ * CheckRuntimes returns the status of all runtimes.
+ * @returns {$CancellablePromise<tools$0.RuntimeStatus[]>}
+ */
+export function CheckRuntimes() {
+    return $Call.ByID(1295144346).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType3($result);
+    }));
+}
+
+/**
  * Delete removes a tool from disk.
  * @param {string} name
  * @returns {$CancellablePromise<void>}
@@ -62,13 +83,28 @@ export function InstallAll() {
 }
 
 /**
- * StartupAutoUpdate returns the auto-update status map.
- * @returns {$CancellablePromise<{[key: string]: any}>}
+ * InstallRuntime downloads and installs a portable runtime.
+ * @param {string} kind
+ * @returns {$CancellablePromise<void>}
+ */
+export function InstallRuntime(kind) {
+    return $Call.ByID(2682554448, kind);
+}
+
+/**
+ * StartupAutoUpdate runs background update checks and auto-applies if configured.
+ * Called once from the frontend on mount. Returns a summary for the caller.
+ * @returns {$CancellablePromise<{ [_: string]: any }>}
  */
 export function StartupAutoUpdate() {
-    return $Call.ByID(2736498612);
+    return $Call.ByID(629421424).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType4($result);
+    }));
 }
 
 // Private type creation functions
 const $$createType0 = tools$0.ToolStatus.createFrom;
 const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = tools$0.RuntimeStatus.createFrom;
+const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = $Create.Map($Create.Any, $Create.Any);
