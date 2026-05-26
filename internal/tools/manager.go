@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/UberMorgott/morgue/internal/config"
 )
@@ -29,9 +30,28 @@ func (m *Manager) Resolve(name string) (string, error) {
 
 	path := filepath.Join(m.baseDir, name, tool.Binary)
 	if _, err := os.Stat(path); err != nil {
+		if found := findBinaryRecursive(filepath.Join(m.baseDir, name), tool.Binary); found != "" {
+			return found, nil
+		}
 		return "", fmt.Errorf("tool %s not installed (expected at %s)", name, path)
 	}
 	return path, nil
+}
+
+// findBinaryRecursive walks a directory tree looking for a file by name.
+func findBinaryRecursive(dir, binaryName string) string {
+	var result string
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !d.IsDir() && d.Name() == binaryName {
+			result = path
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return result
 }
 
 // Check returns the installation status of a named tool.
@@ -43,10 +63,27 @@ func (m *Manager) Check(name string) ToolStatus {
 
 	path := filepath.Join(m.baseDir, name, tool.Binary)
 	_, err := os.Stat(path)
+
+	if err != nil {
+		toolDir := filepath.Join(m.baseDir, name)
+		if found := findBinaryRecursive(toolDir, tool.Binary); found != "" {
+			path = found
+			err = nil
+		}
+	}
+
+	// Read version from .version file
+	var version string
+	versionBytes, readErr := os.ReadFile(filepath.Join(m.baseDir, name, ".version"))
+	if readErr == nil {
+		version = strings.TrimSpace(string(versionBytes))
+	}
+
 	return ToolStatus{
 		Name:        name,
 		Installed:   err == nil,
 		Path:        path,
+		Version:     version,
 		Category:    tool.Category.String(),
 		Description: tool.Description,
 		Optional:    tool.Optional,
@@ -78,37 +115,47 @@ func (m *Manager) IsInstalled(name string) bool {
 	return m.Check(name).Installed
 }
 
-// Install downloads and installs a tool. Returns an error if the tool is unknown.
-func (m *Manager) Install(name string) error {
+// Install downloads and installs a tool. Returns the installed version and an error if any.
+func (m *Manager) Install(name string) (string, error) {
 	tool, ok := FindByName(name)
 	if !ok {
-		return fmt.Errorf("unknown tool: %s", name)
+		return "", fmt.Errorf("unknown tool: %s", name)
 	}
 
 	destDir := filepath.Join(m.baseDir, name)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Errorf("create tool dir: %w", err)
+		return "", fmt.Errorf("create tool dir: %w", err)
 	}
 
-	opts := DownloadOptions{
-		Retries:    m.cfg.DownloadRetries,
-		TimeoutMin: m.cfg.DownloadTimeoutMinutes,
-	}
+	var progressCb func(bytesDown, bytesTotal int64)
 	if m.OnProgress != nil {
-		opts.OnProgress = func(bytesDown, bytesTotal int64) {
+		progressCb = func(bytesDown, bytesTotal int64) {
 			m.OnProgress(name, bytesDown, bytesTotal)
 		}
 	}
 
 	switch tool.Method {
 	case MethodGitHubRelease:
-		return installFromGitHub(opts, tool, destDir)
+		version, err := installFromGitHub(tool, destDir, progressCb)
+		return version, err
 	case MethodDirectURL:
-		return installFromURL(opts, tool, destDir)
+		err := installFromURL(tool, destDir, progressCb)
+		if err != nil {
+			return "", err
+		}
+		versionFile := filepath.Join(destDir, ".version")
+		os.WriteFile(versionFile, []byte("latest"), 0644)
+		return "latest", nil
 	case MethodDotnetTool:
-		return installDotnetTool(tool, destDir)
+		err := installDotnetTool(tool, destDir)
+		if err != nil {
+			return "", err
+		}
+		versionFile := filepath.Join(destDir, ".version")
+		os.WriteFile(versionFile, []byte("dotnet"), 0644)
+		return "dotnet", nil
 	default:
-		return fmt.Errorf("unsupported install method for %s", name)
+		return "", fmt.Errorf("unsupported install method for %s", name)
 	}
 }
 
@@ -117,15 +164,12 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 	statuses := make([]ToolStatus, 0, len(Registry))
 	for _, t := range Registry {
 		st := m.Check(t.Name)
-		st.Category = t.Category.String()
-		st.Description = t.Description
-		st.Optional = t.Optional
 
 		if t.Method == MethodGitHubRelease && t.Repo != "" {
-			release, err := fetchLatestRelease(t.Repo)
+			tagName, _, err := fetchLatestRelease(t.Repo)
 			if err == nil {
-				st.LatestVersion = release.TagName
-				if st.Installed && st.Version != "" && st.Version != release.TagName {
+				st.LatestVersion = tagName
+				if st.Installed && st.Version != "" && st.Version != tagName {
 					st.UpdateAvailable = true
 				}
 			}
@@ -136,7 +180,6 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 }
 
 // RuntimeEnv returns environment variables for local runtimes (PATH prepend, JAVA_HOME).
-// These should be passed to RunCmdWithEnv when executing tools that need runtimes.
 func (m *Manager) RuntimeEnv() []string {
 	var env []string
 
@@ -149,7 +192,6 @@ func (m *Manager) RuntimeEnv() []string {
 	if _, err := os.Stat(filepath.Join(javaDir, runtimeBinary(RuntimeJava))); err == nil {
 		env = append(env, fmt.Sprintf("JAVA_HOME=%s", javaDir))
 		javaBinDir := filepath.Join(javaDir, "bin")
-		// Prepend java bin to PATH (after dotnet if present)
 		for i, e := range env {
 			if len(e) > 5 && e[:5] == "PATH=" {
 				env[i] = fmt.Sprintf("PATH=%s%c%s", javaBinDir, os.PathListSeparator, e[5:])
@@ -157,7 +199,6 @@ func (m *Manager) RuntimeEnv() []string {
 			}
 		}
 		if len(env) == 1 {
-			// No PATH entry yet, add one
 			env = append(env, fmt.Sprintf("PATH=%s%c%s", javaBinDir, os.PathListSeparator, os.Getenv("PATH")))
 		}
 	}

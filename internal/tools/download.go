@@ -5,179 +5,45 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/cavaliergopher/grab/v3"
 
 	"github.com/UberMorgott/morgue/internal/util"
 )
 
-// DownloadProgress reports download status.
-type DownloadProgress struct {
-	Tool       string
-	BytesTotal int64
-	BytesDone  int64
-	Done       bool
-	Err        error
-}
+// downloadFile downloads a URL to a local file with progress reporting.
+// The grab library handles resume via ETag/partial files automatically.
+func downloadFile(url, destPath string, onProgress func(bytesDown, bytesTotal int64)) error {
+	client := grab.NewClient()
+	req, _ := grab.NewRequest(destPath, url)
 
-// DownloadOptions configures a robust file download.
-type DownloadOptions struct {
-	URL        string
-	DestPath   string
-	Retries    int
-	TimeoutMin int
-	OnProgress func(bytesDown, bytesTotal int64)
-}
+	resp := client.Do(req)
 
-// progressReader wraps an io.Reader to report progress.
-type progressReader struct {
-	reader     io.Reader
-	onProgress func(bytesDown, bytesTotal int64)
-	done       int64
-	total      int64
-}
+	t := time.NewTicker(200 * time.Millisecond)
+	defer t.Stop()
 
-func (pr *progressReader) Read(p []byte) (int, error) {
-	n, err := pr.reader.Read(p)
-	pr.done += int64(n)
-	if pr.onProgress != nil {
-		pr.onProgress(pr.done, pr.total)
-	}
-	return n, err
-}
-
-// downloadFile downloads a URL to a local file with resume, retries, and progress.
-func downloadFile(opts DownloadOptions) error {
-	if opts.Retries <= 0 {
-		opts.Retries = 3
-	}
-	if opts.TimeoutMin <= 0 {
-		opts.TimeoutMin = 30
-	}
-
-	partPath := opts.DestPath + ".part"
-	var lastErr error
-
-	for attempt := 0; attempt < opts.Retries; attempt++ {
-		if attempt > 0 {
-			backoff := time.Duration(1<<uint(attempt)) * time.Second // 2s, 4s, 8s...
-			time.Sleep(backoff)
-		}
-
-		err := downloadAttempt(opts, partPath)
-		if err == nil {
-			return os.Rename(partPath, opts.DestPath)
-		}
-		lastErr = err
-	}
-
-	// Clean up .part on final failure
-	os.Remove(partPath)
-	return fmt.Errorf("download %s failed after %d attempts: %w", opts.URL, opts.Retries, lastErr)
-}
-
-// downloadAttempt performs a single download attempt with resume support.
-func downloadAttempt(opts DownloadOptions, partPath string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(opts.TimeoutMin)*time.Minute)
-	defer cancel()
-
-	var partSize int64
-	if info, err := os.Stat(partPath); err == nil {
-		partSize = info.Size()
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET", opts.URL, nil)
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-	if partSize > 0 {
-		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", partSize))
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("download %s: %w", opts.URL, err)
-	}
-	defer resp.Body.Close()
-
-	switch resp.StatusCode {
-	case http.StatusOK:
-		// Full response — server doesn't support range or fresh download.
-		partSize = 0
-	case http.StatusPartialContent:
-		// Resume accepted.
-	case http.StatusRequestedRangeNotSatisfiable:
-		// .part is corrupted or complete; start fresh.
-		os.Remove(partPath)
-		partSize = 0
-		// Re-request without Range header.
-		resp.Body.Close()
-		req.Header.Del("Range")
-		resp, err = http.DefaultClient.Do(req)
-		if err != nil {
-			return fmt.Errorf("download %s: %w", opts.URL, err)
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("download %s: HTTP %d", opts.URL, resp.StatusCode)
-		}
-	default:
-		return fmt.Errorf("download %s: HTTP %d", opts.URL, resp.StatusCode)
-	}
-
-	// Determine expected total size.
-	var expectedTotal int64
-	if resp.ContentLength > 0 {
-		expectedTotal = partSize + resp.ContentLength
-	}
-
-	// Open file: append if resuming, create if fresh.
-	var f *os.File
-	if partSize > 0 {
-		f, err = os.OpenFile(partPath, os.O_WRONLY|os.O_APPEND, 0644)
-	} else {
-		f, err = os.Create(partPath)
-	}
-	if err != nil {
-		return fmt.Errorf("open %s: %w", partPath, err)
-	}
-	defer f.Close()
-
-	// Wrap reader with progress reporting.
-	reader := io.Reader(resp.Body)
-	if opts.OnProgress != nil {
-		reader = &progressReader{
-			reader:     resp.Body,
-			onProgress: opts.OnProgress,
-			done:       partSize,
-			total:      expectedTotal,
+	done := false
+	for !done {
+		select {
+		case <-t.C:
+			if onProgress != nil {
+				onProgress(resp.BytesComplete(), resp.Size())
+			}
+		case <-resp.Done:
+			done = true
 		}
 	}
 
-	written, err := io.Copy(f, reader)
-	if err != nil {
-		return fmt.Errorf("write %s: %w", partPath, err)
+	if onProgress != nil {
+		onProgress(resp.BytesComplete(), resp.Size())
 	}
 
-	// Verify size if Content-Length was provided.
-	if resp.ContentLength > 0 && written != resp.ContentLength {
-		return fmt.Errorf("size mismatch for %s: expected %d bytes from server, got %d",
-			opts.URL, resp.ContentLength, written)
-	}
-
-	return nil
-}
-
-// downloadFileSimple is a convenience wrapper with defaults (no resume/retries).
-func downloadFileSimple(url, destPath string) error {
-	return downloadFile(DownloadOptions{
-		URL:      url,
-		DestPath: destPath,
-		Retries:  1,
-	})
+	return resp.Err()
 }
 
 // extractArchive extracts an archive file into destDir.
@@ -203,12 +69,9 @@ func extractZip(archivePath, destDir string) error {
 		target := filepath.Join(destDir, f.Name)
 
 		// Prevent zip slip
-		if !filepath.IsAbs(target) {
-			target = filepath.Clean(target)
-		}
 		rel, err := filepath.Rel(destDir, target)
-		if err != nil || rel == ".." || (len(rel) > 2 && rel[:3] == ".."+string(filepath.Separator)) {
-			continue // skip entries that escape destDir
+		if err != nil || strings.HasPrefix(rel, "..") {
+			continue
 		}
 
 		if f.FileInfo().IsDir() {
@@ -241,15 +104,14 @@ func extractZip(archivePath, destDir string) error {
 	return nil
 }
 
-// installFromURL downloads a tool from a direct URL.
-func installFromURL(opts DownloadOptions, tool ToolDef, destDir string) error {
-	opts.DestPath = filepath.Join(destDir, filepath.Base(tool.URL))
-	opts.URL = tool.URL
-	if err := downloadFile(opts); err != nil {
+// installFromURL downloads a tool from a direct URL and extracts it.
+func installFromURL(tool ToolDef, destDir string, onProgress func(bytesDown, bytesTotal int64)) error {
+	destPath := filepath.Join(destDir, filepath.Base(tool.URL))
+	if err := downloadFile(tool.URL, destPath, onProgress); err != nil {
 		return err
 	}
-	defer os.Remove(opts.DestPath)
-	return extractArchive(opts.DestPath, destDir)
+	defer os.Remove(destPath)
+	return extractArchive(destPath, destDir)
 }
 
 // installDotnetTool installs a .NET global tool.
@@ -271,7 +133,6 @@ func installDotnetTool(tool ToolDef, destDir string) error {
 
 // findDotnetBin locates the dotnet binary: local portable first, then system PATH.
 func findDotnetBin(toolDestDir string) (string, error) {
-	// Walk up from toolDestDir to baseDir (toolDestDir = baseDir/<toolName>)
 	baseDir := filepath.Dir(toolDestDir)
 	localBin := filepath.Join(baseDir, "runtimes", "dotnet", "dotnet.exe")
 	if _, err := os.Stat(localBin); err == nil {

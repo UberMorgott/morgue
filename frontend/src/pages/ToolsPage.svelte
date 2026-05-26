@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import ToolRow from '../components/ToolRow.svelte';
   import { ToolsService } from '../lib/api';
   import { addOperation, updateOperation } from '../lib/operations';
+  import { onEvent } from '../lib/events';
   import { t, type Lang } from '../lib/i18n';
 
   export let lang: Lang = 'en';
@@ -15,25 +16,43 @@
     kind: string; available: boolean; version: string; path: string; local: boolean; required: boolean;
   }> = [];
   let loading = true;
+  let runtimesLoading = true;
   let busy = false;
   let runtimeBusy: Record<string, boolean> = {};
 
+  let cleanupProgress: (() => void) | null = null;
+
   onMount(async () => {
+    cleanupProgress = onEvent('tool:download:progress', (data: any) => {
+      const d = data.data || data;
+      const toolName = d.tool || d.Tool;
+      const bytes = d.bytes || d.Bytes || 0;
+      const total = d.total || d.Total || 1;
+      const pct = Math.round((bytes / total) * 100);
+      updateOperation(`install-${toolName}`, { progress: pct });
+      updateOperation(`download-${toolName}`, { progress: pct });
+      updateOperation(`update-${toolName}`, { progress: pct });
+    });
     await Promise.all([loadTools(), loadRuntimes()]);
+  });
+
+  onDestroy(() => {
+    if (cleanupProgress) cleanupProgress();
   });
 
   async function loadRuntimes() {
     try {
       const statuses = await ToolsService.CheckRuntimes();
       runtimes = (statuses || []).map((s: any) => ({
-        kind: s.Kind || s.kind || '',
-        available: s.Available || s.available || false,
-        version: s.Version || s.version || '',
-        path: s.Path || s.path || '',
-        local: s.Local || s.local || false,
-        required: s.Required || s.required || false,
+        kind: s.Kind ?? s.kind ?? '',
+        available: s.Available ?? s.available ?? false,
+        version: s.Version ?? s.version ?? '',
+        path: s.Path ?? s.path ?? '',
+        local: s.Local ?? s.local ?? false,
+        required: s.Required ?? s.required ?? false,
       }));
     } catch (e) { console.error('CheckRuntimes failed:', e); }
+    finally { runtimesLoading = false; }
   }
 
   async function installRuntime(kind: string) {
@@ -58,11 +77,11 @@
     try {
       const statuses = await ToolsService.CheckAllWithUpdates();
       tools = (statuses || []).map((s: any) => ({
-        name: s.Name || s.name, installed: s.Installed || s.installed || false,
-        path: s.Path || s.path || '', version: s.Version || s.version || '',
-        latestVersion: s.LatestVersion || s.latestVersion || '',
-        updateAvailable: s.UpdateAvailable || s.updateAvailable || false,
-        category: s.Category || s.category || '', description: s.Description || s.description || '',
+        name: s.Name ?? s.name ?? '', installed: s.Installed ?? s.installed ?? false,
+        path: s.Path ?? s.path ?? '', version: s.Version ?? s.version ?? '',
+        latestVersion: s.LatestVersion ?? s.latestVersion ?? '',
+        updateAvailable: s.UpdateAvailable ?? s.updateAvailable ?? false,
+        category: s.Category ?? s.category ?? '', description: s.Description ?? s.description ?? '',
       }));
     } catch (e) { console.error('CheckAllWithUpdates failed:', e); }
     finally { loading = false; }
@@ -154,9 +173,13 @@
       {/if}
     </div>
   </div>
-  {#if runtimes.length > 0}
-    <div class="runtimes-section">
-      <h3 class="section-title">{t(lang, 'runtimes.title')}</h3>
+  <div class="runtimes-section">
+    <h3 class="section-title">{t(lang, 'runtimes.title')}</h3>
+    {#if runtimesLoading}
+      <div class="tools-loading">{t(lang, 'tools.checking')}</div>
+    {:else if runtimes.length === 0}
+      <div class="tools-loading">{t(lang, 'runtimes.missing')}</div>
+    {:else}
       <div class="runtimes-list">
         {#each runtimes as rt}
           <div class="runtime-row" class:runtime-ok={rt.available} class:runtime-missing={!rt.available}>
@@ -190,8 +213,8 @@
           </div>
         {/each}
       </div>
-    </div>
-  {/if}
+    {/if}
+  </div>
 
   {#if loading}
     <div class="tools-loading">{t(lang, 'tools.checking')}</div>
