@@ -3,6 +3,7 @@ package util
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os/exec"
 	"time"
 )
@@ -17,7 +18,7 @@ type CmdResult struct {
 
 // RunCmd executes a command with context support for timeouts.
 // If dir is empty, the current working directory is used.
-func RunCmd(ctx context.Context, name string, args []string, dir string) CmdResult {
+func RunCmd(ctx context.Context, name string, args []string, dir string) (*CmdResult, error) {
 	start := time.Now()
 
 	cmd := exec.CommandContext(ctx, name, args...)
@@ -32,19 +33,20 @@ func RunCmd(ctx context.Context, name string, args []string, dir string) CmdResu
 	err := cmd.Run()
 	duration := time.Since(start)
 
-	exitCode := 0
+	result := &CmdResult{
+		Stdout:   stdout.String(),
+		Stderr:   stderr.String(),
+		Duration: duration,
+	}
+
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
+			result.ExitCode = exitErr.ExitCode()
 		} else {
-			exitCode = -1
+			result.ExitCode = -1
+			return result, fmt.Errorf("exec %s: %w", name, err)
 		}
 	}
 
-	return CmdResult{
-		Stdout:   stdout.String(),
-		Stderr:   stderr.String(),
-		ExitCode: exitCode,
-		Duration: duration,
-	}
+	return result, nil
 }
