@@ -1,6 +1,7 @@
 package selfupdate
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/creativeprojects/go-selfupdate"
@@ -22,7 +23,8 @@ func Check(currentVersion string) error {
 		return fmt.Errorf("updater: %w", err)
 	}
 
-	latest, found, err := updater.DetectLatest(nil, selfupdate.ParseSlug(repo))
+	ctx := context.Background()
+	latest, found, err := updater.DetectLatest(ctx, selfupdate.ParseSlug(repo))
 	if err != nil {
 		return fmt.Errorf("detect latest: %w", err)
 	}
@@ -53,7 +55,8 @@ func Update(currentVersion string) error {
 		return fmt.Errorf("updater: %w", err)
 	}
 
-	latest, found, err := updater.DetectLatest(nil, selfupdate.ParseSlug(repo))
+	ctx := context.Background()
+	latest, found, err := updater.DetectLatest(ctx, selfupdate.ParseSlug(repo))
 	if err != nil {
 		return fmt.Errorf("detect latest: %w", err)
 	}
@@ -69,7 +72,7 @@ func Update(currentVersion string) error {
 
 	fmt.Printf("Updating %s → %s...\n", currentVersion, latest.Version())
 
-	_, err = updater.UpdateSelf(nil, currentVersion, selfupdate.ParseSlug(repo))
+	_, err = updater.UpdateSelf(ctx, currentVersion, selfupdate.ParseSlug(repo))
 	if err != nil {
 		return fmt.Errorf("update: %w", err)
 	}
