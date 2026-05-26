@@ -4,3 +4,12 @@
 *.so
 *.dylib
 dist/
+tools/
+de4dot-cex/
+ghidra/
+strings/
+.morgue.exe.old
+error.log
+*.zip
+*.tmp
+.github/summary.json

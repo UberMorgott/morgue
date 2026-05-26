@@ -8,6 +8,8 @@ import (
 	"charm.land/bubbles/v2/filepicker"
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
+
+	"github.com/UberMorgott/morgue/internal/tui/components"
 )
 
 // InputPickerResult holds the user's input/output directory choices.
@@ -33,6 +35,10 @@ type InputPicker struct {
 	defaultOutput string
 	done          bool
 	err           string
+
+	// Clickable buttons
+	selectBtn *components.Button
+	backBtn   *components.Button
 }
 
 // NewInputPicker creates a new input picker with filepicker.
@@ -51,16 +57,38 @@ func NewInputPicker(defaultOutput string) *InputPicker {
 	fp.ShowPermissions = false
 	fp.ShowSize = true
 
+	accent := "#00ff9f"
+	dim := "#505060"
+
 	return &InputPicker{
 		fp:            fp,
 		phase:         phasePickInput,
 		defaultOutput: defaultOutput,
+		selectBtn:     components.NewButton("Select", accent, dim),
+		backBtn:       components.NewButton("Back", accent, dim),
 	}
 }
 
 // Init initializes the filepicker.
 func (ip *InputPicker) Init() tea.Cmd {
 	return ip.fp.Init()
+}
+
+// HandleClick processes a mouse click and returns a tea.Cmd if the click was handled.
+// Returns (handled, cmd).
+func (ip *InputPicker) HandleClick(x, y int) (bool, tea.Cmd) {
+	if ip.selectBtn.Contains(x, y) {
+		// Simulate Enter key to confirm selection
+		return true, func() tea.Msg {
+			return tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})
+		}
+	}
+	if ip.phase == phasePickOutput && ip.backBtn.Contains(x, y) {
+		ip.phase = phasePickInput
+		ip.inputDir = ""
+		return true, nil
+	}
+	return false, nil
 }
 
 // Update handles filepicker events.
@@ -143,6 +171,23 @@ func (ip *InputPicker) View() string {
 	if ip.err != "" {
 		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ff3366"))
 		b.WriteString("\n" + errStyle.Render(ip.err))
+	}
+
+	// Render clickable buttons at the bottom.
+	// Count lines to calculate Y offset for button hit-testing.
+	lines := strings.Count(b.String(), "\n") + 1
+	b.WriteString("\n")
+
+	ip.selectBtn.Y = lines
+	ip.selectBtn.X = 2
+	selectRendered := ip.selectBtn.Render()
+
+	if ip.phase == phasePickOutput {
+		ip.backBtn.Y = lines
+		ip.backBtn.X = ip.selectBtn.X + ip.selectBtn.Width + 2
+		b.WriteString("  " + selectRendered + "  " + ip.backBtn.Render())
+	} else {
+		b.WriteString("  " + selectRendered)
 	}
 
 	return b.String()

@@ -11,6 +11,11 @@ type Header struct {
 	width        int
 	version      string
 	updateStatus string // "checking...", "up to date", "update: vX.Y.Z", "offline"
+
+	// SettingsX is the column where the settings label starts (set after each View call).
+	SettingsX int
+	// SettingsWidth is the visual width of the settings label.
+	SettingsWidth int
 }
 
 // NewHeader creates a header component.
@@ -64,7 +69,8 @@ func (h *Header) View() string {
 		statusStyled = s.Render(h.updateStatus)
 	}
 
-	settings := settingsStyle.Render("⚙ Settings")
+	settingsText := "⚙ Settings"
+	settings := settingsStyle.Render(settingsText)
 	right := statusStyled + "  |  " + settings
 
 	// Calculate spacing
@@ -75,6 +81,11 @@ func (h *Header) View() string {
 		spacerLen = 1
 	}
 	spacer := strings.Repeat(" ", spacerLen)
+
+	// Track settings button position for mouse click detection.
+	// Settings label sits at: width - settingsVisualWidth
+	h.SettingsWidth = lipgloss.Width(settings)
+	h.SettingsX = h.width - h.SettingsWidth
 
 	return left + spacer + right
 }
