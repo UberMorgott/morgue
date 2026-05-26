@@ -26,6 +26,8 @@ type Config struct {
 	DownloadTimeoutMinutes int             `yaml:"download_timeout_minutes"`
 	PreferSystemTools      bool            `yaml:"prefer_system_tools"`
 	AutoUpdateCheck        bool            `yaml:"auto_update_check"`
+	AutoUpdateTools        bool            `yaml:"auto_update_tools"`
+	AutoUpdateApp          bool            `yaml:"auto_update_app"`
 	UpdateChannel          string          `yaml:"update_channel"`
 	CSharpLanguageVersion  string          `yaml:"csharp_language_version"`
 	GeneratePDB            bool            `yaml:"generate_pdb"`

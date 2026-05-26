@@ -45,11 +45,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 26px;
-    padding: 0 12px;
+    height: 52px;
+    padding: 0 24px;
     background: var(--bg-sidebar);
     border-top: 1px solid var(--border);
-    font-size: 11px;
+    font-size: 22px;
     font-family: ui-monospace, monospace;
     flex-shrink: 0;
     gap: 8px;
@@ -78,6 +78,17 @@
   }
   .status-idle {
     color: var(--text-muted);
+  }
+  .status-idle::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 8px rgba(85, 238, 160, 0.5);
+    margin-right: 8px;
+    vertical-align: middle;
   }
   .status-progress {
     flex: 1;

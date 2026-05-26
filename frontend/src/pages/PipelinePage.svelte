@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { ReconService, PipelineService, ToolsService } from '../lib/api';
   import { onEvent } from '../lib/events';
+  import { addOperation, updateOperation } from '../lib/operations';
   import ProgressBar from '../components/ProgressBar.svelte';
   import LogViewer from '../components/LogViewer.svelte';
   import { t, type Lang } from '../lib/i18n';
@@ -30,10 +31,7 @@
   let errorMessage = '';
 
   let cleanups: Array<() => void> = [];
-
-  export let statusPhase = '';
-  export let statusProgress = 0;
-  export let statusLabel = '';
+  let pipelineOpAdded = false;
 
   onMount(async () => {
     cleanups.push(
@@ -45,9 +43,11 @@
           pipelineCurrent = p.Step || p.step || 0;
           pipelineProgress = ((pipelineCurrent + 1) / pipelineTotal) * 100;
           pipelineStepLabel = `${t(lang, 'pipeline.step')} ${pipelineCurrent + 1}/${pipelineTotal}: ${p.Name || p.name || ''}`;
-          statusPhase = t(lang, 'pipeline.executing');
-          statusProgress = pipelineProgress;
-          statusLabel = pipelineStepLabel;
+          if (!pipelineOpAdded) {
+            addOperation({ id: 'pipeline', type: 'pipeline', label: pipelineStepLabel, status: 'running', progress: 0 });
+            pipelineOpAdded = true;
+          }
+          updateOperation('pipeline', { progress: pipelineProgress, label: pipelineStepLabel });
         }
         if (d.Done || d.done) {
           currentStep = 'done';
@@ -55,14 +55,13 @@
           outputPath = d.Output || d.output || inputPath;
           filesCount = d.Files || d.files || 0;
           totalTime = d.Duration || d.duration || '';
-          statusPhase = '';
-          statusProgress = 0;
-          statusLabel = '';
+          updateOperation('pipeline', { status: 'success', progress: 100, label: t(lang, 'pipeline.done') });
         }
         if (d.Error || d.error) {
           const err = d.Error || d.error;
           errorMessage = typeof err === 'string' ? err : err.message || JSON.stringify(err);
           logEntries = [...logEntries, { level: 'error', message: errorMessage }];
+          updateOperation('pipeline', { status: 'failed', error: errorMessage });
         }
       }),
       onEvent('pipeline:log', (data: any) => {
@@ -80,8 +79,9 @@
 
   async function runPipeline() {
     currentStep = 'scan';
-    statusPhase = t(lang, 'pipeline.scanning');
-    statusProgress = 0;
+    pipelineOpAdded = false;
+    addOperation({ id: 'pipeline', type: 'pipeline', label: t(lang, 'pipeline.scanning'), status: 'running', progress: 0 });
+    pipelineOpAdded = true;
     try {
       const targets = await ReconService.ScanDirectory(inputPath);
       scanResults = (targets || []).map((t: any) => ({
@@ -91,19 +91,19 @@
     } catch (e: any) {
       errorMessage = e.message || String(e);
       currentStep = 'error';
-      statusPhase = '';
+      updateOperation('pipeline', { status: 'failed', error: errorMessage });
       return;
     }
 
     if (scanResults.length === 0) {
       errorMessage = 'No binaries found';
       currentStep = 'error';
-      statusPhase = '';
+      updateOperation('pipeline', { status: 'failed', error: errorMessage });
       return;
     }
 
     currentStep = 'recon';
-    statusPhase = t(lang, 'pipeline.recon');
+    updateOperation('pipeline', { label: t(lang, 'pipeline.recon') });
     reconResults = [];
     for (const target of scanResults) {
       try {
@@ -125,7 +125,7 @@
     }
 
     currentStep = 'tools';
-    statusPhase = t(lang, 'pipeline.checkingTools');
+    updateOperation('pipeline', { label: t(lang, 'pipeline.checkingTools') });
     try {
       const statuses = await ToolsService.CheckAll();
       toolsNeeded = (statuses || []).map((s: any) => ({
@@ -145,7 +145,7 @@
 
   async function installMissingAndContinue() {
     installingMissing = true;
-    statusPhase = t(lang, 'status.installing');
+    updateOperation('pipeline', { label: t(lang, 'status.installing') });
     try {
       await ToolsService.InstallAll();
       missingTools = [];
@@ -159,7 +159,7 @@
 
   async function startExecution() {
     currentStep = 'execute';
-    statusPhase = t(lang, 'pipeline.executing');
+    updateOperation('pipeline', { label: t(lang, 'pipeline.executing'), progress: 0 });
     logEntries = [];
     try {
       await PipelineService.Run(inputPath, '');
@@ -167,7 +167,7 @@
       if (!errorMessage) {
         errorMessage = e.message || String(e);
         currentStep = 'error';
-        statusPhase = '';
+        updateOperation('pipeline', { status: 'failed', error: errorMessage });
       }
     }
   }

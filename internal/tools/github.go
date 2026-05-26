@@ -20,7 +20,7 @@ type githubAsset struct {
 }
 
 // fetchLatestRelease gets the latest release from a GitHub repo.
-func fetchLatestRelease(repo, token string) (*githubRelease, error) {
+func fetchLatestRelease(repo string) (*githubRelease, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -28,9 +28,6 @@ func fetchLatestRelease(repo, token string) (*githubRelease, error) {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -68,8 +65,8 @@ func matchAsset(assets []githubAsset, glob string) (githubAsset, bool) {
 }
 
 // installFromGitHub downloads and extracts a GitHub release asset.
-func installFromGitHub(tool ToolDef, destDir string) error {
-	release, err := fetchLatestRelease(tool.Repo, os.Getenv("GITHUB_TOKEN"))
+func installFromGitHub(opts DownloadOptions, tool ToolDef, destDir string) error {
+	release, err := fetchLatestRelease(tool.Repo)
 	if err != nil {
 		return err
 	}
@@ -80,11 +77,12 @@ func installFromGitHub(tool ToolDef, destDir string) error {
 			tool.Name, tool.AssetGlob, release.TagName)
 	}
 
-	archivePath := filepath.Join(destDir, asset.Name)
-	if err := downloadFile(asset.BrowserDownloadURL, archivePath); err != nil {
+	opts.URL = asset.BrowserDownloadURL
+	opts.DestPath = filepath.Join(destDir, asset.Name)
+	if err := downloadFile(opts); err != nil {
 		return err
 	}
-	defer os.Remove(archivePath)
+	defer os.Remove(opts.DestPath)
 
-	return extractArchive(archivePath, destDir)
+	return extractArchive(opts.DestPath, destDir)
 }

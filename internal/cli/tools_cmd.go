@@ -5,13 +5,15 @@ import (
 	"os"
 	"text/tabwriter"
 
+	"github.com/UberMorgott/morgue/internal/config"
 	"github.com/UberMorgott/morgue/internal/tools"
 	"github.com/UberMorgott/morgue/internal/util"
 )
 
 // ToolsCheck prints a table of all tools and their installation status.
 func ToolsCheck() error {
-	mgr := tools.NewManager(util.BaseDir())
+	cfg, _ := config.Load(util.ConfigPath())
+	mgr := tools.NewManager(util.BaseDir(), cfg)
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "TOOL\tCATEGORY\tINSTALLED\tVERSION\tPATH")
@@ -40,7 +42,8 @@ func ToolsCheck() error {
 
 // ToolsInstall installs all missing tools.
 func ToolsInstall() error {
-	mgr := tools.NewManager(util.BaseDir())
+	cfg, _ := config.Load(util.ConfigPath())
+	mgr := tools.NewManager(util.BaseDir(), cfg)
 
 	var needed []string
 	for _, def := range tools.Registry {

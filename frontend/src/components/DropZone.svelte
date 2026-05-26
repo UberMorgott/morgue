@@ -3,13 +3,14 @@
   import { t, type Lang } from '../lib/i18n';
 
   export let lang: Lang = 'en';
+  export let disabled: boolean = false;
 
   const dispatch = createEventDispatcher();
   let dragover = false;
 
   function handleDragOver(e: DragEvent) {
     e.preventDefault();
-    dragover = true;
+    if (!disabled) dragover = true;
   }
 
   function handleDragLeave() {
@@ -19,16 +20,16 @@
   function handleDrop(e: DragEvent) {
     e.preventDefault();
     dragover = false;
+    if (disabled) return;
     const files = e.dataTransfer?.files;
     if (files && files.length > 0) {
-      // Get directory path from first file
       const path = (files[0] as any).path || files[0].name;
       dispatch('select', { path });
     }
   }
 
   function handleClick() {
-    dispatch('browse');
+    if (!disabled) dispatch('browse');
   }
 </script>
 
@@ -36,13 +37,11 @@
 <div
   class="dropzone"
   class:dragover
+  class:disabled
   on:dragover={handleDragOver}
   on:dragleave={handleDragLeave}
   on:drop={handleDrop}
   on:click={handleClick}
-  role="button"
-  tabindex="0"
-  on:keydown={(e) => e.key === 'Enter' && handleClick()}
 >
   <div class="dropzone-icon">
     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -66,10 +65,10 @@
     border: 2px dashed var(--border);
     border-radius: 12px;
     background: var(--bg-card);
-    cursor: pointer;
     transition: all 0.2s;
-    max-width: 480px;
+    max-width: min(90%, 480px);
     margin: 0 auto;
+    cursor: pointer;
   }
   .dropzone:hover, .dropzone.dragover {
     border-color: var(--accent);
@@ -82,6 +81,11 @@
   }
   .dropzone:hover .dropzone-icon, .dropzone.dragover .dropzone-icon {
     color: var(--accent);
+  }
+  .dropzone.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+    cursor: not-allowed;
   }
   .dropzone-text {
     font-size: 15px;

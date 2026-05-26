@@ -4,16 +4,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/UberMorgott/morgue/internal/config"
 )
 
 // Manager handles tool installation and resolution.
 type Manager struct {
-	baseDir string
+	baseDir    string
+	cfg        config.Config
+	OnProgress func(tool string, bytesDown, bytesTotal int64)
 }
 
 // NewManager creates a Manager that stores tools under baseDir.
-func NewManager(baseDir string) *Manager {
-	return &Manager{baseDir: baseDir}
+func NewManager(baseDir string, cfg config.Config) *Manager {
+	return &Manager{baseDir: baseDir, cfg: cfg}
 }
 
 // Resolve returns the full path to a tool's binary, or an error if not installed.
@@ -86,11 +90,21 @@ func (m *Manager) Install(name string) error {
 		return fmt.Errorf("create tool dir: %w", err)
 	}
 
+	opts := DownloadOptions{
+		Retries:    m.cfg.DownloadRetries,
+		TimeoutMin: m.cfg.DownloadTimeoutMinutes,
+	}
+	if m.OnProgress != nil {
+		opts.OnProgress = func(bytesDown, bytesTotal int64) {
+			m.OnProgress(name, bytesDown, bytesTotal)
+		}
+	}
+
 	switch tool.Method {
 	case MethodGitHubRelease:
-		return installFromGitHub(tool, destDir)
+		return installFromGitHub(opts, tool, destDir)
 	case MethodDirectURL:
-		return installFromURL(tool, destDir)
+		return installFromURL(opts, tool, destDir)
 	case MethodDotnetTool:
 		return installDotnetTool(tool, destDir)
 	default:
@@ -108,7 +122,7 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 		st.Optional = t.Optional
 
 		if t.Method == MethodGitHubRelease && t.Repo != "" {
-			release, err := fetchLatestRelease(t.Repo, os.Getenv("GITHUB_TOKEN"))
+			release, err := fetchLatestRelease(t.Repo)
 			if err == nil {
 				st.LatestVersion = release.TagName
 				if st.Installed && st.Version != "" && st.Version != release.TagName {

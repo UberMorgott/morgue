@@ -1,18 +1,24 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { UpdateService } from '../lib/api';
+  import { onMount, createEventDispatcher } from 'svelte';
+  import { UpdateService, ToolsService } from '../lib/api';
   import { t, type Lang } from '../lib/i18n';
   import { currentLang } from '../lib/stores';
 
   export let lang: Lang = 'en';
+
+  const dispatch = createEventDispatcher<{
+    'app-update': void;
+    navigate: { page: string };
+  }>();
 
   function switchLang(l: Lang) {
     currentLang.set(l);
   }
 
   let version = 'dev';
-  let updateStatus = '';
+  let newVersion = '';
   let updateRaw = '';
+  let toolUpdatesCount = 0;
 
   onMount(async () => {
     try {
@@ -23,19 +29,19 @@
       const result = await UpdateService.Check();
       if (result.available) {
         updateRaw = 'available';
-        updateStatus = `${t(lang, 'header.update')}: ${result.version}`;
+        newVersion = result.version;
       } else {
         updateRaw = result.status;
-        updateStatus = result.status;
       }
     } catch (e) { console.error('Check failed:', e); }
-  });
 
-  $: {
-    if (updateRaw === 'available') {
-      updateStatus = `${t(lang, 'header.update')}: ${updateStatus.split(': ')[1] || ''}`;
-    }
-  }
+    try {
+      const statuses = await ToolsService.CheckAllWithUpdates();
+      toolUpdatesCount = (statuses || []).filter(
+        (s: any) => (s.UpdateAvailable || s.updateAvailable) && (s.Installed || s.installed)
+      ).length;
+    } catch (e) { console.error('ToolsService.CheckAllWithUpdates failed:', e); }
+  });
 </script>
 
 <header class="header">
@@ -44,10 +50,15 @@
     <span class="version">v{version}</span>
   </div>
   <div class="header-right">
-    {#if updateStatus}
-      <span class="update-status" class:update-available={updateRaw === 'available'}>
-        {updateStatus}
-      </span>
+    {#if updateRaw === 'available' && newVersion}
+      <button class="badge badge-update" on:click={() => dispatch('app-update')}>
+        🔄 {t(lang, 'header.updateApp')} v{newVersion}
+      </button>
+    {/if}
+    {#if toolUpdatesCount > 0}
+      <button class="badge badge-tools" on:click={() => dispatch('navigate', { page: 'tools' })}>
+        🔧 {toolUpdatesCount} {t(lang, 'header.toolUpdates')}
+      </button>
     {/if}
     <div class="lang-switcher">
       <button class="lang-btn" class:lang-active={lang === 'en'} on:click={() => switchLang('en')} title="English">🇺🇸</button>
@@ -61,8 +72,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 44px;
-    padding: 0 16px;
+    height: clamp(44px, 6vw, 88px);
+    padding: 0 clamp(16px, 2vw, 32px);
     background: rgba(18, 14, 22, 0.92);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -77,30 +88,76 @@
   }
   .logo {
     font-family: 'Orbitron', sans-serif;
-    font-size: 14px;
+    font-size: clamp(14px, 2vw, 28px);
     font-weight: 700;
     letter-spacing: 3px;
     color: var(--accent);
     text-shadow: var(--accent-neon);
   }
   .version {
-    font-size: 11px;
+    font-size: clamp(11px, 1.5vw, 22px);
     color: var(--text-muted);
     font-family: ui-monospace, monospace;
   }
   .header-right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: clamp(8px, 1.2vw, 16px);
     -webkit-app-region: no-drag;
   }
-  .update-status {
-    font-size: 11px;
-    color: var(--text-muted);
+
+  /* Shared badge base */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: clamp(3px, 0.5vw, 6px) clamp(8px, 1.2vw, 14px);
+    border-radius: 999px;
+    font-size: clamp(11px, 1.3vw, 18px);
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    white-space: nowrap;
+    transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+    font-family: inherit;
   }
-  .update-available {
+  .badge:hover {
+    transform: scale(1.04);
+    filter: brightness(1.15);
+  }
+  .badge:active {
+    transform: scale(0.97);
+  }
+
+  /* App update — gradient fill + pulse */
+  .badge-update {
+    background: linear-gradient(135deg, var(--accent-hot) 0%, var(--accent) 50%, var(--accent-warm) 100%);
+    color: #0e0a14;
+    box-shadow: 0 0 10px var(--accent-glow-soft), 0 0 20px var(--accent-glow-soft);
+    animation: badge-pulse 2.5s ease-in-out infinite;
+  }
+  .badge-update:hover {
+    box-shadow: 0 0 16px var(--accent-glow), 0 0 32px var(--accent-glow-soft);
+  }
+
+  @keyframes badge-pulse {
+    0%, 100% { box-shadow: 0 0 10px var(--accent-glow-soft), 0 0 20px var(--accent-glow-soft); }
+    50%      { box-shadow: 0 0 16px var(--accent-glow), 0 0 30px var(--accent-glow-soft); }
+  }
+
+  /* Tool updates — outline variant */
+  .badge-tools {
+    background: transparent;
+    color: var(--accent-warm);
+    border: 1px solid var(--glass-border);
+    box-shadow: none;
+  }
+  .badge-tools:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 8px var(--accent-glow-soft);
     color: var(--accent);
   }
+
   .lang-switcher {
     display: flex;
     align-items: center;
@@ -110,7 +167,7 @@
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 14px;
+    font-size: clamp(14px, 2vw, 28px);
     padding: 2px 4px;
     border-radius: 3px;
     opacity: 0.4;

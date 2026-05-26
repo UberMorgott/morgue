@@ -2,11 +2,13 @@ package tools
 
 import (
 	"testing"
+
+	"github.com/UberMorgott/morgue/internal/config"
 )
 
 func TestCheckEmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, config.Config{})
 
 	status := mgr.Check("ilspycmd")
 	if status.Installed {
@@ -19,7 +21,7 @@ func TestCheckEmptyDir(t *testing.T) {
 
 func TestResolveUnknownTool(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, config.Config{})
 
 	_, err := mgr.Resolve("nonexistent_tool")
 	if err == nil {
@@ -29,7 +31,7 @@ func TestResolveUnknownTool(t *testing.T) {
 
 func TestResolveNotInstalled(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, config.Config{})
 
 	path, err := mgr.Resolve("ilspycmd")
 	if err == nil {
@@ -42,7 +44,7 @@ func TestResolveNotInstalled(t *testing.T) {
 
 func TestCheckAll(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, config.Config{})
 
 	statuses := mgr.CheckAll()
 	if len(statuses) != len(Registry) {
@@ -52,7 +54,7 @@ func TestCheckAll(t *testing.T) {
 
 func TestToolsNeeded(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, config.Config{})
 
 	needed := mgr.ToolsNeeded([]string{"ilspycmd", "de4dot-cex"})
 	if len(needed) != 2 {
@@ -62,7 +64,7 @@ func TestToolsNeeded(t *testing.T) {
 
 func TestIsInstalled(t *testing.T) {
 	dir := t.TempDir()
-	mgr := NewManager(dir)
+	mgr := NewManager(dir, config.Config{})
 
 	if mgr.IsInstalled("ilspycmd") {
 		t.Error("IsInstalled should return false in empty dir")

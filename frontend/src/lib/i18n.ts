@@ -16,6 +16,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'header.updateAvailable': { en: 'Update available', ru: 'Доступно обновление' },
   'header.checking': { en: 'Checking...', ru: 'Проверка...' },
   'header.offline': { en: 'Offline', ru: 'Нет сети' },
+  'header.updateApp': { en: 'Update to', ru: 'Обновить до' },
+  'header.toolUpdates': { en: 'updates', ru: 'обновлений' },
 
   // HomePage
   'home.title': { en: 'Binary Decompiler', ru: 'Декомпилятор бинарных файлов' },
@@ -64,35 +66,33 @@ const translations: Record<string, Record<Lang, string>> = {
   'settings.saving': { en: 'Saving...', ru: 'Сохранение...' },
   'settings.language': { en: 'Language', ru: 'Язык' },
 
-  // Settings — Pipeline
-  'settings.pipeline': { en: 'Pipeline', ru: 'Pipeline' },
-  'settings.outputDir': { en: 'Default output directory', ru: 'Каталог вывода по умолчанию' },
-  'settings.stepTimeout': { en: 'Step timeout (minutes)', ru: 'Таймаут шага (минуты)' },
-  'settings.concurrentTargets': { en: 'Concurrent targets', ru: 'Параллельных целей' },
-  'settings.stopOnFirstError': { en: 'Stop on first error', ru: 'Остановить при первой ошибке' },
+  // Settings — Updates
+  'settings.updates': { en: 'Updates', ru: 'Обновления' },
+  'settings.autoUpdateCheck': { en: 'Auto-check updates', ru: 'Автопроверка обновлений' },
+  'settings.autoUpdateApp': { en: 'Auto-update application', ru: 'Автообновление приложения' },
+  'settings.autoUpdateTools': { en: 'Auto-update tools', ru: 'Автообновление инструментов' },
+
+  // Settings — Decompilation
+  'settings.decompilation': { en: 'Decompilation', ru: 'Декомпиляция' },
+  'settings.decompileProject': { en: 'Project mode (.csproj)', ru: 'Проектный режим (.csproj)' },
+  'settings.generatePdb': { en: 'Generate PDB', ru: 'Генерировать PDB' },
+  'settings.csharpVersion': { en: 'C# language version', ru: 'Версия C#' },
   'settings.keepIntermediates': { en: 'Keep intermediate files', ru: 'Сохранять промежуточные файлы' },
-
-  // Settings — Skip List
-  'settings.skipList': { en: 'Skip List', ru: 'Список исключений' },
   'settings.skipSystemLibs': { en: 'Skip system libraries', ru: 'Пропускать системные библиотеки' },
+  'settings.stopOnFirstError': { en: 'Stop on first error', ru: 'Останавливаться при ошибке' },
+  'settings.maxFileSize': { en: 'Max file size (MB)', ru: 'Макс. размер файла (МБ)' },
+  'settings.stepTimeout': { en: 'Step timeout (min)', ru: 'Таймаут шага (мин)' },
+  'settings.outputDir': { en: 'Output directory', ru: 'Папка вывода' },
 
-  // Settings — Decompiler
-  'settings.decompiler': { en: 'Decompiler', ru: 'Декомпилятор' },
-  'settings.csharpVersion': { en: 'C# language version', ru: 'Версия языка C#' },
-  'settings.generatePdb': { en: 'Generate PDB files', ru: 'Генерировать PDB файлы' },
-  'settings.decompileProject': { en: 'Decompile as project', ru: 'Декомпилировать как проект' },
-  'settings.generateCallgraph': { en: 'Generate call graph', ru: 'Генерировать граф вызовов' },
-
-  // Settings — Network
-  'settings.network': { en: 'Network', ru: 'Сеть' },
-  'settings.githubToken': { en: 'GitHub token', ru: 'GitHub токен' },
-  'settings.downloadRetries': { en: 'Download retries', ru: 'Повторов загрузки' },
-  'settings.autoUpdateCheck': { en: 'Auto-check for updates', ru: 'Авто-проверка обновлений' },
+  // Settings — Security
+  'settings.security': { en: 'Security', ru: 'Безопасность' },
+  'settings.allowDynamicExecution': { en: 'Allow dynamic execution', ru: 'Разрешить динамическое выполнение' },
+  'settings.sandboxWarning': { en: 'Sandbox warning', ru: 'Предупреждение о песочнице' },
 
   // Settings — Logging
   'settings.logging': { en: 'Logging', ru: 'Логирование' },
   'settings.logLevel': { en: 'Log level', ru: 'Уровень логов' },
-  'settings.logToFile': { en: 'Log to file', ru: 'Писать логи в файл' },
+  'settings.logToFile': { en: 'Log to file', ru: 'Запись в файл' },
 
   // StatusBar
   'status.ready': { en: 'Ready', ru: 'Готов' },
@@ -123,6 +123,17 @@ const translations: Record<string, Record<Lang, string>> = {
   'pipeline.totalTime': { en: 'Total time', ru: 'Общее время' },
   'pipeline.error': { en: 'Error', ru: 'Ошибка' },
 
+  // Home — pipeline inline
+  'home.processing': { en: 'Processing', ru: 'Обработка' },
+  'home.newFile': { en: 'New file', ru: 'Новый файл' },
+  'home.done': { en: 'Done!', ru: 'Готово!' },
+  'home.result': { en: 'Result', ru: 'Результат' },
+  'home.openResult': { en: 'Open folder', ru: 'Открыть папку' },
+  'home.analyzing': { en: 'Analyzing...', ru: 'Анализ...' },
+  'home.preparingTools': { en: 'Preparing tools...', ru: 'Подготовка инструментов...' },
+  'home.decompiling': { en: 'Decompiling...', ru: 'Декомпиляция...' },
+  'home.error': { en: 'Error', ru: 'Ошибка' },
+
   // Home — open buttons
   'home.openFolder': { en: 'Open folder', ru: 'Открыть папку' },
   'home.openFile': { en: 'Open file', ru: 'Открыть файл' },
@@ -143,6 +154,10 @@ const translations: Record<string, Record<Lang, string>> = {
   // StatusBar enhanced
   'status.downloading': { en: 'Downloading', ru: 'Скачивание' },
   'status.installing': { en: 'Installing', ru: 'Установка' },
+
+  // Operations footer
+  'ops.title': { en: 'Operations', ru: 'Операции' },
+  'ops.clear': { en: 'Clear', ru: 'Очистить' },
 
   // Settings — folder picker
   'settings.browse': { en: 'Browse...', ru: 'Обзор...' },

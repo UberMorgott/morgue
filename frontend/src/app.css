@@ -14,13 +14,7 @@
   src: url('https://fonts.gstatic.com/s/orbitron/v31/yMJMMIlzdpvBhQQL_SC3X9yhF25-T1nyGy6BoWgz.woff2') format('woff2');
 }
 
-@font-face {
-  font-family: 'Exo 2';
-  font-style: normal;
-  font-weight: 300 700;
-  font-display: swap;
-  src: url('https://fonts.gstatic.com/s/exo2/v21/7cH1v4okm5zmbvwkAx_sfcEuiD8jvvKsOdC_.woff2') format('woff2');
-}
+@import url('https://fonts.googleapis.com/css2?family=Play:wght@400;700&display=swap');
 
 :root {
   color-scheme: dark;
@@ -105,8 +99,8 @@ html, body, #app {
   overflow: hidden;
   background: var(--bg-page);
   color: var(--text-secondary);
-  font-family: "Exo 2", "Segoe UI", system-ui, sans-serif;
-  font-size: 14px;
+  font-family: "Play", "Segoe UI", system-ui, sans-serif;
+  font-size: clamp(14px, 1.8vw, 28px);
   font-weight: 400;
   line-height: 1.5;
   user-select: none;
@@ -215,7 +209,7 @@ html::after {
   background: var(--bg-card);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 0.93rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -312,7 +306,7 @@ input, select, textarea {
   color: var(--text-primary);
   padding: 9px 14px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 0.93rem;
   outline: none;
   transition: all 0.2s ease;
 }
@@ -375,7 +369,7 @@ input::placeholder {
   display: inline-flex;
   align-items: center;
   padding: 3px 10px;
-  font-size: 11px;
+  font-size: 0.79rem;
   font-weight: 500;
   border-radius: 6px;
   letter-spacing: 0.3px;
@@ -456,15 +450,15 @@ input::placeholder {
    ══════════════════════════════════════ */
 
 .section-title {
-  font-family: 'Orbitron', 'Exo 2', sans-serif;
-  font-size: 18px;
+  font-family: 'Orbitron', 'Play', sans-serif;
+  font-size: 1.29rem;
   font-weight: 600;
   color: var(--text-heading);
   letter-spacing: 1.5px;
 }
 
 .section-subtitle {
-  font-size: 13px;
+  font-size: 0.93rem;
   color: var(--text-muted);
   font-weight: 300;
 }
@@ -543,4 +537,14 @@ h1, h2, h3 {
   background: var(--accent-dim);
   box-shadow: 0 0 30px rgba(255, 130, 30, 0.1),
               inset 0 0 30px rgba(255, 130, 30, 0.03);
+}
+
+/* ══════════════════════════════════════
+   SECONDARY BUTTON
+   ══════════════════════════════════════ */
+
+.btn-secondary {
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
 }
