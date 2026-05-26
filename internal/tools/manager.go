@@ -154,6 +154,9 @@ func (m *Manager) Install(name string) (string, error) {
 		versionFile := filepath.Join(destDir, ".version")
 		os.WriteFile(versionFile, []byte("dotnet"), 0644)
 		return "dotnet", nil
+	case MethodGitBuild:
+		version, err := installFromGitBuild(tool, destDir, m.OnProgress)
+		return version, err
 	default:
 		return "", fmt.Errorf("unsupported install method for %s", name)
 	}
@@ -168,7 +171,7 @@ func cleanVersionTag(tag string) string {
 		tag = strings.TrimPrefix(tag, "Ghidra_")
 		tag = strings.TrimSuffix(tag, "_build")
 	}
-	if strings.EqualFold(tag, "latest") {
+	if strings.EqualFold(tag, "latest") || tag == "releases" || tag == "" {
 		return ""
 	}
 	return tag
@@ -184,7 +187,8 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 		// Clean up stored version for display
 		st.Version = cleanVersionTag(st.Version)
 
-		if t.Method == MethodGitHubRelease && t.Repo != "" {
+		switch {
+		case t.Method == MethodGitHubRelease && t.Repo != "":
 			tagName, err := fetchLatestVersion(t.Repo)
 			if err == nil {
 				tagName = cleanVersionTag(tagName)
@@ -194,8 +198,23 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 				}
 			}
 			// On error: LatestVersion stays empty, frontend shows "–"
+		case t.Method == MethodDotnetTool && t.DotnetID != "":
+			ver, err := fetchNuGetLatestVersion(t.DotnetID)
+			if err == nil {
+				st.LatestVersion = ver
+			}
+		case t.Method == MethodGitBuild && t.Repo != "":
+			tagName, err := fetchLatestVersion(t.Repo)
+			if err == nil {
+				tagName = cleanVersionTag(tagName)
+				st.LatestVersion = tagName
+				if st.Installed && st.Version != "" && st.Version != tagName {
+					st.UpdateAvailable = true
+				}
+			}
+		case t.Method == MethodDirectURL:
+			st.LatestVersion = "–"
 		}
-		// For non-GitHub tools (DirectURL, DotnetTool), LatestVersion stays empty — frontend shows "–"
 		statuses = append(statuses, st)
 	}
 	return statuses

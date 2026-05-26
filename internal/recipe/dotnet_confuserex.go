@@ -45,7 +45,7 @@ func (d *DotnetConfuserEx) Steps() []StepInfo {
 }
 
 func (d *DotnetConfuserEx) RequiredTools() []string {
-	return []string{"ilspycmd", "strings", "de4dot-cex", "nofuserex", "confuserex-unpacker", "proxycall-remover"}
+	return []string{"ilspycmd", "strings", "de4dot-cex", "nofuserex", "confuserex-killer", "proxycall-remover"}
 }
 
 func (d *DotnetConfuserEx) Execute(ctx *Context) error {
@@ -96,7 +96,7 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 	}, report, log)
 
 	// Step 2: Unpack (resource/constant unpacking)
-	current = d.runToolStep(ctx, 2, current, interDir, "confuserex-unpacker", func(toolPath, input, output string) error {
+	current = d.runToolStep(ctx, 2, current, interDir, "confuserex-killer", func(toolPath, input, output string) error {
 		r, err := util.RunCmd(ctx.Ctx, toolPath, []string{input, "-o", output}, "")
 		if err != nil {
 			return err

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { Browser } from '@wailsio/runtime';
   import { ConfigService, ReconService } from '../lib/api';
   import { t, type Lang } from '../lib/i18n';
   import { currentLang } from '../lib/stores';
@@ -145,7 +146,7 @@
                 <span class="setting-label">{t(lang, 'settings.githubToken')}</span>
                 <div class="setting-with-browse">
                   <input class="setting-input setting-input-wide" type="password" bind:value={config.GitHubToken} on:input={onConfigChange} />
-                  <button class="browse-btn" on:click={() => window.open('https://github.com/settings/tokens/new?description=Morgue+Decompiler&scopes=public_repo', '_blank')}>{t(lang, 'settings.createToken')}</button>
+                  <button class="browse-btn" on:click={() => Browser.OpenURL('https://github.com/settings/tokens/new?description=Morgue+Decompiler&scopes=public_repo')}>{t(lang, 'settings.createToken')}</button>
                 </div>
               </div>
               <span class="setting-hint">{t(lang, 'settings.githubTokenHint')}</span>
