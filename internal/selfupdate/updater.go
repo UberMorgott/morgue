@@ -41,6 +41,36 @@ func Check(currentVersion string) error {
 	return nil
 }
 
+// CheckStatus returns update status string for TUI display.
+// Returns one of: "up to date", "update: vX.Y.Z", "offline".
+func CheckStatus(currentVersion string) string {
+	source, err := selfupdate.NewGitHubSource(selfupdate.GitHubConfig{})
+	if err != nil {
+		return "offline"
+	}
+
+	updater, err := selfupdate.NewUpdater(selfupdate.Config{
+		Source: source,
+	})
+	if err != nil {
+		return "offline"
+	}
+
+	ctx := context.Background()
+	latest, found, err := updater.DetectLatest(ctx, selfupdate.ParseSlug(repo))
+	if err != nil {
+		return "offline"
+	}
+	if !found {
+		return "up to date"
+	}
+
+	if latest.Version() == currentVersion {
+		return "up to date"
+	}
+	return "update: " + latest.Version()
+}
+
 // Update downloads and applies the latest version.
 func Update(currentVersion string) error {
 	source, err := selfupdate.NewGitHubSource(selfupdate.GitHubConfig{})

@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/UberMorgott/morgue/internal/app"
 	"github.com/UberMorgott/morgue/internal/cli"
 	"github.com/UberMorgott/morgue/internal/selfupdate"
 )
@@ -20,6 +21,9 @@ func main() {
 		Use:   "morgue",
 		Short: "Binary decompiler orchestrator",
 		Long:  "Morgue — automated binary decompilation pipeline for .NET, Delphi, and native targets.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return app.RunTUI(Version)
+		},
 	}
 
 	root.AddCommand(runCmd())
