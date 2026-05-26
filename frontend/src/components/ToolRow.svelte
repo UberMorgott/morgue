@@ -70,18 +70,18 @@
   .tool-row.dimmed { opacity: 0.5; }
   .tool-row:hover { border-color: var(--border); }
   .tool-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
-  .tool-name { font-size: 13px; font-weight: 600; color: var(--text-primary); font-family: ui-monospace, monospace; }
-  .tool-category { font-size: 9px; padding: 1px 5px; border-radius: 3px; background: var(--accent-dim); color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
-  .tool-desc { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tool-version { display: flex; align-items: center; gap: 4px; font-size: 11px; font-family: ui-monospace, monospace; flex-shrink: 0; min-width: 120px; }
+  .tool-name { font-size: clamp(14px, 1.5vw, 22px); font-weight: 600; color: var(--text-primary); font-family: ui-monospace, monospace; }
+  .tool-category { font-size: clamp(10px, 1vw, 13px); padding: 2px 7px; border-radius: 3px; background: var(--accent-dim); color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
+  .tool-desc { font-size: clamp(11px, 1.2vw, 15px); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tool-version { display: flex; align-items: center; gap: 4px; font-size: clamp(12px, 1.2vw, 16px); font-family: ui-monospace, monospace; flex-shrink: 0; min-width: 120px; }
   .ver-current { color: var(--text-secondary); }
   .ver-sep { color: var(--text-muted); }
   .ver-latest { color: var(--text-muted); }
   .ver-new { color: var(--accent); font-weight: 600; }
   .ver-none { color: var(--text-muted); font-style: italic; }
-  .ver-available { color: var(--text-muted); font-style: italic; }
+  .ver-available { color: var(--accent); font-weight: 500; }
   .tool-actions { display: flex; gap: 6px; flex-shrink: 0; }
-  .action-btn { all: unset; font-size: 11px; padding: 4px 10px; border-radius: 4px; cursor: pointer; transition: all 0.15s; }
+  .action-btn { all: unset; font-size: clamp(12px, 1.2vw, 15px); padding: 6px 14px; border-radius: 5px; cursor: pointer; transition: all 0.15s; }
   .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .action-download { border: 1px solid var(--accent); color: var(--accent); }
   .action-download:hover:not(:disabled) { background: var(--accent-dim); }

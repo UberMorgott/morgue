@@ -159,6 +159,21 @@ func (m *Manager) Install(name string) (string, error) {
 	}
 }
 
+// cleanVersionTag normalizes a release tag for display.
+func cleanVersionTag(tag string) string {
+	tag = strings.TrimPrefix(tag, "v")
+	tag = strings.TrimPrefix(tag, "V")
+	// Ghidra-specific: "Ghidra_12.1_build" → "12.1"
+	if strings.HasPrefix(tag, "Ghidra_") {
+		tag = strings.TrimPrefix(tag, "Ghidra_")
+		tag = strings.TrimSuffix(tag, "_build")
+	}
+	if strings.EqualFold(tag, "latest") {
+		return ""
+	}
+	return tag
+}
+
 // CheckAllWithUpdates returns status of all tools including latest GitHub versions.
 // Uses HTTP redirect to check versions — no GitHub API calls, no rate limit.
 func (m *Manager) CheckAllWithUpdates() []ToolStatus {
@@ -166,15 +181,21 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 	for _, t := range Registry {
 		st := m.Check(t.Name)
 
+		// Clean up stored version for display
+		st.Version = cleanVersionTag(st.Version)
+
 		if t.Method == MethodGitHubRelease && t.Repo != "" {
 			tagName, err := fetchLatestVersion(t.Repo)
 			if err == nil {
+				tagName = cleanVersionTag(tagName)
 				st.LatestVersion = tagName
 				if st.Installed && st.Version != "" && st.Version != tagName {
 					st.UpdateAvailable = true
 				}
 			}
+			// On error: LatestVersion stays empty, frontend shows "–"
 		}
+		// For non-GitHub tools (DirectURL, DotnetTool), LatestVersion stays empty — frontend shows "–"
 		statuses = append(statuses, st)
 	}
 	return statuses
