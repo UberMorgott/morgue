@@ -7,7 +7,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var version = "dev"
+var (
+	Version = "dev"
+	Commit  = "none"
+)
 
 func main() {
 	root := &cobra.Command{
@@ -27,7 +30,7 @@ func main() {
 }
 
 func runCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "run [target]",
 		Short: "Run decompilation pipeline on a target binary",
 		Args:  cobra.ExactArgs(1),
@@ -36,6 +39,14 @@ func runCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringP("output", "o", "./decompiled", "Output directory")
+	cmd.Flags().Bool("watch", false, "Show TUI progress in stderr")
+	cmd.Flags().String("recipe", "", "Force specific recipe")
+	cmd.Flags().Bool("no-skip", false, "Disable auto skip-list")
+	cmd.Flags().StringSlice("exclude", nil, "Additional exclude patterns")
+
+	return cmd
 }
 
 func toolsCmd() *cobra.Command {
@@ -70,13 +81,13 @@ func versionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print version information",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("morgue %s\n", version)
+			fmt.Printf("morgue %s (%s)\n", Version, Commit)
 		},
 	}
 }
 
 func selfUpdateCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "self-update",
 		Short: "Update morgue to the latest version",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -84,4 +95,8 @@ func selfUpdateCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().Bool("check", false, "Check only, don't download")
+
+	return cmd
 }
