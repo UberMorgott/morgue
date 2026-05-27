@@ -3,30 +3,44 @@
 
   let copied = false;
 
+  async function copyToClipboard(text: string): Promise<void> {
+    // 1. Wails runtime clipboard (works when Wails backend is available)
+    try {
+      await Clipboard.SetText(text);
+      return;
+    } catch { /* fall through */ }
+
+    // 2. Browser Clipboard API (works on localhost / secure contexts)
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return;
+      } catch { /* fall through */ }
+    }
+
+    // 3. Legacy fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+
   async function copyInstructions() {
     let text: string;
     try {
       const res = await fetch('http://127.0.0.1:19876/api/instructions');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       text = await res.text();
     } catch (e) {
       console.error('Failed to fetch instructions:', e);
       return;
     }
 
-    try {
-      await Clipboard.SetText(text);
-    } catch {
-      // Fallback: textarea + execCommand for restricted contexts
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.left = '-9999px';
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-    }
-
+    await copyToClipboard(text);
     copied = true;
     setTimeout(() => (copied = false), 2000);
   }
