@@ -170,6 +170,62 @@
           </div>
         </section>
 
+        <!-- Section: Unreal Engine -->
+        <section class="settings-card glass">
+          <h3 class="card-title">{t(lang, 'settings.unrealEngine')}</h3>
+          <div class="card-rows">
+            <div class="setting-row">
+              <div class="setting-label-with-hint">
+                <span class="setting-label">{t(lang, 'settings.ue5.extractPak')}</span>
+                <span class="setting-hint-icon" title={t(lang, 'settings.ue5.extractPakHint')}>?</span>
+              </div>
+              <div class="toggle" class:active={config.UE5ExtractPAK} on:click={() => toggleField('UE5ExtractPAK')} role="switch" tabindex="0" aria-checked={config.UE5ExtractPAK}></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label-with-hint">
+                <span class="setting-label">{t(lang, 'settings.ue5.sdkDump')}</span>
+                <span class="setting-hint-icon" title={t(lang, 'settings.ue5.sdkDumpHint')}>?</span>
+              </div>
+              <div class="toggle" class:active={config.UE5SDKDump} on:click={() => toggleField('UE5SDKDump')} role="switch" tabindex="0" aria-checked={config.UE5SDKDump}></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label-with-hint">
+                <span class="setting-label">{t(lang, 'settings.ue5.extractStrings')}</span>
+                <span class="setting-hint-icon" title={t(lang, 'settings.ue5.extractStringsHint')}>?</span>
+              </div>
+              <div class="toggle" class:active={config.UE5ExtractStrings} on:click={() => toggleField('UE5ExtractStrings')} role="switch" tabindex="0" aria-checked={config.UE5ExtractStrings}></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label-with-hint">
+                <span class="setting-label">{t(lang, 'settings.ue5.ghidraDecompile')}</span>
+                <span class="setting-hint-icon" title={t(lang, 'settings.ue5.ghidraDecompileHint')}>?</span>
+              </div>
+              <div class="toggle" class:active={config.UE5GhidraDecompile} on:click={() => toggleField('UE5GhidraDecompile')} role="switch" tabindex="0" aria-checked={config.UE5GhidraDecompile}></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label-with-hint">
+                <span class="setting-label">{t(lang, 'settings.ue5.nameResolution')}</span>
+                <span class="setting-hint-icon" title={t(lang, 'settings.ue5.nameResolutionHint')}>?</span>
+              </div>
+              <div class="toggle" class:active={config.UE5NameResolution} on:click={() => toggleField('UE5NameResolution')} role="switch" tabindex="0" aria-checked={config.UE5NameResolution}></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label-with-hint">
+                <span class="setting-label">{t(lang, 'settings.ue5.buildIndexes')}</span>
+                <span class="setting-hint-icon" title={t(lang, 'settings.ue5.buildIndexesHint')}>?</span>
+              </div>
+              <div class="toggle" class:active={config.UE5BuildIndexes} on:click={() => toggleField('UE5BuildIndexes')} role="switch" tabindex="0" aria-checked={config.UE5BuildIndexes}></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label-with-hint">
+                <span class="setting-label">{t(lang, 'settings.ue5.exportHookable')}</span>
+                <span class="setting-hint-icon" title={t(lang, 'settings.ue5.exportHookableHint')}>?</span>
+              </div>
+              <div class="toggle" class:active={config.UE5ExportHookable} on:click={() => toggleField('UE5ExportHookable')} role="switch" tabindex="0" aria-checked={config.UE5ExportHookable}></div>
+            </div>
+          </div>
+        </section>
+
         <!-- Section 4: Logging -->
         <section class="settings-card glass">
           <h3 class="card-title">{t(lang, 'settings.logging')}</h3>
@@ -406,5 +462,32 @@
     15% { opacity: 1; transform: translateY(0); }
     80% { opacity: 1; }
     100% { opacity: 0; }
+  }
+
+  .setting-label-with-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  .setting-hint-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 10px;
+    cursor: help;
+    flex-shrink: 0;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .setting-hint-icon:hover {
+    color: var(--accent);
+    border-color: var(--accent);
   }
 </style>

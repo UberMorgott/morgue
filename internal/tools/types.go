@@ -9,6 +9,7 @@ const (
 	CategoryDeobfuscator
 	CategoryUnpacker
 	CategoryAnalyzer
+	CategoryExtractor
 )
 
 var categoryNames = [...]string{
@@ -17,6 +18,7 @@ var categoryNames = [...]string{
 	"Deobfuscator",
 	"Unpacker",
 	"Analyzer",
+	"Extractor",
 }
 
 func (c Category) String() string {

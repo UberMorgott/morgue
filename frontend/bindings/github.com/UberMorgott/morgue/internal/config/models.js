@@ -211,6 +211,56 @@ export class Config {
              */
             this["SandboxWarning"] = false;
         }
+        if (!("UE5ExtractPAK" in $$source)) {
+            /**
+             * UE5 pipeline step toggles
+             * @member
+             * @type {boolean}
+             */
+            this["UE5ExtractPAK"] = false;
+        }
+        if (!("UE5SDKDump" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["UE5SDKDump"] = false;
+        }
+        if (!("UE5ExtractStrings" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["UE5ExtractStrings"] = false;
+        }
+        if (!("UE5GhidraDecompile" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["UE5GhidraDecompile"] = false;
+        }
+        if (!("UE5NameResolution" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["UE5NameResolution"] = false;
+        }
+        if (!("UE5BuildIndexes" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["UE5BuildIndexes"] = false;
+        }
+        if (!("UE5ExportHookable" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["UE5ExportHookable"] = false;
+        }
 
         Object.assign(this, $$source);
     }

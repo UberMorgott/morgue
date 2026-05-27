@@ -37,6 +37,15 @@ type Config struct {
 	LogTimestamps          bool            `yaml:"log_timestamps"`
 	AllowDynamicExecution  bool            `yaml:"allow_dynamic_execution"`
 	SandboxWarning         bool            `yaml:"sandbox_warning"`
+
+	// UE5 pipeline step toggles
+	UE5ExtractPAK      bool `yaml:"ue5_extract_pak"`
+	UE5SDKDump         bool `yaml:"ue5_sdk_dump"`
+	UE5ExtractStrings  bool `yaml:"ue5_extract_strings"`
+	UE5GhidraDecompile bool `yaml:"ue5_ghidra_decompile"`
+	UE5NameResolution  bool `yaml:"ue5_name_resolution"`
+	UE5BuildIndexes    bool `yaml:"ue5_build_indexes"`
+	UE5ExportHookable  bool `yaml:"ue5_export_hookable"`
 }
 
 // Default returns a Config with sensible defaults.
@@ -57,6 +66,14 @@ func Default() Config {
 		LogTimestamps:         true,
 		SandboxWarning:        true,
 		AllowDynamicExecution: false,
+
+		UE5ExtractPAK:      true,
+		UE5SDKDump:         true,
+		UE5ExtractStrings:  true,
+		UE5GhidraDecompile: false,
+		UE5NameResolution:  true,
+		UE5BuildIndexes:    true,
+		UE5ExportHookable:  true,
 	}
 }
 

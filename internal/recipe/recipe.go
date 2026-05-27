@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/UberMorgott/morgue/internal/config"
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/tools"
 )
@@ -58,6 +59,7 @@ type Context struct {
 	Log      chan string
 	Tools    *tools.Manager
 	Ctx      context.Context
+	Config   *config.Config
 }
 
 // Recipe is the interface that all decompilation recipes must implement.

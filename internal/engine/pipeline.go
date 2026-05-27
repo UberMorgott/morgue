@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/recipe"
+	"github.com/UberMorgott/morgue/internal/scanner"
 )
 
 // Run executes the full pipeline: scan → recon → skip → match → execute → save.
@@ -87,6 +89,16 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				emitErr("recon", filePath, err)
 				results = append(results, TargetResult{Group: group, Error: err})
 				continue
+			}
+
+			// Override Kind based on scanner group classification
+			switch group.Kind {
+			case scanner.GroupUnreal:
+				reconResult.Kind = recon.UnrealEngine
+			case scanner.GroupUnityMono:
+				reconResult.Kind = recon.UnityMono
+			case scanner.GroupUnityIL2CPP:
+				reconResult.Kind = recon.UnityIL2CPP
 			}
 
 			// Match recipe
@@ -174,6 +186,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				Log:      logCh,
 				Tools:    e.tools,
 				Ctx:      ctx,
+				Config:   &e.cfg,
 			}
 
 			execErr := rec.Execute(rctx)
