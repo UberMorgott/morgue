@@ -26,8 +26,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		s.events.Broadcast("pipeline:started", nil)
 		if err := s.pipeline.Run(req.Path, req.Output); err != nil {
-			errMsg, _ := json.Marshal(map[string]string{"error": err.Error()})
-			s.events.Broadcast("pipeline:error", errMsg)
+			s.events.Broadcast("pipeline:error", marshalJSON(map[string]string{"error": err.Error()}))
 			return
 		}
 		s.events.Broadcast("pipeline:complete", nil)
@@ -59,9 +58,11 @@ func (s *Server) handleInstallTool(w http.ResponseWriter, r *http.Request) {
 
 	if req.Name == "" {
 		go func() {
+			s.events.Broadcast("tool:install:start", marshalJSON(map[string]string{"tool": "all"}))
 			if err := s.tools.InstallAll(); err != nil {
-				errMsg, _ := json.Marshal(map[string]string{"error": err.Error()})
-				s.events.Broadcast("tools:install:error", errMsg)
+				s.events.Broadcast("tool:install:error", marshalJSON(map[string]string{"tool": "all", "error": err.Error()}))
+			} else {
+				s.events.Broadcast("tool:install:complete", marshalJSON(map[string]string{"tool": "all"}))
 			}
 		}()
 		writeJSON(w, http.StatusOK, map[string]string{"status": "installing all"})
@@ -69,9 +70,11 @@ func (s *Server) handleInstallTool(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go func() {
+		s.events.Broadcast("tool:install:start", marshalJSON(map[string]string{"tool": req.Name}))
 		if err := s.tools.Install(req.Name); err != nil {
-			errMsg, _ := json.Marshal(map[string]string{"error": err.Error()})
-			s.events.Broadcast("tools:install:error", errMsg)
+			s.events.Broadcast("tool:install:error", marshalJSON(map[string]string{"tool": req.Name, "error": err.Error()}))
+		} else {
+			s.events.Broadcast("tool:install:complete", marshalJSON(map[string]string{"tool": req.Name}))
 		}
 	}()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "installing", "name": req.Name})
@@ -162,6 +165,13 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, cfg)
+}
+
+// marshalJSON is a convenience wrapper around json.Marshal that swallows errors.
+// It is safe for fire-and-forget SSE payloads where encoding cannot realistically fail.
+func marshalJSON(v any) []byte {
+	data, _ := json.Marshal(v)
+	return data
 }
 
 // writeJSON is a helper that encodes v as JSON and writes it to w.
