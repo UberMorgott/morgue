@@ -289,7 +289,13 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			if execErr != nil {
 				emitErr("execute", filePath, execErr)
 			} else {
-				emit("execute", filePath, "Complete")
+				// Emit complete with updated file count
+				if events != nil {
+					events <- PipelineEvent{
+						Phase: "execute", Target: filePath, Message: "Complete",
+						FilesTotal: filesTotal, FilesProcessed: filesProcessed,
+					}
+				}
 				// Post-execution: scan output and report stats
 				stats := scanOutputDir(targetOutput)
 				if events != nil {
