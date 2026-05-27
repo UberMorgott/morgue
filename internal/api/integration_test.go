@@ -59,12 +59,13 @@ func TestIntegrationFullWorkflow(t *testing.T) {
 			t.Fatalf("expected 200, got %d", resp.StatusCode)
 		}
 
-		var body []any
-		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		var result map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 			t.Fatalf("decode error: %v", err)
 		}
-		if len(body) == 0 {
-			t.Fatal("expected non-empty tools array")
+		tools, ok := result["tools"].([]any)
+		if !ok || len(tools) == 0 {
+			t.Fatal("expected non-empty tools array in response")
 		}
 	})
 

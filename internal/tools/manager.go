@@ -19,6 +19,7 @@ type Manager struct {
 	baseDir    string
 	cfg        config.Config
 	OnProgress func(tool string, bytesDown, bytesTotal int64)
+	OnExtract  func(tool string)
 }
 
 // NewManager creates a Manager that stores tools under baseDir.
@@ -129,6 +130,14 @@ func (m *Manager) Install(name string) (string, error) {
 	}
 
 	destDir := filepath.Join(m.baseDir, name)
+
+	// Clean dirty state: directory exists but binary is missing (e.g. partial Delete)
+	if _, err := os.Stat(destDir); err == nil {
+		if _, err := os.Stat(filepath.Join(destDir, tool.Binary)); os.IsNotExist(err) {
+			os.RemoveAll(destDir)
+		}
+	}
+
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return "", fmt.Errorf("create tool dir: %w", err)
 	}
@@ -140,12 +149,24 @@ func (m *Manager) Install(name string) (string, error) {
 		}
 	}
 
+	var extractCb func()
+	if m.OnExtract != nil {
+		extractCb = func() {
+			m.OnExtract(name)
+		}
+	}
+
 	switch tool.Method {
 	case MethodGitHubRelease:
-		version, err := installFromGitHub(tool, destDir, m.cfg.GitHubToken, progressCb)
+		version, err := installFromGitHub(tool, destDir, m.cfg.GitHubToken, progressCb, extractCb)
 		return version, err
 	case MethodDirectURL:
-		err := installFromURL(tool, destDir, progressCb)
+		var err error
+		if len(tool.DownloadURLs) > 0 {
+			err = installFromURLs(tool.DownloadURLs, destDir, progressCb, extractCb)
+		} else {
+			err = installFromURL(tool, destDir, progressCb, extractCb)
+		}
 		if err != nil {
 			return "", err
 		}
@@ -157,11 +178,23 @@ func (m *Manager) Install(name string) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		ver := tool.DotnetVersion
+		if ver == "" {
+			ver = "latest"
+		}
 		versionFile := filepath.Join(destDir, ".version")
-		os.WriteFile(versionFile, []byte("dotnet"), 0644)
-		return "dotnet", nil
+		os.WriteFile(versionFile, []byte(ver), 0644)
+		return ver, nil
+	case MethodNuGet:
+		ver, err := installFromNuGet(tool, destDir, progressCb, m.OnExtract)
+		if err != nil {
+			return "", err
+		}
+		versionFile := filepath.Join(destDir, ".version")
+		os.WriteFile(versionFile, []byte(ver), 0644)
+		return ver, nil
 	case MethodGitBuild:
-		version, err := installFromGitBuild(tool, destDir, m.OnProgress)
+		version, err := installFromGitBuild(tool, destDir, m.OnProgress, extractCb)
 		return version, err
 	default:
 		return "", fmt.Errorf("unsupported install method for %s", name)
@@ -173,9 +206,8 @@ func cleanVersionTag(tag string) string {
 	tag = strings.TrimPrefix(tag, "v")
 	tag = strings.TrimPrefix(tag, "V")
 	// Ghidra-specific: "Ghidra_12.1_build" → "12.1"
-	if strings.HasPrefix(tag, "Ghidra_") {
-		tag = strings.TrimPrefix(tag, "Ghidra_")
-		tag = strings.TrimSuffix(tag, "_build")
+	if after, found := strings.CutPrefix(tag, "Ghidra_"); found {
+		tag = strings.TrimSuffix(after, "_build")
 	}
 	if strings.EqualFold(tag, "latest") || tag == "releases" || tag == "" {
 		return ""
@@ -204,10 +236,14 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 				}
 			}
 			// On error: LatestVersion stays empty, frontend shows "–"
-		case t.Method == MethodDotnetTool && t.DotnetID != "":
+		case t.Method == MethodDotnetTool && t.DotnetID != "",
+			t.Method == MethodNuGet && t.DotnetID != "":
 			ver, err := fetchNuGetLatestVersion(t.DotnetID)
 			if err == nil {
 				st.LatestVersion = ver
+				if st.Installed && st.Version != "" && st.Version != ver {
+					st.UpdateAvailable = true
+				}
 			}
 		case t.Method == MethodGitBuild && t.Repo != "":
 			commit, err := fetchLatestCommit(t.Repo)
@@ -258,7 +294,8 @@ func (m *Manager) CheckLatestVersionSingle(name string) (latestVersion string, u
 		if err == nil {
 			latestVersion = commit
 		}
-	case tool.Method == MethodDotnetTool && tool.DotnetID != "":
+	case tool.Method == MethodDotnetTool && tool.DotnetID != "",
+		tool.Method == MethodNuGet && tool.DotnetID != "":
 		ver, err := fetchNuGetLatestVersion(tool.DotnetID)
 		if err == nil {
 			latestVersion = ver

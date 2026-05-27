@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 )
 
 const apiBase = "http://127.0.0.1:19876/api"
@@ -77,6 +78,50 @@ func APIRun(path, output string) error {
 // APITools lists available tools from the running GUI.
 func APITools() error {
 	return apiGet("/tools")
+}
+
+// APIToolsWait polls the tools endpoint with long-poll until no operations are busy.
+func APIToolsWait() error {
+	type toolEntry struct {
+		Name       string `json:"Name"`
+		Installing bool   `json:"installing"`
+		Progress   int    `json:"progress"`
+	}
+	type toolsResp struct {
+		Tools   []toolEntry `json:"tools"`
+		Busy    bool        `json:"busy"`
+		Changed bool        `json:"changed"`
+	}
+
+	for {
+		resp, err := http.Get(apiBase + "/tools?wait=30")
+		if err != nil {
+			return errNotRunning
+		}
+		var result toolsResp
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			resp.Body.Close()
+			return fmt.Errorf("decode response: %w", err)
+		}
+		resp.Body.Close()
+
+		// Print active operations
+		for _, t := range result.Tools {
+			if t.Installing {
+				fmt.Printf("  %s: installing (%d%%)\n", t.Name, t.Progress)
+			}
+		}
+
+		if !result.Busy {
+			fmt.Println("All tool operations complete.")
+			return nil
+		}
+
+		// If not changed (timeout), print status and keep polling
+		if !result.Changed {
+			fmt.Printf("[%s] Waiting for operations to finish...\n", time.Now().Format("15:04:05"))
+		}
+	}
 }
 
 // APIToolsInstall installs a tool by name via the GUI.

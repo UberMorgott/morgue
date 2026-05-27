@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/creativeprojects/go-selfupdate"
 )
 
@@ -18,6 +19,22 @@ func baseVersion(v string) string {
 		v = v[:idx]
 	}
 	return v
+}
+
+// isNewer returns true if latestTag is strictly newer than currentVersion.
+// Dev builds like "v0.1.0-34-gbaae1cb" are treated as their base version (0.1.0),
+// so they won't be "downgraded" to the same release tag.
+func isNewer(latestTag, currentVersion string) bool {
+	latest, err := semver.NewVersion(latestTag)
+	if err != nil {
+		return false
+	}
+	current, err := semver.NewVersion(baseVersion(currentVersion))
+	if err != nil {
+		// Unparseable current version (e.g. "dev") — always offer update.
+		return true
+	}
+	return latest.GreaterThan(current)
 }
 
 const repo = "UberMorgott/morgue"
@@ -46,7 +63,7 @@ func Check(currentVersion string) error {
 		return nil
 	}
 
-	if latest.Version() == baseVersion(currentVersion) {
+	if !isNewer(latest.Version(), currentVersion) {
 		fmt.Printf("Already up to date: %s\n", currentVersion)
 	} else {
 		fmt.Printf("Update available: %s → %s\n", currentVersion, latest.Version())
@@ -78,7 +95,7 @@ func CheckStatus(currentVersion string) string {
 		return "up to date"
 	}
 
-	if latest.Version() == baseVersion(currentVersion) {
+	if !isNewer(latest.Version(), currentVersion) {
 		return "up to date"
 	}
 	return "update: " + latest.Version()
@@ -108,7 +125,7 @@ func Update(currentVersion string) error {
 		return nil
 	}
 
-	if latest.Version() == baseVersion(currentVersion) {
+	if !isNewer(latest.Version(), currentVersion) {
 		fmt.Printf("Already up to date: %s\n", currentVersion)
 		return nil
 	}

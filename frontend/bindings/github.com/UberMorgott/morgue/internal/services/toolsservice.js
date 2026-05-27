@@ -14,6 +14,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as tools$0 from "../tools/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as time$0 from "../../../../../time/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -71,6 +74,16 @@ export function Delete(name) {
 }
 
 /**
+ * GetToolsEnriched returns all tools with active operation state merged in.
+ * @returns {$CancellablePromise<$models.EnrichedToolsResponse>}
+ */
+export function GetToolsEnriched() {
+    return $Call.ByID(4042860898).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType5($result);
+    }));
+}
+
+/**
  * Install downloads and installs a single tool by name.
  * @param {string} name
  * @returns {$CancellablePromise<void>}
@@ -111,7 +124,7 @@ export function MarkUpdateChecked() {
  */
 export function PollAPICommand() {
     return $Call.ByID(3843837653).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType6($result);
+        return $$createType7($result);
     }));
 }
 
@@ -142,11 +155,22 @@ export function StartupAutoUpdate() {
     }));
 }
 
+/**
+ * WaitForChange blocks until tool state changes or timeout elapses.
+ * Returns true if a change occurred, false on timeout.
+ * @param {time$0.Duration} timeout
+ * @returns {$CancellablePromise<boolean>}
+ */
+export function WaitForChange(timeout) {
+    return $Call.ByID(3739133263, timeout);
+}
+
 // Private type creation functions
 const $$createType0 = tools$0.ToolStatus.createFrom;
 const $$createType1 = $Create.Array($$createType0);
 const $$createType2 = $Create.Map($Create.Any, $Create.Any);
 const $$createType3 = tools$0.RuntimeStatus.createFrom;
 const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = $models.APICommand.createFrom;
-const $$createType6 = $Create.Nullable($$createType5);
+const $$createType5 = $models.EnrichedToolsResponse.createFrom;
+const $$createType6 = $models.APICommand.createFrom;
+const $$createType7 = $Create.Nullable($$createType6);

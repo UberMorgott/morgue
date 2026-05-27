@@ -209,12 +209,16 @@ func fetchReleaseCached(baseDir, repo, token string) (string, []assetInfo, error
 	return tag, assets, nil
 }
 
-// matchAsset finds the first asset matching a glob pattern.
-func matchAsset(assets []assetInfo, glob string) (assetInfo, bool) {
+// matchAssets returns all assets matching a glob pattern.
+func matchAssets(assets []assetInfo, glob string) []assetInfo {
+	var result []assetInfo
 	for _, a := range assets {
 		if matched, _ := filepath.Match(glob, a.Name); matched {
-			return a, true
+			result = append(result, a)
 		}
+	}
+	if len(result) > 0 {
+		return result
 	}
 	// Fallback: case-insensitive substring match using glob parts split on wildcards
 	parts := strings.Split(strings.ToLower(glob), "*")
@@ -233,64 +237,67 @@ func matchAsset(assets []assetInfo, glob string) (assetInfo, bool) {
 			name = name[idx+len(p):]
 		}
 		if allMatch {
-			return a, true
+			result = append(result, a)
 		}
 	}
-	return assetInfo{}, false
+	return result
 }
 
 // installFromGitHub downloads and extracts a GitHub release asset.
 // Uses cached release info to avoid API rate limits.
 // Falls back to direct URL download when API is unavailable.
 // Returns the version tag on success.
-func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(bytesDown, bytesTotal int64)) (string, error) {
+func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) (string, error) {
 	baseDir := filepath.Dir(destDir)
 
 	tagName, assets, err := fetchReleaseCached(baseDir, tool.Repo, token)
 	if err == nil {
-		asset, found := matchAsset(assets, tool.AssetGlob)
-		if found {
-			archivePath := filepath.Join(destDir, asset.Name)
+		matched := matchAssets(assets, tool.AssetGlob)
+		if len(matched) > 0 {
+			for _, asset := range matched {
+				archivePath := filepath.Join(destDir, asset.Name)
 
-			client := grab.NewClient()
-			req, _ := grab.NewRequest(archivePath, asset.URL)
+				client := grab.NewClient()
+				req, _ := grab.NewRequest(archivePath, asset.URL)
 
-			resp := client.Do(req)
+				resp := client.Do(req)
 
-			// Progress reporting loop
-			t := time.NewTicker(200 * time.Millisecond)
-			defer t.Stop()
+				// Progress reporting loop
+				t := time.NewTicker(200 * time.Millisecond)
 
-			done := false
-			for !done {
-				select {
-				case <-t.C:
-					if onProgress != nil {
-						onProgress(resp.BytesComplete(), resp.Size())
+				done := false
+				for !done {
+					select {
+					case <-t.C:
+						if onProgress != nil {
+							onProgress(resp.BytesComplete(), resp.Size())
+						}
+					case <-resp.Done:
+						done = true
 					}
-				case <-resp.Done:
-					done = true
 				}
-			}
+				t.Stop()
 
-			// Final progress report
-			if onProgress != nil {
-				onProgress(resp.BytesComplete(), resp.Size())
-			}
+				// Final progress report
+				if onProgress != nil {
+					onProgress(resp.BytesComplete(), resp.Size())
+				}
 
-			if err := resp.Err(); err != nil {
-				os.Remove(archivePath)
-				return "", fmt.Errorf("download %s: %w", asset.Name, err)
-			}
+				if err := resp.Err(); err != nil {
+					os.Remove(archivePath)
+					return "", fmt.Errorf("download %s: %w", asset.Name, err)
+				}
 
-			if err := extractArchive(archivePath, destDir); err != nil {
-				return "", err
-			}
-
-			// Only remove the downloaded file if it was an archive that got extracted.
-			// Standalone .exe assets are the final binary and must be kept.
-			if strings.ToLower(filepath.Ext(archivePath)) != ".exe" {
-				os.Remove(archivePath)
+				if isArchiveFile(archivePath) {
+					if onExtract != nil {
+						onExtract()
+					}
+					if err := extractArchive(archivePath, destDir); err != nil {
+						return "", err
+					}
+					os.Remove(archivePath)
+				}
+				// Plain files (exe, dll, etc.) stay in destDir as-is.
 			}
 
 			versionFile := filepath.Join(destDir, ".version")
@@ -310,7 +317,7 @@ func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(byte
 		return "", verErr
 	}
 
-	if dlErr := tryDirectDownload(tool, version, destDir, onProgress); dlErr != nil {
+	if dlErr := tryDirectDownload(tool, version, destDir, onProgress, onExtract); dlErr != nil {
 		return "", fmt.Errorf("install %s: API unavailable and direct download failed: %w", tool.Name, dlErr)
 	}
 
@@ -321,30 +328,35 @@ func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(byte
 // tryDirectDownload attempts to download a release asset without using the GitHub API.
 // It scrapes the expanded_assets HTML page to discover real asset names,
 // then matches them using the same glob logic as the API path.
-func tryDirectDownload(tool ToolDef, version, destDir string, onProgress func(bytesDown, bytesTotal int64)) error {
+func tryDirectDownload(tool ToolDef, version, destDir string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
 	assets, err := scrapeReleaseAssets(tool.Repo, version)
 	if err != nil {
 		return fmt.Errorf("scrape assets for %s %s: %w", tool.Repo, version, err)
 	}
 
-	asset, found := matchAsset(assets, tool.AssetGlob)
-	if !found {
+	matched := matchAssets(assets, tool.AssetGlob)
+	if len(matched) == 0 {
 		return fmt.Errorf("no matching asset for %s in scraped list (glob: %s, found %d assets)",
 			tool.Name, tool.AssetGlob, len(assets))
 	}
 
-	archivePath := filepath.Join(destDir, asset.Name)
-	if err := downloadFile(asset.URL, archivePath, onProgress); err != nil {
-		os.Remove(archivePath)
-		return fmt.Errorf("download %s: %w", asset.Name, err)
-	}
+	for _, asset := range matched {
+		archivePath := filepath.Join(destDir, asset.Name)
+		if err := downloadFile(asset.URL, archivePath, onProgress); err != nil {
+			os.Remove(archivePath)
+			return fmt.Errorf("download %s: %w", asset.Name, err)
+		}
 
-	if err := extractArchive(archivePath, destDir); err != nil {
-		return err
-	}
-	// Only remove the downloaded file if it was an archive that got extracted.
-	if strings.ToLower(filepath.Ext(archivePath)) != ".exe" {
-		os.Remove(archivePath)
+		if isArchiveFile(archivePath) {
+			if onExtract != nil {
+				onExtract()
+			}
+			if err := extractArchive(archivePath, destDir); err != nil {
+				return err
+			}
+			os.Remove(archivePath)
+		}
+		// Plain files (exe, dll, etc.) stay in destDir as-is.
 	}
 	return nil
 }

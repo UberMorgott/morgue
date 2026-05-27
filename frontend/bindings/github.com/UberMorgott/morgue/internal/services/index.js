@@ -17,6 +17,8 @@ export {
 
 export {
     APICommand,
+    EnrichedToolStatus,
+    EnrichedToolsResponse,
     PipelineStatus,
     ScanTarget,
     UpdateStatus
