@@ -211,6 +211,23 @@ const translations: Record<string, Record<Lang, string>> = {
   'tools.installedViaApi': { en: 'installed', ru: 'установлен' },
   'tools.removedViaApi': { en: 'removed', ru: 'удалён' },
   'tools.updatedViaApi': { en: 'updated', ru: 'обновлён' },
+
+  // Settings — Unreal Engine
+  'settings.unrealEngine': { en: 'Unreal Engine', ru: 'Unreal Engine' },
+  'settings.ue5.extractPak': { en: 'Extract PAK assets', ru: 'Извлечение PAK-ассетов' },
+  'settings.ue5.extractPakHint': { en: 'Extract game assets from .pak/.utoc containers. Gives access to Blueprints, data tables, and asset structure.', ru: 'Извлечение игровых ассетов из .pak/.utoc контейнеров. Даёт доступ к Blueprints, таблицам данных и структуре ассетов.' },
+  'settings.ue5.sdkDump': { en: 'SDK class dump', ru: 'Дамп SDK классов' },
+  'settings.ue5.sdkDumpHint': { en: 'Dump all class names, functions, properties, and inheritance. The foundation — AI uses this to understand game structure.', ru: 'Дамп всех имён классов, функций, свойств и наследования. Основа — ИИ использует это для понимания структуры игры.' },
+  'settings.ue5.extractStrings': { en: 'String extraction', ru: 'Извлечение строк' },
+  'settings.ue5.extractStringsHint': { en: 'Find debug strings and source file paths in the binary. Helps AI locate specific functions by name.', ru: 'Поиск отладочных строк и путей к исходным файлам в бинарнике. Помогает ИИ находить функции по имени.' },
+  'settings.ue5.ghidraDecompile': { en: 'Full Ghidra decompilation', ru: 'Полная декомпиляция Ghidra' },
+  'settings.ue5.ghidraDecompileHint': { en: 'Complete binary decompilation to C code. Takes hours but gives full function bodies. Enable when you need to understand HOW something works.', ru: 'Полная декомпиляция бинарника в C-код. Занимает часы, но даёт тела всех функций. Включайте когда нужно понять КАК что-то работает.' },
+  'settings.ue5.nameResolution': { en: 'Name resolution', ru: 'Разрешение имён' },
+  'settings.ue5.nameResolutionHint': { en: 'Replace auto-generated names (FUN_12345) with real names from SDK dump and debug strings. Critical for readability.', ru: 'Замена автосгенерированных имён (FUN_12345) на реальные из SDK-дампа и отладочных строк. Критично для читаемости.' },
+  'settings.ue5.buildIndexes': { en: 'Build search indexes', ru: 'Построение индексов' },
+  'settings.ue5.buildIndexesHint': { en: 'Create cross-reference indexes (who calls what, string references, class hierarchy). Enables AI to navigate the codebase instantly.', ru: 'Создание индексов перекрёстных ссылок (кто вызывает что, ссылки на строки, иерархия классов). ИИ мгновенно навигирует по коду.' },
+  'settings.ue5.exportHookable': { en: 'Export hookable symbols', ru: 'Экспорт хукаемых символов' },
+  'settings.ue5.exportHookableHint': { en: 'List all functions that can be hooked from Lua/UE4SS. Essential for mod development.', ru: 'Список всех функций, которые можно хукнуть из Lua/UE4SS. Необходимо для разработки модов.' },
 };
 
 export function t(lang: Lang, key: string): string {

@@ -9,6 +9,7 @@ const (
 	GroupDelphiApp
 	GroupUnityMono
 	GroupUnityIL2CPP
+	GroupUnreal
 )
 
 var groupKindNames = [...]string{
@@ -17,6 +18,7 @@ var groupKindNames = [...]string{
 	"DelphiApp",
 	"UnityMono",
 	"UnityIL2CPP",
+	"Unreal",
 }
 
 func (g GroupKind) String() string {

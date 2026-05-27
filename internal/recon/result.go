@@ -9,12 +9,13 @@ import (
 type Kind int
 
 const (
-	Unknown     Kind = iota
-	Managed          // .NET / Mono
-	Native           // C/C++, Delphi, Go, Rust
-	UnityMono        // Unity with Mono scripting backend
-	UnityIL2CPP      // Unity with IL2CPP scripting backend
-	Mixed            // Contains both managed and native components
+	Unknown      Kind = iota
+	Managed           // .NET / Mono
+	Native            // C/C++, Delphi, Go, Rust
+	UnityMono         // Unity with Mono scripting backend
+	UnityIL2CPP       // Unity with IL2CPP scripting backend
+	UnrealEngine      // Unreal Engine 4/5
+	Mixed             // Contains both managed and native components
 )
 
 var kindNames = [...]string{
@@ -23,6 +24,7 @@ var kindNames = [...]string{
 	"Native",
 	"UnityMono",
 	"UnityIL2CPP",
+	"UnrealEngine",
 	"Mixed",
 }
 

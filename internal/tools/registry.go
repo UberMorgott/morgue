@@ -99,6 +99,16 @@ var Registry = []ToolDef{
 		Binary:      "GoReSym.exe",
 		Optional:    true,
 	},
+	{
+		Name:        "retoc",
+		Description: "Unreal Engine PAK/IoStore extractor",
+		Category:    CategoryExtractor,
+		Method:      MethodGitHubRelease,
+		Repo:        "trumank/retoc",
+		AssetGlob:   "*windows*",
+		Binary:      "retoc.exe",
+		Optional:    true,
+	},
 }
 
 // FindByName looks up a tool definition by name.
