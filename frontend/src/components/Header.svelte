@@ -1,24 +1,23 @@
 <script lang="ts">
-  import { onMount, createEventDispatcher } from 'svelte';
+  import { onMount } from 'svelte';
   import { UpdateService, ToolsService } from '../lib/api';
   import { t, type Lang } from '../lib/i18n';
   import { currentLang } from '../lib/stores';
 
-  export let lang: Lang = 'en';
-
-  const dispatch = createEventDispatcher<{
-    'app-update': void;
-    navigate: { page: string };
-  }>();
+  let { lang = 'en' as Lang, onappupdate, onnavigate }: {
+    lang?: Lang;
+    onappupdate?: () => void;
+    onnavigate?: (detail: { page: string }) => void;
+  } = $props();
 
   function switchLang(l: Lang) {
     currentLang.set(l);
   }
 
-  let version = 'dev';
-  let newVersion = '';
-  let updateRaw = '';
-  let toolUpdatesCount = 0;
+  let version = $state('dev');
+  let newVersion = $state('');
+  let updateRaw = $state('');
+  let toolUpdatesCount = $state(0);
 
   onMount(async () => {
     try {
@@ -51,18 +50,18 @@
   </div>
   <div class="header-right">
     {#if updateRaw === 'available' && newVersion}
-      <button class="badge badge-update" on:click={() => dispatch('app-update')}>
+      <button class="badge badge-update" onclick={onappupdate}>
         🔄 {t(lang, 'header.updateApp')} v{newVersion}
       </button>
     {/if}
     {#if toolUpdatesCount > 0}
-      <button class="badge badge-tools" on:click={() => dispatch('navigate', { page: 'tools' })}>
+      <button class="badge badge-tools" onclick={() => onnavigate?.({ page: 'tools' })}>
         🔧 {toolUpdatesCount} {t(lang, 'header.toolUpdates')}
       </button>
     {/if}
     <div class="lang-switcher">
-      <button class="lang-btn" class:lang-active={lang === 'en'} on:click={() => switchLang('en')} title="English">🇺🇸</button>
-      <button class="lang-btn" class:lang-active={lang === 'ru'} on:click={() => switchLang('ru')} title="Русский">🇷🇺</button>
+      <button class="lang-btn" class:lang-active={lang === 'en'} onclick={() => switchLang('en')} title="English">🇺🇸</button>
+      <button class="lang-btn" class:lang-active={lang === 'ru'} onclick={() => switchLang('ru')} title="Русский">🇷🇺</button>
     </div>
   </div>
 </header>

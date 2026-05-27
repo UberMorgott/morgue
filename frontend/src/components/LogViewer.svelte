@@ -1,14 +1,17 @@
 <script lang="ts">
-  import { afterUpdate } from 'svelte';
   import { t, type Lang } from '../lib/i18n';
 
-  export let lang: Lang = 'en';
-  export let entries: Array<{ level: 'info' | 'warn' | 'error'; message: string; time?: string }> = [];
-  export let autoScroll: boolean = true;
+  let { lang = 'en' as Lang, entries = [] as Array<{ level: 'info' | 'warn' | 'error'; message: string; time?: string }>, autoScroll = true }: {
+    lang?: Lang;
+    entries?: Array<{ level: 'info' | 'warn' | 'error'; message: string; time?: string }>;
+    autoScroll?: boolean;
+  } = $props();
 
-  let container: HTMLDivElement;
+  let container: HTMLDivElement | undefined = $state();
 
-  afterUpdate(() => {
+  $effect(() => {
+    // Track entries length to trigger scroll
+    entries.length;
     if (autoScroll && container) {
       container.scrollTop = container.scrollHeight;
     }

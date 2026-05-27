@@ -13,11 +13,12 @@
   import { pipelineState, updateFromEvent, addHistoryEntry, resetPipeline } from './lib/pipeline';
   import type { Lang } from './lib/i18n';
 
-  let currentPage = 'home';
-  let pipelineInputPath = '';
+  let currentPage = $state('home');
+  let pipelineInputPath = $state('');
 
-  let lang: Lang;
-  currentLang.subscribe(v => lang = v);
+  let lang: Lang = $state($currentLang);
+  // Keep lang in sync with store
+  const unsubLang = currentLang.subscribe(v => lang = v);
 
   // --- API command poll: runs at App level so commands are received on any tab ---
   let apiPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -74,11 +75,6 @@
             case 'run': {
               const path = cmd.path || '';
               if (!path) break;
-              // Reset pipeline and navigate to home, then bump the run
-              // signal so HomePage starts the pipeline regardless of its
-              // reactive guards (lastProcessedPath, phase, etc.).
-              // tick() ensures the DOM update completes (HomePage mounts
-              // with the correct inputPath prop) before the signal fires.
               resetPipeline();
               pipelineInputPath = path;
               currentPage = 'home';
@@ -106,6 +102,7 @@
   onDestroy(() => {
     stopApiPoll();
     cleanupPipelineProgress?.();
+    unsubLang();
   });
 
   onMount(async () => {
@@ -124,8 +121,8 @@
     }
   });
 
-  function handleFileSelected(e: CustomEvent<{ path: string }>) {
-    pipelineInputPath = e.detail.path;
+  function handleFileSelected(detail: { path: string }) {
+    pipelineInputPath = detail.path;
   }
 
   async function handleBrowse() {
@@ -151,18 +148,18 @@
     }
   }
 
-  function handleNavigate(e: CustomEvent<{ page: string }>) {
-    currentPage = e.detail.page;
+  function handleNavigate(detail: { page: string }) {
+    currentPage = detail.page;
   }
 </script>
 
 <div class="app-layout">
-  <Header {lang} on:app-update={handleAppUpdate} on:navigate={handleNavigate} />
+  <Header {lang} onappupdate={handleAppUpdate} onnavigate={handleNavigate} />
   <div class="main-area">
     <Sidebar bind:currentPage {lang} />
     <div class="page-content">
       {#if currentPage === 'home'}
-        <HomePage {lang} inputPath={pipelineInputPath} startupBusy={$startupBusy} on:select={handleFileSelected} on:browse={handleBrowse} on:clear={handleClearFile} />
+        <HomePage {lang} inputPath={pipelineInputPath} startupBusy={$startupBusy} onselect={handleFileSelected} onbrowse={handleBrowse} onclear={handleClearFile} />
       {:else if currentPage === 'tools'}
         <ToolsPage
           {lang}

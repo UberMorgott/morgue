@@ -1,12 +1,14 @@
 <script lang="ts">
   import { t, type Lang } from '../lib/i18n';
 
-  export let lang: Lang = 'en';
-  export let phase: string = '';
-  export let target: string = '';
-  export let elapsed: string = '';
-  export let progress: number = 0;
-  export let progressLabel: string = '';
+  let { lang = 'en' as Lang, phase = '', target = '', elapsed = '', progress = 0, progressLabel = '' }: {
+    lang?: Lang;
+    phase?: string;
+    target?: string;
+    elapsed?: string;
+    progress?: number;
+    progressLabel?: string;
+  } = $props();
 </script>
 
 <footer class="status-bar">

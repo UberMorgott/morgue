@@ -1,8 +1,7 @@
 <script lang="ts">
   import { t, type Lang } from '../lib/i18n';
 
-  export let lang: Lang = 'en';
-  export let items: Array<{
+  let { lang = 'en' as Lang, items = [] as Array<{
     path: string;
     group: string;
     kind?: string;
@@ -11,37 +10,52 @@
     selected: boolean;
     skipped?: boolean;
     skipReason?: string;
-  }> = [];
+  }> }: {
+    lang?: Lang;
+    items?: Array<{
+      path: string;
+      group: string;
+      kind?: string;
+      obfuscator?: string;
+      recipe?: string;
+      selected: boolean;
+      skipped?: boolean;
+      skipReason?: string;
+    }>;
+  } = $props();
 
   function toggleItem(index: number) {
     if (!items[index].skipped) {
       items[index].selected = !items[index].selected;
-      items = items; // trigger reactivity
     }
   }
 
   function selectAll() {
-    items = items.map(i => ({ ...i, selected: !i.skipped }));
+    for (const item of items) {
+      item.selected = !item.skipped;
+    }
   }
 
   function deselectAll() {
-    items = items.map(i => ({ ...i, selected: false }));
+    for (const item of items) {
+      item.selected = false;
+    }
   }
 
   function basename(path: string): string {
     return path.split(/[/\\]/).pop() || path;
   }
 
-  $: selectedCount = items.filter(i => i.selected).length;
-  $: totalCount = items.length;
+  let selectedCount = $derived(items.filter(i => i.selected).length);
+  let totalCount = $derived(items.length);
 </script>
 
 <div class="file-tree">
   <div class="tree-toolbar">
     <span class="tree-count">{selectedCount}/{totalCount} {t(lang, 'filetree.selected')}</span>
     <div class="tree-actions">
-      <button class="tree-btn" on:click={selectAll}>{t(lang, 'filetree.all')}</button>
-      <button class="tree-btn" on:click={deselectAll}>{t(lang, 'filetree.none')}</button>
+      <button class="tree-btn" onclick={selectAll}>{t(lang, 'filetree.all')}</button>
+      <button class="tree-btn" onclick={deselectAll}>{t(lang, 'filetree.none')}</button>
     </div>
   </div>
 
@@ -51,7 +65,7 @@
         class="tree-item"
         class:selected={item.selected}
         class:skipped={item.skipped}
-        on:click={() => toggleItem(i)}
+        onclick={() => toggleItem(i)}
       >
         <span class="tree-check">
           {#if item.skipped}

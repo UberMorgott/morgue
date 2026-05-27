@@ -1,20 +1,37 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
   import { t, type Lang } from '../lib/i18n';
 
-  export let lang: Lang = 'en';
-  export let name: string;
-  export let installed: boolean = false;
-  export let version: string = '';
-  export let latestVersion: string = '';
-  export let updateAvailable: boolean = false;
-  export let category: string = '';
-  export let description: string = '';
-  export let busy: boolean = false;
-  export let checking: boolean = false;
-  export let runtimeDeps: Array<{kind: string, available: boolean, version: string, local: boolean}> = [];
-
-  const dispatch = createEventDispatcher();
+  let {
+    lang = 'en' as Lang,
+    name,
+    installed = false,
+    version = '',
+    latestVersion = '',
+    updateAvailable = false,
+    category = '',
+    description = '',
+    busy = false,
+    checking = false,
+    runtimeDeps = [] as Array<{kind: string, available: boolean, version: string, local: boolean}>,
+    oninstall,
+    ondelete,
+    oninstallruntime,
+  }: {
+    lang?: Lang;
+    name: string;
+    installed?: boolean;
+    version?: string;
+    latestVersion?: string;
+    updateAvailable?: boolean;
+    category?: string;
+    description?: string;
+    busy?: boolean;
+    checking?: boolean;
+    runtimeDeps?: Array<{kind: string, available: boolean, version: string, local: boolean}>;
+    oninstall?: (detail: { name: string }) => void;
+    ondelete?: (detail: { name: string }) => void;
+    oninstallruntime?: (detail: { kind: string }) => void;
+  } = $props();
 </script>
 
 <div class="tool-row" class:dimmed={!installed} class:has-deps={runtimeDeps.length > 0}>
@@ -48,18 +65,18 @@
   </div>
   <div class="tool-actions">
     {#if !installed}
-      <button class="action-btn action-download" on:click={() => dispatch('install', { name })} disabled={busy}>
+      <button class="action-btn action-download" onclick={() => oninstall?.({ name })} disabled={busy}>
         {t(lang, 'tools.download')}
       </button>
     {:else if updateAvailable}
-      <button class="action-btn action-update" on:click={() => dispatch('install', { name })} disabled={busy}>
+      <button class="action-btn action-update" onclick={() => oninstall?.({ name })} disabled={busy}>
         {t(lang, 'tools.update')}
       </button>
     {:else}
       <span class="up-to-date">{t(lang, 'tools.upToDate')}</span>
     {/if}
     {#if installed}
-      <button class="action-btn action-delete" on:click={() => dispatch('delete', { name })} disabled={busy}>
+      <button class="action-btn action-delete" onclick={() => ondelete?.({ name })} disabled={busy}>
         {t(lang, 'tools.delete')}
       </button>
     {/if}
@@ -77,7 +94,7 @@
       {:else}
         <span class="dep-indicator dep-missing"></span>
         <span class="dep-missing-text">{t(lang, 'runtimes.missing')}</span>
-        <button class="dep-install-btn" on:click={() => dispatch('install-runtime', { kind: dep.kind })} disabled={busy}>
+        <button class="dep-install-btn" onclick={() => oninstallruntime?.({ kind: dep.kind })} disabled={busy}>
           {t(lang, 'runtimes.install')}
         </button>
       {/if}

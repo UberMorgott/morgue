@@ -1,8 +1,10 @@
 <script lang="ts">
-  export let target: string = '';
-  export let status: 'running' | 'completed' | 'failed' = 'completed';
-  export let duration: string = '';
-  export let recipe: string = '';
+  let { target = '', status = 'completed', duration = '', recipe = '' }: {
+    target?: string;
+    status?: 'running' | 'completed' | 'failed';
+    duration?: string;
+    recipe?: string;
+  } = $props();
 
   function basename(path: string): string {
     return path.split(/[/\\]/).pop() || path;
