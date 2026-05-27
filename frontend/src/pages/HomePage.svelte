@@ -1054,7 +1054,7 @@
     font-size: 1.2rem;
     font-weight: 700;
     color: var(--accent);
-    font-family: 'Orbitron', monospace;
+    font-family: Consolas, ui-monospace, monospace;
   }
   .files-sep {
     font-size: 0.9rem;
