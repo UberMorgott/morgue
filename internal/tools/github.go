@@ -283,10 +283,14 @@ func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(byte
 				return "", fmt.Errorf("download %s: %w", asset.Name, err)
 			}
 
-			defer os.Remove(archivePath)
-
 			if err := extractArchive(archivePath, destDir); err != nil {
 				return "", err
+			}
+
+			// Only remove the downloaded file if it was an archive that got extracted.
+			// Standalone .exe assets are the final binary and must be kept.
+			if strings.ToLower(filepath.Ext(archivePath)) != ".exe" {
+				os.Remove(archivePath)
 			}
 
 			versionFile := filepath.Join(destDir, ".version")
@@ -335,8 +339,14 @@ func tryDirectDownload(tool ToolDef, version, destDir string, onProgress func(by
 		return fmt.Errorf("download %s: %w", asset.Name, err)
 	}
 
-	defer os.Remove(archivePath)
-	return extractArchive(archivePath, destDir)
+	if err := extractArchive(archivePath, destDir); err != nil {
+		return err
+	}
+	// Only remove the downloaded file if it was an archive that got extracted.
+	if strings.ToLower(filepath.Ext(archivePath)) != ".exe" {
+		os.Remove(archivePath)
+	}
+	return nil
 }
 
 // scrapeReleaseAssets fetches the expanded_assets HTML fragment for a GitHub release
