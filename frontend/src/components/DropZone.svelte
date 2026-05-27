@@ -1,12 +1,14 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
   import { t, type Lang } from '../lib/i18n';
 
-  export let lang: Lang = 'en';
-  export let disabled: boolean = false;
+  let { lang = 'en' as Lang, disabled = false, onselect, onbrowse }: {
+    lang?: Lang;
+    disabled?: boolean;
+    onselect?: (detail: { path: string }) => void;
+    onbrowse?: () => void;
+  } = $props();
 
-  const dispatch = createEventDispatcher();
-  let dragover = false;
+  let dragover = $state(false);
 
   function handleDragOver(e: DragEvent) {
     e.preventDefault();
@@ -24,24 +26,24 @@
     const files = e.dataTransfer?.files;
     if (files && files.length > 0) {
       const path = (files[0] as any).path || files[0].name;
-      dispatch('select', { path });
+      onselect?.({ path });
     }
   }
 
   function handleClick() {
-    if (!disabled) dispatch('browse');
+    if (!disabled) onbrowse?.();
   }
 </script>
 
-<!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
+<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 <div
   class="dropzone"
   class:dragover
   class:disabled
-  on:dragover={handleDragOver}
-  on:dragleave={handleDragLeave}
-  on:drop={handleDrop}
-  on:click={handleClick}
+  ondragover={handleDragOver}
+  ondragleave={handleDragLeave}
+  ondrop={handleDrop}
+  onclick={handleClick}
 >
   <div class="dropzone-icon">
     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">

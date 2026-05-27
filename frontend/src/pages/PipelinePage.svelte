@@ -7,23 +7,25 @@
   import LogViewer from '../components/LogViewer.svelte';
   import { t, type Lang } from '../lib/i18n';
 
-  export let lang: Lang = 'en';
-  export let inputPath: string = '';
+  let { lang = 'en' as Lang, inputPath = '' }: {
+    lang?: Lang;
+    inputPath?: string;
+  } = $props();
 
   type PipelineStep = 'scan' | 'recon' | 'tools' | 'execute' | 'done' | 'error';
 
-  let currentStep: PipelineStep = 'scan';
+  let currentStep: PipelineStep = $state('scan');
 
-  let pipelineProgress = 0;
-  let pipelineStepLabel = '';
-  let pipelineTotal = 0;
-  let pipelineCurrent = 0;
-  let logEntries: Array<{ level: 'info' | 'warn' | 'error'; message: string }> = [];
+  let pipelineProgress = $state(0);
+  let pipelineStepLabel = $state('');
+  let pipelineTotal = $state(0);
+  let pipelineCurrent = $state(0);
+  let logEntries: Array<{ level: 'info' | 'warn' | 'error'; message: string }> = $state([]);
 
-  let outputPath = '';
-  let totalTime = '';
-  let filesCount = 0;
-  let errorMessage = '';
+  let outputPath = $state('');
+  let totalTime = $state('');
+  let filesCount = $state(0);
+  let errorMessage = $state('');
 
   let cleanups: Array<() => void> = [];
 
@@ -70,7 +72,7 @@
     currentStep = 'execute';
     logEntries = [];
     try {
-      // Engine handles scan→recon→match→install→execute with proper events
+      // Engine handles scan->recon->match->install->execute with proper events
       await PipelineService.Run(inputPath, '');
     } catch (e: any) {
       if (!errorMessage) {

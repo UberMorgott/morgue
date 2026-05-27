@@ -1,7 +1,9 @@
 <script lang="ts">
-  export let percent: number = 0;
-  export let label: string = '';
-  export let elapsed: string = '';
+  let { percent = 0, label = '', elapsed = '' }: {
+    percent?: number;
+    label?: string;
+    elapsed?: string;
+  } = $props();
 </script>
 
 <div class="progress-wrapper">

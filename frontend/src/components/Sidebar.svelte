@@ -1,9 +1,12 @@
 <script lang="ts">
   import { t, type Lang } from '../lib/i18n';
 
-  export let currentPage: string = 'home';
-  export let lang: Lang = 'en';
-  let collapsed = false;
+  let { currentPage = $bindable('home'), lang = 'en' as Lang }: {
+    currentPage?: string;
+    lang?: Lang;
+  } = $props();
+
+  let collapsed = $state(false);
 
   const items = [
     { id: 'home',     icon: '\u2302', key: 'sidebar.home' },
@@ -22,7 +25,7 @@
       <button
         class="nav-item"
         class:active={currentPage === item.id}
-        on:click={() => navigate(item.id)}
+        onclick={() => navigate(item.id)}
         title={t(lang, item.key)}
       >
         <span class="nav-icon">{item.icon}</span>
@@ -33,7 +36,7 @@
     {/each}
   </div>
 
-  <button class="collapse-btn" on:click={() => collapsed = !collapsed} title={collapsed ? t(lang, 'sidebar.expand') : t(lang, 'sidebar.collapse')}>
+  <button class="collapse-btn" onclick={() => collapsed = !collapsed} title={collapsed ? t(lang, 'sidebar.expand') : t(lang, 'sidebar.collapse')}>
     <span class="collapse-icon">{collapsed ? '\u00BB' : '\u00AB'}</span>
   </button>
 </nav>

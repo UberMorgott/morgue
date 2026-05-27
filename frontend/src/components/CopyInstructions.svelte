@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Clipboard } from '@wailsio/runtime';
 
-  let copied = false;
+  let copied = $state(false);
 
   async function copyToClipboard(text: string): Promise<void> {
     // 1. Wails runtime clipboard (works when Wails backend is available)
@@ -46,7 +46,7 @@
   }
 </script>
 
-<button class="copy-btn" on:click={copyInstructions}>
+<button class="copy-btn" onclick={copyInstructions}>
   {copied ? 'Copied!' : 'Copy AI Instructions'}
 </button>
 

@@ -1,21 +1,16 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
-
-  export let type: 'success' | 'error' | 'info' = 'info';
-  export let message: string = '';
-  export let dismissible: boolean = true;
-
-  const dispatch = createEventDispatcher();
-
-  function handleDismiss() {
-    dispatch('dismiss');
-  }
+  let { type = 'info', message = '', dismissible = true, ondismiss }: {
+    type?: 'success' | 'error' | 'info';
+    message?: string;
+    dismissible?: boolean;
+    ondismiss?: () => void;
+  } = $props();
 </script>
 
 <div class="toast toast-{type}">
   <span class="toast-message">{message}</span>
   {#if dismissible}
-    <button class="toast-dismiss" on:click={handleDismiss}>&times;</button>
+    <button class="toast-dismiss" onclick={ondismiss}>&times;</button>
   {/if}
 </div>
 

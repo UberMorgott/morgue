@@ -6,20 +6,20 @@
   import { onEvent } from '../lib/events';
   import { t, type Lang } from '../lib/i18n';
 
-  export let lang: Lang = 'en';
+  let { lang = 'en' as Lang }: { lang?: Lang } = $props();
 
   let tools: Array<{
     name: string; installed: boolean; path: string; version: string;
     latestVersion: string; updateAvailable: boolean; category: string; description: string;
     checking: boolean; runtimeDeps: string[];
-  }> = [];
+  }> = $state([]);
   let runtimes: Array<{
     kind: string; available: boolean; version: string; path: string; local: boolean; required: boolean;
-  }> = [];
-  let loading = true;
-  let runtimesLoading = true;
-  let busy = false;
-  let runtimeBusy: Record<string, boolean> = {};
+  }> = $state([]);
+  let loading = $state(true);
+  let runtimesLoading = $state(true);
+  let busy = $state(false);
+  let runtimeBusy: Record<string, boolean> = $state({});
 
   let cleanups: Array<() => void> = [];
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -42,11 +42,6 @@
     } catch (e) { console.error('Refresh after tool:installed failed:', e); }
   }
 
-  // Poll tool status periodically to catch API-triggered changes.
-  // SSE EventSource doesn't work inside the Wails webview (cross-origin blocked
-  // by the wails:// protocol), so we poll CheckAll() as a lightweight fallback.
-  // When state changes are detected, we generate operation log entries so the
-  // progress bar / operation log at the bottom reflects API-triggered installs.
   function startPolling() {
     if (pollTimer) return;
     pollTimer = setInterval(async () => {
@@ -92,7 +87,6 @@
 
     await Promise.all([loadTools(), loadRuntimes()]);
 
-    // Start polling AFTER tools are loaded, so diff has baseline
     startPolling();
   });
 
@@ -131,7 +125,6 @@
   async function loadTools() {
     loading = true;
     try {
-      // Phase 1: instant local status (no network calls)
       const statuses = await ToolsService.CheckAll();
       tools = (statuses || []).map((s: any) => ({
         name: s.Name ?? '', installed: s.Installed ?? false,
@@ -142,7 +135,6 @@
       }));
       loading = false;
 
-      // Phase 2: only auto-check if enough time has passed
       const shouldCheck = await ToolsService.ShouldCheckUpdates();
       if (shouldCheck) {
         tools = tools.map(t => ({ ...t, checking: true }));
@@ -157,7 +149,7 @@
     }
   }
 
-  $: anyChecking = tools.some(t => t.checking);
+  let anyChecking = $derived(tools.some(t => t.checking));
 
   async function forceCheckUpdates() {
     tools = tools.map(t => ({ ...t, checking: true, latestVersion: '', updateAvailable: false }));
@@ -180,12 +172,11 @@
     }
   }
 
-  async function installTool(e: CustomEvent<{ name: string }>) {
-    const name = e.detail.name;
+  async function installTool(detail: { name: string }) {
+    const name = detail.name;
     busy = true;
     try {
       await ToolsService.Install(name);
-      // Refresh only this tool's status, not the whole list
       const st = await ToolsService.CheckAll();
       const updated = (st || []).find((s: any) => s.Name === name);
       if (updated) {
@@ -203,12 +194,11 @@
     } finally { busy = false; }
   }
 
-  async function deleteTool(e: CustomEvent<{ name: string }>) {
-    const name = e.detail.name;
+  async function deleteTool(detail: { name: string }) {
+    const name = detail.name;
     busy = true;
     try {
       await ToolsService.Delete(name);
-      // Refresh only this tool's row
       tools = tools.map(t => t.name === name ? {
         ...t, installed: false, version: '', path: '',
       } : t);
@@ -224,7 +214,6 @@
       const name = missing[i].name;
       try {
         await ToolsService.Install(name);
-        // Update just this row
         tools = tools.map(t => t.name === name ? { ...t, installed: true, checking: true } : t);
         checkLatestVersion(name);
       } catch (e: any) {
@@ -250,8 +239,7 @@
     busy = false;
   }
 
-  // Reactive: recomputes when runtimes or tools change
-  $: runtimeDepsMap = Object.fromEntries(tools.map(tool => [
+  let runtimeDepsMap = $derived(Object.fromEntries(tools.map(tool => [
     tool.name,
     (tool.runtimeDeps || []).map(kind => {
       const rt = runtimes.find(r => r.kind === kind);
@@ -259,22 +247,22 @@
         ? { kind, available: rt.available, version: rt.version, local: rt.local }
         : { kind, available: false, version: '', local: false };
     })
-  ]));
+  ])));
 
-  $: missingCount = tools.filter(t => !t.installed).length;
-  $: outdatedCount = tools.filter(t => t.updateAvailable).length;
+  let missingCount = $derived(tools.filter(t => !t.installed).length);
+  let outdatedCount = $derived(tools.filter(t => t.updateAvailable).length);
 </script>
 
 <div class="tools-page">
   <div class="tools-header">
     <h2 class="tools-title">{t(lang, 'tools.title')}</h2>
     <div class="tools-actions">
-      <button class="header-btn" on:click={forceCheckUpdates} disabled={busy || anyChecking}>{t(lang, 'tools.checkUpdates')}</button>
+      <button class="header-btn" onclick={forceCheckUpdates} disabled={busy || anyChecking}>{t(lang, 'tools.checkUpdates')}</button>
       {#if missingCount > 0}
-        <button class="header-btn" on:click={downloadAll} disabled={busy}>{t(lang, 'tools.downloadAll')} ({missingCount})</button>
+        <button class="header-btn" onclick={downloadAll} disabled={busy}>{t(lang, 'tools.downloadAll')} ({missingCount})</button>
       {/if}
       {#if outdatedCount > 0}
-        <button class="header-btn header-btn-accent" on:click={updateAll} disabled={busy}>{t(lang, 'tools.updateAll')} ({outdatedCount})</button>
+        <button class="header-btn header-btn-accent" onclick={updateAll} disabled={busy}>{t(lang, 'tools.updateAll')} ({outdatedCount})</button>
       {/if}
     </div>
   </div>
@@ -288,8 +276,8 @@
           category={tool.category} description={tool.description} {busy}
           checking={tool.checking}
           runtimeDeps={runtimeDepsMap[tool.name] || []}
-          on:install={installTool} on:delete={deleteTool}
-          on:install-runtime={(e) => installRuntime(e.detail.kind)} />
+          oninstall={installTool} ondelete={deleteTool}
+          oninstallruntime={(detail) => installRuntime(detail.kind)} />
       {/each}
     </div>
   {/if}
