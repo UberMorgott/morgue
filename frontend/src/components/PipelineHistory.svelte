@@ -24,7 +24,7 @@
 <div class="history-section animate-in">
   <h3 class="history-heading">{t(lang, 'home.recent')}</h3>
   <div class="history-list glass">
-    {#each entries.slice(0, 5) as entry}
+    {#each entries.slice(0, 5) as entry (entry.timestamp)}
       <button class="history-item" onclick={() => onselect?.({ path: entry.path })}>
         <span class="dot {entry.success ? 'dot-success' : 'dot-error'}"></span>
         <span class="history-name">{basename(entry.path)}</span>

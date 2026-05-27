@@ -37,11 +37,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'scan.targetsSelected': { en: 'targets selected', ru: 'целей выбрано' },
   'scan.startPipeline': { en: 'Start Pipeline', ru: 'Запустить Pipeline' },
 
-  // FileTree
-  'filetree.selected': { en: 'selected', ru: 'выбрано' },
-  'filetree.all': { en: 'All', ru: 'Все' },
-  'filetree.none': { en: 'None', ru: 'Сброс' },
-
   // ToolsPage
   'tools.title': { en: 'Tools', ru: 'Инструменты' },
   'tools.installAllMissing': { en: 'Install All Missing', ru: 'Установить все недостающие' },
@@ -93,35 +88,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'settings.logging': { en: 'Logging', ru: 'Логирование' },
   'settings.logLevel': { en: 'Log level', ru: 'Уровень логов' },
   'settings.logToFile': { en: 'Log to file', ru: 'Запись в файл' },
-
-  // StatusBar
-  'status.ready': { en: 'Ready', ru: 'Готов' },
-  'status.running': { en: 'Pipeline running', ru: 'Pipeline выполняется' },
-  'status.complete': { en: 'Complete', ru: 'Завершено' },
-
-  // Toast
-  'toast.success': { en: 'Success', ru: 'Успешно' },
-  'toast.error': { en: 'Error', ru: 'Ошибка' },
-  'toast.info': { en: 'Info', ru: 'Информация' },
-
-  // LogViewer
-  'log.empty': { en: 'No log entries', ru: 'Нет записей в журнале' },
-
-  // Pipeline view
-  'pipeline.scanning': { en: 'Scanning...', ru: 'Сканирование...' },
-  'pipeline.foundBinaries': { en: 'binaries found', ru: 'бинарников найдено' },
-  'pipeline.recon': { en: 'Analyzing...', ru: 'Анализ...' },
-  'pipeline.checkingTools': { en: 'Checking tools...', ru: 'Проверка инструментов...' },
-  'pipeline.allToolsReady': { en: 'All tools ready', ru: 'Все инструменты готовы' },
-  'pipeline.missingTools': { en: 'Missing tools', ru: 'Недостающие инструменты' },
-  'pipeline.installMissing': { en: 'Install missing', ru: 'Установить недостающие' },
-  'pipeline.executing': { en: 'Decompiling...', ru: 'Декомпиляция...' },
-  'pipeline.step': { en: 'Step', ru: 'Шаг' },
-  'pipeline.done': { en: 'Done', ru: 'Готово' },
-  'pipeline.outputPath': { en: 'Output', ru: 'Результат' },
-  'pipeline.filesDecompiled': { en: 'files decompiled', ru: 'файлов декомпилировано' },
-  'pipeline.totalTime': { en: 'Total time', ru: 'Общее время' },
-  'pipeline.error': { en: 'Error', ru: 'Ошибка' },
 
   // Home — pipeline inline
   'home.scanning': { en: 'Scanning for files...', ru: 'Поиск файлов...' },
@@ -183,19 +149,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'tools.checking': { en: 'Checking updates...', ru: 'Проверка обновлений...' },
   'tools.checkUpdates': { en: 'Check updates', ru: 'Проверить обновления' },
 
-  // StatusBar enhanced
-  'status.downloading': { en: 'Downloading', ru: 'Скачивание' },
-  'status.installing': { en: 'Installing', ru: 'Установка' },
-
-
   // Settings — folder picker
   'settings.browse': { en: 'Browse...', ru: 'Обзор...' },
   'settings.githubToken': { en: 'GitHub Token (optional)', ru: 'GitHub Token (опционально)' },
   'settings.githubTokenHint': { en: 'Increases API limit from 60 to 5000 requests/hour', ru: 'Увеличивает лимит API с 60 до 5000 запросов/час' },
   'settings.createToken': { en: 'Create token', ru: 'Создать токен' },
 
-  // Sidebar — pipeline
-  'sidebar.pipeline': { en: 'Pipeline', ru: 'Pipeline' },
 
   // Runtimes
   'runtimes.title': { en: 'Runtimes', ru: 'Рантаймы' },

@@ -1,6 +1,8 @@
 <script lang="ts">
   import { Clipboard } from '@wailsio/runtime';
 
+  const API_BASE = 'http://127.0.0.1:19876';
+
   let copied = $state(false);
 
   async function copyToClipboard(text: string): Promise<void> {
@@ -32,7 +34,7 @@
   async function copyInstructions() {
     let text: string;
     try {
-      const res = await fetch('http://127.0.0.1:19876/api/instructions');
+      const res = await fetch(`${API_BASE}/api/instructions`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       text = await res.text();
     } catch (e) {

@@ -83,7 +83,7 @@
   </div>
 </div>
 {#if runtimeDeps.length > 0}
-  {#each runtimeDeps as dep}
+  {#each runtimeDeps as dep (dep.kind)}
     <div class="runtime-dep-row">
       <span class="dep-branch">&nbsp;</span>
       <span class="dep-name">{dep.kind === 'dotnet' ? '.NET SDK' : dep.kind === 'java' ? 'Java JRE' : dep.kind}</span>
@@ -125,6 +125,7 @@
   .ver-available { color: var(--accent); font-weight: 500; }
   .tool-actions { display: flex; gap: 6px; flex-shrink: 0; }
   .action-btn { all: unset; font-size: clamp(12px, 1.2vw, 15px); padding: 6px 14px; border-radius: 5px; cursor: pointer; transition: all 0.15s; }
+  .action-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
   .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .action-download { border: 1px solid var(--accent); color: var(--accent); }
   .action-download:hover:not(:disabled) { background: var(--accent-dim); }
@@ -161,6 +162,7 @@
     border: 1px solid var(--accent); color: var(--accent); cursor: pointer;
     transition: all 0.15s;
   }
+  .dep-install-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
   .dep-install-btn:hover:not(:disabled) { background: var(--accent-dim); }
   .dep-install-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

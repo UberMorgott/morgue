@@ -35,7 +35,7 @@
 
   {#if state.outputStats.length > 0}
     <div class="output-stats">
-      {#each state.outputStats as line}
+      {#each state.outputStats as line, i (i)}
         <div class="output-stat-line">{line}</div>
       {/each}
     </div>

@@ -86,7 +86,7 @@
         } finally {
           processingApiCommand = false;
         }
-      } catch { /* ignore poll errors */ }
+      } catch (e) { console.error('API poll failed:', e); }
     }, 500);
   }
 
@@ -106,6 +106,10 @@
   });
 
   onMount(async () => {
+    window.addEventListener('unhandledrejection', (e) => {
+      console.error('Unhandled promise rejection:', e.reason);
+    });
+
     startApiPoll();
 
     cleanupPipelineProgress = onEvent('pipeline:progress', (data: any) => {

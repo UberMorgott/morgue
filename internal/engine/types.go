@@ -20,26 +20,26 @@ type TargetResult struct {
 	SkipReason string
 }
 
-// PipelineEvent is emitted via Wails events. JSON keys are PascalCase (Go defaults).
+// PipelineEvent is emitted via Wails events. JSON keys are explicit PascalCase.
 type PipelineEvent struct {
-	Phase          string
-	Target         string
-	Message        string
-	Progress       *recipe.StepProgress
-	Done           bool
-	Error          error
-	FilesTotal     int // total targets found
-	FilesProcessed int // targets completed so far
+	Phase          string              `json:"Phase"`
+	Target         string              `json:"Target"`
+	Message        string              `json:"Message"`
+	Progress       *recipe.StepProgress `json:"Progress,omitempty"`
+	Done           bool                `json:"Done"`
+	Error          error               `json:"Error,omitempty"`
+	FilesTotal     int                 `json:"FilesTotal"`
+	FilesProcessed int                 `json:"FilesProcessed"`
 	// Enriched fields for frontend
-	ReconKind  string   // e.g. "Managed", "Native", "UnrealEngine"
-	Compiler   string   // e.g. "Delphi", "Go"
-	Obfuscator string   // e.g. "ConfuserEx"
-	FileSize   int64    // bytes
-	RecipeName string   // matched recipe name
-	RecipeDesc string   // matched recipe description
-	ToolsNeeded []string // all tools required for this recipe
-	OutputPath  string   // output directory (on done)
-	OutputStats []string // post-execution file statistics
+	ReconKind   string   `json:"ReconKind,omitempty"`
+	Compiler    string   `json:"Compiler,omitempty"`
+	Obfuscator  string   `json:"Obfuscator,omitempty"`
+	FileSize    int64    `json:"FileSize,omitempty"`
+	RecipeName  string   `json:"RecipeName,omitempty"`
+	RecipeDesc  string   `json:"RecipeDesc,omitempty"`
+	ToolsNeeded []string `json:"ToolsNeeded,omitempty"`
+	OutputPath  string   `json:"OutputPath,omitempty"`
+	OutputStats []string `json:"OutputStats,omitempty"`
 }
 
 // PauseGate allows pausing/resuming the pipeline between steps.
