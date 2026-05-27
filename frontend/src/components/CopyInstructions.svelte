@@ -1,5 +1,8 @@
 <script lang="ts">
   import { Clipboard } from '@wailsio/runtime';
+  import { t, type Lang } from '../lib/i18n';
+
+  let { lang = 'en' as Lang }: { lang?: Lang } = $props();
 
   const API_BASE = 'http://127.0.0.1:19876';
 
@@ -49,7 +52,7 @@
 </script>
 
 <button class="copy-btn" onclick={copyInstructions}>
-  {copied ? 'Copied!' : 'Copy AI Instructions'}
+  {copied ? t(lang, 'settings.copied') : t(lang, 'settings.copyButton')}
 </button>
 
 <style>

@@ -150,9 +150,9 @@
               </div>
             {/each}
             {@const metaItems = [
-              $pipelineState.compiler ? `Compiler: ${$pipelineState.compiler}` : '',
-              $pipelineState.obfuscator ? `Obfuscator: ${$pipelineState.obfuscator}` : '',
-              $pipelineState.fileSize ? `Size: ${formatFileSize($pipelineState.fileSize)}` : '',
+              $pipelineState.compiler ? `${t(lang, 'pipeline.compiler')} ${$pipelineState.compiler}` : '',
+              $pipelineState.obfuscator ? `${t(lang, 'pipeline.obfuscator')} ${$pipelineState.obfuscator}` : '',
+              $pipelineState.fileSize ? `${t(lang, 'pipeline.size')} ${formatFileSize($pipelineState.fileSize)}` : '',
             ].filter(Boolean)}
             {#if metaItems.length > 0}
               <div class="acc-detail-row detect-meta">
@@ -166,7 +166,7 @@
             {/if}
             {#if $pipelineState.recipeName}
               <div class="acc-detail-row">
-                <span class="acc-detail-label">Recipe</span>
+                <span class="acc-detail-label">{t(lang, 'pipeline.recipe')}</span>
                 <span class="acc-detail-mono">{$pipelineState.recipeName}</span>
                 {#if $pipelineState.recipeDesc}
                   <span class="acc-detail-value muted">&mdash; {$pipelineState.recipeDesc}</span>
@@ -222,7 +222,7 @@
                   </span>
                   <span class="tool-name">{tool}</span>
                   <span class="tool-status" class:tool-status-ready={isInstalled} class:tool-status-installing={isInstalling}>
-                    {isInstalled ? 'ready' : isInstalling ? 'installing...' : 'pending'}
+                    {isInstalled ? t(lang, 'pipeline.toolReady') : isInstalling ? t(lang, 'pipeline.toolInstalling') : t(lang, 'pipeline.toolPending')}
                   </span>
                 </div>
               {/each}
@@ -245,7 +245,7 @@
                 </div>
                 <span class="dl-pct">{$pipelineState.downloadProgress}%</span>
               {:else}
-                <span class="dl-extracting">extracting...</span>
+                <span class="dl-extracting">{t(lang, 'pipeline.extracting')}</span>
               {/if}
             </div>
           {/if}
@@ -265,7 +265,7 @@
 
           {#if $pipelineState.currentTarget}
             <div class="acc-detail-row">
-              <span class="acc-detail-label">Target</span>
+              <span class="acc-detail-label">{t(lang, 'pipeline.target')}</span>
               <span class="acc-detail-mono">{basename($pipelineState.currentTarget)}</span>
             </div>
           {/if}

@@ -21,7 +21,8 @@
 
   onMount(async () => {
     try {
-      version = await UpdateService.GetVersion();
+      const v = await UpdateService.GetVersion();
+      version = typeof v === 'string' && v.length < 30 && !v.includes('<') ? v : 'dev';
     } catch (e) { console.error('GetVersion failed:', e); }
 
     try {

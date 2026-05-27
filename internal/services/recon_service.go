@@ -1,6 +1,8 @@
 package services
 
 import (
+	"context"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/UberMorgott/morgue/internal/recon"
@@ -37,7 +39,7 @@ func (s *ReconService) ScanDirectory(dir string) ([]ScanTarget, error) {
 
 // ClassifyFile performs recon on a single file.
 func (s *ReconService) ClassifyFile(path string) (*recon.Result, error) {
-	r, err := recon.Classify(path)
+	r, err := recon.Classify(context.Background(), path)
 	if err != nil {
 		return nil, err
 	}

@@ -176,6 +176,24 @@ const translations: Record<string, Record<Lang, string>> = {
   'tools.removedViaApi': { en: 'removed', ru: 'удалён' },
   'tools.updatedViaApi': { en: 'updated', ru: 'обновлён' },
 
+  // Settings — AI Integration
+  'settings.aiIntegration': { en: 'AI Integration', ru: 'Интеграция с ИИ' },
+  'settings.copyInstructions': { en: 'Copy instructions for AI assistant', ru: 'Скопировать инструкции для ИИ-ассистента' },
+  'settings.apiStatus': { en: 'API Status', ru: 'Статус API' },
+  'settings.copyButton': { en: 'Copy AI Instructions', ru: 'Скопировать инструкции' },
+  'settings.copied': { en: 'Copied!', ru: 'Скопировано!' },
+
+  // Pipeline progress
+  'pipeline.toolReady': { en: 'ready', ru: 'готов' },
+  'pipeline.toolInstalling': { en: 'installing...', ru: 'установка...' },
+  'pipeline.toolPending': { en: 'pending', ru: 'ожидание' },
+  'pipeline.extracting': { en: 'extracting...', ru: 'распаковка...' },
+  'pipeline.recipe': { en: 'Recipe', ru: 'Рецепт' },
+  'pipeline.target': { en: 'Target', ru: 'Цель' },
+  'pipeline.compiler': { en: 'Compiler:', ru: 'Компилятор:' },
+  'pipeline.obfuscator': { en: 'Obfuscator:', ru: 'Обфускатор:' },
+  'pipeline.size': { en: 'Size:', ru: 'Размер:' },
+
   // Settings — Unreal Engine
   'settings.unrealEngine': { en: 'Unreal Engine', ru: 'Unreal Engine' },
   'settings.ue5.extractPak': { en: 'Extract PAK assets', ru: 'Извлечение PAK-ассетов' },

@@ -94,7 +94,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 
 			// Recon
 			emit("recon", filePath, "Classifying...")
-			reconResult, err := e.Classify(filePath)
+			reconResult, err := e.Classify(ctx, filePath)
 			if err != nil {
 				filesProcessed++
 				emitErr("recon", filePath, err)
@@ -231,7 +231,14 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 
 			// Execute recipe
 			targetOutput := filepath.Join(opts.Output, sanitizeName(filepath.Base(filePath)))
-			os.MkdirAll(targetOutput, 0755)
+			if err := os.MkdirAll(targetOutput, 0755); err != nil {
+				filesProcessed++
+				emitErr("execute", filePath, fmt.Errorf("create output dir: %w", err))
+				results = append(results, TargetResult{
+					Group: group, Recon: reconResult, Recipe: rec, Error: err,
+				})
+				continue
+			}
 
 			progressCh := make(chan recipe.StepProgress, 20)
 			logCh := make(chan string, 50)
@@ -245,11 +252,14 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 						log.Printf("progress forwarder panic: %v", r)
 					}
 				}()
-				for {
+				progressOpen := true
+				logOpen := true
+				for progressOpen || logOpen {
 					select {
 					case p, ok := <-progressCh:
 						if !ok {
-							return
+							progressOpen = false
+							continue
 						}
 						if events != nil {
 							events <- PipelineEvent{
@@ -259,7 +269,8 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 						}
 					case msg, ok := <-logCh:
 						if !ok {
-							return
+							logOpen = false
+							continue
 						}
 						emit("log", filePath, msg)
 					}
@@ -367,6 +378,9 @@ func matchesExclude(filename string, patterns []string) bool {
 func sanitizeName(name string) string {
 	ext := filepath.Ext(name)
 	base := name[:len(name)-len(ext)]
+	if base == "" {
+		return name
+	}
 	return base
 }
 
@@ -397,6 +411,9 @@ func scanOutputDir(dir string) []string {
 		return nil
 	})
 
+	if totalDirs > 0 {
+		totalDirs-- // exclude root directory itself
+	}
 	lines = append(lines, fmt.Sprintf("Output: %d files in %d directories (%.1f MB)", totalFiles, totalDirs, float64(totalSize)/1024/1024))
 
 	type extCount struct {
