@@ -6,11 +6,19 @@
 - **Desktop:** Wails 3 (Go backend + embedded SPA)
 
 ## Architecture
-- `cmd/morgue/main.go` — entry point (CLI args → Cobra, no args → Wails GUI)
-- `internal/` — core Go packages (app, cli, config, engine, recipe, recon, scanner, selfupdate, services, skiplist, tools, tui [legacy])
-- `frontend/src/` — Svelte SPA (components, pages, lib, stores)
+- `cmd/morgue/main.go` — entry point (CLI args → Cobra, no args → Wails GUI + HTTP API)
+- `internal/` — core Go packages (api, app, cli, config, engine, recipe, recon, scanner, selfupdate, services, skiplist, tools, tui [legacy])
+- `internal/api/` — HTTP API server (localhost:19876) for hybrid mode. Handlers, SSE events, AI instructions.
 - `internal/tools/` — tool download/install manager; tools stored in `BaseDir()/<name>/`
+- `frontend/src/` — Svelte SPA (components, pages, lib, stores)
 - `BaseDir()` = directory of the running executable (`internal/util/paths.go`)
+
+## Hybrid Mode
+- GUI starts HTTP API on `localhost:19876` automatically
+- CLI: `morgue api status|run|tools|settings` — control running GUI
+- Command queue: API pushes commands → frontend polls `PollAPICommand()` → executes via Wails binding (ensures progress events reach webview)
+- Wails events from HTTP goroutines DON'T reach webview — always use command queue pattern
+- SSE endpoint `/api/events` works for external clients (curl/CLI), NOT from Wails webview
 
 ## Build & Test
 
