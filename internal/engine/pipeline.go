@@ -18,14 +18,17 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 		}
 	}()
 
+	filesTotal := 0
+	filesProcessed := 0
+
 	emit := func(phase, target, msg string) {
 		if events != nil {
-			events <- PipelineEvent{Phase: phase, Target: target, Message: msg}
+			events <- PipelineEvent{Phase: phase, Target: target, Message: msg, FilesTotal: filesTotal, FilesProcessed: filesProcessed}
 		}
 	}
 	emitErr := func(phase, target string, err error) {
 		if events != nil {
-			events <- PipelineEvent{Phase: phase, Target: target, Error: err}
+			events <- PipelineEvent{Phase: phase, Target: target, Error: err, FilesTotal: filesTotal, FilesProcessed: filesProcessed}
 		}
 	}
 
@@ -36,6 +39,11 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 		emitErr("scan", opts.Input, err)
 		return fmt.Errorf("scan: %w", err)
 	}
+	// Count total files across all groups.
+	for _, g := range scanResult.Groups {
+		filesTotal += len(g.Files)
+	}
+
 	emit("scan", opts.Input, fmt.Sprintf("Found %d files in %d groups", len(scanResult.Files), len(scanResult.Groups)))
 
 	var results []TargetResult
@@ -55,6 +63,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 					results = append(results, TargetResult{
 						Group: group, Skipped: true, SkipReason: reason,
 					})
+					filesProcessed++
 					emit("skip", filePath, fmt.Sprintf("Skipped: %s", reason))
 					continue
 				}
@@ -65,6 +74,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				results = append(results, TargetResult{
 					Group: group, Skipped: true, SkipReason: "excluded",
 				})
+				filesProcessed++
 				emit("skip", filePath, "Excluded by pattern")
 				continue
 			}
@@ -73,6 +83,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			emit("recon", filePath, "Classifying...")
 			reconResult, err := e.Classify(filePath)
 			if err != nil {
+				filesProcessed++
 				emitErr("recon", filePath, err)
 				results = append(results, TargetResult{Group: group, Error: err})
 				continue
@@ -81,6 +92,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			// Match recipe
 			rec := e.MatchRecipe(&reconResult, opts.Recipe)
 			if rec == nil {
+				filesProcessed++
 				emit("match", filePath, "No matching recipe found")
 				results = append(results, TargetResult{
 					Group: group, Recon: reconResult,
@@ -103,6 +115,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 					}
 				}
 				if installFailed {
+					filesProcessed++
 					results = append(results, TargetResult{
 						Group: group, Recon: reconResult, Recipe: rec,
 						Error: fmt.Errorf("failed to auto-install required tools"),
@@ -113,6 +126,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				needed = e.tools.ToolsNeeded(rec.RequiredTools())
 				if len(needed) > 0 {
 					err := fmt.Errorf("still missing after install: %v", needed)
+					filesProcessed++
 					emitErr("tools", filePath, err)
 					results = append(results, TargetResult{
 						Group: group, Recon: reconResult, Recipe: rec, Error: err,
@@ -141,6 +155,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 						if events != nil {
 							events <- PipelineEvent{
 								Phase: "execute", Target: filePath, Progress: &p,
+								FilesTotal: filesTotal, FilesProcessed: filesProcessed,
 							}
 						}
 					case msg, ok := <-logCh:
@@ -165,6 +180,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			close(progressCh)
 			close(logCh)
 			<-done
+			filesProcessed++
 
 			// Save recon.json per target
 			reconJSON, _ := json.MarshalIndent(reconResult, "", "  ")

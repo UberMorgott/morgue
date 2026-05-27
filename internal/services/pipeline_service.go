@@ -14,9 +14,14 @@ import (
 
 // PipelineStatus describes the current state of the pipeline.
 type PipelineStatus struct {
-	Running bool   `json:"running"`
-	Phase   string `json:"phase"`
-	Target  string `json:"target"`
+	Running        bool   `json:"running"`
+	Phase          string `json:"phase"`
+	Target         string `json:"target"`
+	StepIndex      int    `json:"stepIndex"`
+	StepTotal      int    `json:"stepTotal"`
+	StepName       string `json:"stepName"`
+	FilesProcessed int    `json:"filesProcessed"`
+	FilesTotal     int    `json:"filesTotal"`
 }
 
 // PipelineService wraps the engine for Wails RPC.
@@ -57,6 +62,13 @@ func (s *PipelineService) Run(input, output string) error {
 			s.mu.Lock()
 			s.status.Phase = ev.Phase
 			s.status.Target = ev.Target
+			s.status.FilesTotal = ev.FilesTotal
+			s.status.FilesProcessed = ev.FilesProcessed
+			if ev.Progress != nil {
+				s.status.StepIndex = ev.Progress.Step
+				s.status.StepTotal = ev.Progress.Total
+				s.status.StepName = ev.Progress.Name
+			}
 			s.mu.Unlock()
 
 			if app := application.Get(); app != nil {

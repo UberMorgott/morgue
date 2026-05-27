@@ -27,16 +27,15 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go func() {
-		s.events.Broadcast("pipeline:started", nil)
-		if err := s.pipeline.Run(req.Path, req.Output); err != nil {
-			s.events.Broadcast("pipeline:error", marshalJSON(map[string]string{"error": err.Error()}))
-			return
-		}
-		s.events.Broadcast("pipeline:complete", nil)
-	}()
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "started"})
+	// Push command to the queue for the frontend to pick up and execute through
+	// Wails bindings. This ensures progress events are emitted in the Wails
+	// context and reliably reach the webview.
+	s.tools.PushAPICommand(services.APICommand{
+		Action: "run",
+		Path:   req.Path,
+		Output: req.Output,
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "queued"})
 }
 
 func (s *Server) handleGetPipelineStatus(w http.ResponseWriter, _ *http.Request) {

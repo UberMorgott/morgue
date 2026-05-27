@@ -24,7 +24,7 @@ export class APICommand {
     constructor($$source = {}) {
         if (!("action" in $$source)) {
             /**
-             * "install", "install-all", "delete"
+             * "install", "install-all", "delete", "run"
              * @member
              * @type {string}
              */
@@ -36,6 +36,22 @@ export class APICommand {
              * @type {string}
              */
             this["tool"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * for "run" action
+             * @member
+             * @type {string | undefined}
+             */
+            this["path"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * for "run" action
+             * @member
+             * @type {string | undefined}
+             */
+            this["output"] = undefined;
         }
 
         Object.assign(this, $$source);
@@ -249,6 +265,41 @@ export class PipelineStatus {
              * @type {string}
              */
             this["target"] = "";
+        }
+        if (!("stepIndex" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["stepIndex"] = 0;
+        }
+        if (!("stepTotal" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["stepTotal"] = 0;
+        }
+        if (!("stepName" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["stepName"] = "";
+        }
+        if (!("filesProcessed" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["filesProcessed"] = 0;
+        }
+        if (!("filesTotal" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["filesTotal"] = 0;
         }
 
         Object.assign(this, $$source);

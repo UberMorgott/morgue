@@ -10,6 +10,7 @@
   import { currentLang, startupBusy } from './lib/stores';
   import { addOperation, updateOperation } from './lib/operations';
   import { onEvent } from './lib/events';
+  import { pipelineState, updateFromEvent, addHistoryEntry, resetPipeline } from './lib/pipeline';
   import type { Lang } from './lib/i18n';
 
   let currentPage = 'home';
@@ -82,6 +83,14 @@
               }
               break;
             }
+            case 'run': {
+              const path = cmd.path || '';
+              if (!path) break;
+              // Navigate to home and set input — HomePage reactive will trigger pipeline
+              pipelineInputPath = path;
+              currentPage = 'home';
+              break;
+            }
           }
         } finally {
           processingApiCommand = false;
@@ -100,12 +109,14 @@
   let cleanupDownloadProgress: (() => void) | null = null;
   let cleanupDownloadComplete: (() => void) | null = null;
   let cleanupExtractStart: (() => void) | null = null;
+  let cleanupPipelineProgress: (() => void) | null = null;
 
   onDestroy(() => {
     stopApiPoll();
     cleanupDownloadProgress?.();
     cleanupDownloadComplete?.();
     cleanupExtractStart?.();
+    cleanupPipelineProgress?.();
   });
 
   onMount(async () => {
@@ -138,6 +149,11 @@
         updateOperation(`api-install-${toolName}`, { status: 'success', progress: 100 });
       }
     });
+
+    cleanupPipelineProgress = onEvent('pipeline:progress', (data: any) => {
+      updateFromEvent(data);
+    });
+
     const opId = 'startup-check';
     addOperation({ id: opId, type: 'update', label: 'Checking for updates...', status: 'running', progress: 0 });
 
