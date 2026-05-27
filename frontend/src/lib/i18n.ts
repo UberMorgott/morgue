@@ -186,9 +186,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'status.downloading': { en: 'Downloading', ru: 'Скачивание' },
   'status.installing': { en: 'Installing', ru: 'Установка' },
 
-  // Operations footer
-  'ops.title': { en: 'Operations', ru: 'Операции' },
-  'ops.clear': { en: 'Clear', ru: 'Очистить' },
 
   // Settings — folder picker
   'settings.browse': { en: 'Browse...', ru: 'Обзор...' },

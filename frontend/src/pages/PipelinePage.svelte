@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { PipelineService } from '../lib/api';
   import { onEvent } from '../lib/events';
-  import { addOperation, updateOperation } from '../lib/operations';
+
   import ProgressBar from '../components/ProgressBar.svelte';
   import LogViewer from '../components/LogViewer.svelte';
   import { t, type Lang } from '../lib/i18n';
@@ -26,7 +26,6 @@
   let errorMessage = '';
 
   let cleanups: Array<() => void> = [];
-  let pipelineOpAdded = false;
 
   onMount(async () => {
     cleanups.push(
@@ -38,11 +37,6 @@
           pipelineCurrent = p.Step || p.step || 0;
           pipelineProgress = ((pipelineCurrent + 1) / pipelineTotal) * 100;
           pipelineStepLabel = `${t(lang, 'pipeline.step')} ${pipelineCurrent + 1}/${pipelineTotal}: ${p.Name || p.name || ''}`;
-          if (!pipelineOpAdded) {
-            addOperation({ id: 'pipeline', type: 'pipeline', label: pipelineStepLabel, status: 'running', progress: 0 });
-            pipelineOpAdded = true;
-          }
-          updateOperation('pipeline', { progress: pipelineProgress, label: pipelineStepLabel });
         }
         if (d.Done || d.done) {
           currentStep = 'done';
@@ -50,13 +44,11 @@
           outputPath = d.Output || d.output || inputPath;
           filesCount = d.Files || d.files || 0;
           totalTime = d.Duration || d.duration || '';
-          updateOperation('pipeline', { status: 'success', progress: 100, label: t(lang, 'pipeline.done') });
         }
         if (d.Error || d.error) {
           const err = d.Error || d.error;
           errorMessage = typeof err === 'string' ? err : err.message || JSON.stringify(err);
           logEntries = [...logEntries, { level: 'error', message: errorMessage }];
-          updateOperation('pipeline', { status: 'failed', error: errorMessage });
         }
       }),
       onEvent('pipeline:log', (data: any) => {
@@ -74,9 +66,6 @@
 
   async function runPipeline() {
     currentStep = 'execute';
-    pipelineOpAdded = false;
-    addOperation({ id: 'pipeline', type: 'pipeline', label: t(lang, 'pipeline.executing'), status: 'running', progress: 0 });
-    pipelineOpAdded = true;
     logEntries = [];
     try {
       // Engine handles scan→recon→match→install→execute with proper events
@@ -85,7 +74,6 @@
       if (!errorMessage) {
         errorMessage = e.message || String(e);
         currentStep = 'error';
-        updateOperation('pipeline', { status: 'failed', error: errorMessage });
       }
     }
   }
