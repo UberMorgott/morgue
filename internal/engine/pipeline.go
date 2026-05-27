@@ -90,15 +90,35 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			}
 			emit("match", filePath, fmt.Sprintf("Matched recipe: %s", rec.Name()))
 
-			// Check required tools
+			// Check required tools — auto-install if missing
 			needed := e.tools.ToolsNeeded(rec.RequiredTools())
 			if len(needed) > 0 {
-				err := fmt.Errorf("missing tools: %v", needed)
-				emitErr("tools", filePath, err)
-				results = append(results, TargetResult{
-					Group: group, Recon: reconResult, Recipe: rec, Error: err,
-				})
-				continue
+				installFailed := false
+				for _, name := range needed {
+					emit("install", filePath, fmt.Sprintf("Installing %s...", name))
+					if _, err := e.tools.Install(name); err != nil {
+						emitErr("tools", filePath, fmt.Errorf("auto-install %s: %w", name, err))
+						installFailed = true
+						break
+					}
+				}
+				if installFailed {
+					results = append(results, TargetResult{
+						Group: group, Recon: reconResult, Recipe: rec,
+						Error: fmt.Errorf("failed to auto-install required tools"),
+					})
+					continue
+				}
+				// Re-check after install
+				needed = e.tools.ToolsNeeded(rec.RequiredTools())
+				if len(needed) > 0 {
+					err := fmt.Errorf("still missing after install: %v", needed)
+					emitErr("tools", filePath, err)
+					results = append(results, TargetResult{
+						Group: group, Recon: reconResult, Recipe: rec, Error: err,
+					})
+					continue
+				}
 			}
 
 			// Execute recipe
