@@ -252,6 +252,13 @@ export class PipelineStatus {
              */
             this["running"] = false;
         }
+        if (!("paused" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["paused"] = false;
+        }
         if (!("phase" in $$source)) {
             /**
              * @member

@@ -15,6 +15,7 @@ import (
 // PipelineStatus describes the current state of the pipeline.
 type PipelineStatus struct {
 	Running        bool   `json:"running"`
+	Paused         bool   `json:"paused"`
 	Phase          string `json:"phase"`
 	Target         string `json:"target"`
 	StepIndex      int    `json:"stepIndex"`
@@ -29,6 +30,7 @@ type PipelineService struct {
 	mu     sync.Mutex
 	cancel context.CancelFunc
 	status PipelineStatus
+	pause  *engine.PauseGate
 }
 
 // NewPipelineService creates a PipelineService.
@@ -45,6 +47,7 @@ func (s *PipelineService) Run(input, output string) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
+	s.pause = engine.NewPauseGate()
 	s.status = PipelineStatus{Running: true, Phase: "starting"}
 	s.mu.Unlock()
 
@@ -56,6 +59,10 @@ func (s *PipelineService) Run(input, output string) error {
 
 	eng := engine.New(cfg, util.BaseDir())
 	events := make(chan engine.PipelineEvent, 100)
+
+	s.mu.Lock()
+	pauseGate := s.pause
+	s.mu.Unlock()
 
 	go func() {
 		for ev := range events {
@@ -80,6 +87,7 @@ func (s *PipelineService) Run(input, output string) error {
 	opts := engine.Options{
 		Input:  input,
 		Output: output,
+		Pause:  pauseGate,
 	}
 
 	err = eng.Run(ctx, opts, events)
@@ -91,9 +99,43 @@ func (s *PipelineService) Run(input, output string) error {
 func (s *PipelineService) Stop() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Resume first so the engine doesn't hang on the pause gate
+	if s.pause != nil {
+		s.pause.Resume()
+	}
 	if s.cancel != nil {
 		s.cancel()
 		s.cancel = nil
+	}
+	return nil
+}
+
+// Pause pauses the running pipeline. Tools in progress run to completion.
+func (s *PipelineService) Pause() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.status.Running || s.pause == nil {
+		return nil
+	}
+	s.pause.Pause()
+	s.status.Paused = true
+	if app := application.Get(); app != nil {
+		app.Event.Emit("pipeline:paused", nil)
+	}
+	return nil
+}
+
+// Resume resumes a paused pipeline.
+func (s *PipelineService) Resume() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pause == nil || !s.pause.IsPaused() {
+		return nil
+	}
+	s.pause.Resume()
+	s.status.Paused = false
+	if app := application.Get(); app != nil {
+		app.Event.Emit("pipeline:resumed", nil)
 	}
 	return nil
 }
@@ -110,4 +152,5 @@ func (s *PipelineService) resetStatus() {
 	defer s.mu.Unlock()
 	s.status = PipelineStatus{}
 	s.cancel = nil
+	s.pause = nil
 }

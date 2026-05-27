@@ -33,7 +33,8 @@
   let logEl: HTMLDivElement | null = null;
 
   $: phase = $pipelineState.phase;
-  $: running = phase !== 'idle' && phase !== 'done' && phase !== 'error';
+  $: paused = $pipelineState.paused;
+  $: running = phase !== 'idle' && phase !== 'done' && phase !== 'error' && phase !== 'cancelled';
 
   // Auto-start pipeline when inputPath changes
   $: if (inputPath && inputPath !== lastProcessedPath && !running && !startupBusy && phase === 'idle') {
@@ -48,7 +49,7 @@
   let elapsedTimer: ReturnType<typeof setInterval> | null = null;
   let elapsed = '';
 
-  $: if (running && $pipelineState.startedAt > 0) {
+  $: if (running && !paused && $pipelineState.startedAt > 0) {
     if (!elapsedTimer) {
       elapsedTimer = setInterval(() => {
         const sec = Math.floor((Date.now() - $pipelineState.startedAt) / 1000);
@@ -88,7 +89,7 @@
       return result as Record<StageId, StageStatus>;
     }
 
-    if (ph === 'error') {
+    if (ph === 'cancelled' || ph === 'error') {
       // Find where we were and mark that as error, previous as done, rest pending
       const phaseToStage: Record<string, StageId> = {
         scan: 'scan', recon: 'recon', tools: 'tools', execute: 'execute', done: 'done',
@@ -141,6 +142,28 @@
     if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
     elapsed = '';
     dispatch('clear');
+  }
+
+  async function handleCancel() {
+    try {
+      await PipelineService.Stop();
+    } catch {}
+    pipelineState.update(s => ({ ...s, phase: 'cancelled', paused: false }));
+    updateOperation('pipeline', { status: 'failed', error: t(lang, 'home.cancelled') });
+  }
+
+  async function handlePause() {
+    try {
+      await PipelineService.Pause();
+    } catch {}
+    pipelineState.update(s => ({ ...s, paused: true }));
+  }
+
+  async function handleResume() {
+    try {
+      await PipelineService.Resume();
+    } catch {}
+    pipelineState.update(s => ({ ...s, paused: false }));
   }
 
   function handleHistoryClick(path: string) {
@@ -247,10 +270,19 @@
       }
     } catch (e: any) {
       preflight = false;
-      if ($pipelineState.phase !== 'done') {
+      const currentPhase = $pipelineState.phase;
+      if (currentPhase === 'done' || currentPhase === 'cancelled') {
+        // Already handled
+      } else {
         const msg = e.message || String(e);
-        pipelineState.update(s => ({ ...s, phase: 'error', error: msg }));
-        updateOperation('pipeline', { status: 'failed', error: msg });
+        const isCancelled = msg.includes('context canceled') || msg.includes('context cancelled');
+        if (isCancelled) {
+          pipelineState.update(s => ({ ...s, phase: 'cancelled', paused: false }));
+          updateOperation('pipeline', { status: 'failed', error: t(lang, 'home.cancelled') });
+        } else {
+          pipelineState.update(s => ({ ...s, phase: 'error', error: msg }));
+          updateOperation('pipeline', { status: 'failed', error: msg });
+        }
 
         addHistoryEntry({
           path: inputPath,
@@ -258,7 +290,7 @@
           output: '',
           timestamp: Date.now(),
           success: false,
-          error: msg,
+          error: isCancelled ? 'Cancelled' : msg,
         });
       }
     }
@@ -434,12 +466,30 @@
 
           <!-- Status message + elapsed (always at bottom) -->
           <div class="status-row">
-            {#if $pipelineState.lastMessage}
+            {#if paused}
+              <span class="status-msg paused-label">{t(lang, 'home.paused')}</span>
+            {:else if $pipelineState.lastMessage}
               <span class="status-msg">{$pipelineState.lastMessage}</span>
             {/if}
             {#if $pipelineState.startedAt > 0}
               <span class="elapsed">{elapsed}</span>
             {/if}
+          </div>
+
+          <!-- Pipeline controls -->
+          <div class="pipeline-controls">
+            {#if paused}
+              <button class="btn btn-sm btn-accent" on:click={handleResume}>
+                {t(lang, 'home.resume')}
+              </button>
+            {:else}
+              <button class="btn btn-sm btn-muted" on:click={handlePause}>
+                {t(lang, 'home.pause')}
+              </button>
+            {/if}
+            <button class="btn btn-sm btn-danger" on:click={handleCancel}>
+              {t(lang, 'home.cancel')}
+            </button>
           </div>
         </div>
 
@@ -505,6 +555,16 @@
           {/if}
         </div>
 
+        <button class="btn btn-primary" on:click={handleClear}>
+          {t(lang, 'home.newFile')}
+        </button>
+      {/if}
+
+      <!-- Cancelled state -->
+      {#if phase === 'cancelled'}
+        <div class="error-card glass cancelled-card">
+          <span class="cancelled-text">{t(lang, 'home.cancelled')}</span>
+        </div>
         <button class="btn btn-primary" on:click={handleClear}>
           {t(lang, 'home.newFile')}
         </button>
@@ -1091,5 +1151,63 @@
     margin-top: 8px;
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
+  }
+
+  /* ── Pipeline controls ── */
+  .pipeline-controls {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .btn-sm {
+    font-size: 0.78rem;
+    padding: 6px 16px;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+  }
+  .btn-accent {
+    background: var(--accent-dim);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .btn-accent:hover {
+    background: var(--accent);
+    color: var(--bg-card-solid);
+  }
+  .btn-muted {
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    border-color: var(--border);
+  }
+  .btn-muted:hover {
+    background: var(--bg-card-hover);
+    color: var(--text-primary);
+  }
+  .btn-danger {
+    background: var(--error-dim, rgba(255, 68, 102, 0.1));
+    color: var(--error);
+    border-color: rgba(255, 68, 102, 0.3);
+  }
+  .btn-danger:hover {
+    background: var(--error);
+    color: #fff;
+  }
+
+  .paused-label {
+    color: var(--accent) !important;
+    font-weight: 600;
+  }
+
+  .cancelled-card {
+    border-color: rgba(255, 180, 40, 0.25) !important;
+  }
+  .cancelled-text {
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    font-weight: 500;
   }
 </style>

@@ -1,6 +1,6 @@
 import { writable, derived, get } from 'svelte/store';
 
-export type PipelinePhase = 'idle' | 'scan' | 'recon' | 'tools' | 'execute' | 'done' | 'error';
+export type PipelinePhase = 'idle' | 'scan' | 'recon' | 'tools' | 'execute' | 'done' | 'error' | 'cancelled';
 
 export interface PipelineTarget {
   path: string;
@@ -12,6 +12,7 @@ export interface PipelineTarget {
 
 export interface PipelineState {
   phase: PipelinePhase;
+  paused: boolean;
   inputPath: string;
   outputPath: string;
   targets: PipelineTarget[];
@@ -33,6 +34,7 @@ export interface PipelineState {
 
 const initial: PipelineState = {
   phase: 'idle',
+  paused: false,
   inputPath: '',
   outputPath: '',
   targets: [],
@@ -55,7 +57,7 @@ const initial: PipelineState = {
 export const pipelineState = writable<PipelineState>({ ...initial });
 
 export const isRunning = derived(pipelineState, $s =>
-  $s.phase !== 'idle' && $s.phase !== 'done' && $s.phase !== 'error'
+  $s.phase !== 'idle' && $s.phase !== 'done' && $s.phase !== 'error' && $s.phase !== 'cancelled'
 );
 
 export function resetPipeline() {
@@ -66,6 +68,7 @@ export function startPipeline(inputPath: string) {
   pipelineState.update(s => ({
     ...s,
     phase: 'scan',
+    paused: false,
     inputPath,
     outputPath: '',
     targets: [],

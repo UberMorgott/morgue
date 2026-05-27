@@ -156,6 +156,13 @@ const translations: Record<string, Record<Lang, string>> = {
   'home.summary.skipped': { en: 'skipped', ru: 'пропущено' },
   'home.summary.log': { en: 'Full log', ru: 'Полный лог' },
 
+  // Home — pipeline controls
+  'home.cancel': { en: 'Cancel', ru: 'Отмена' },
+  'home.pause': { en: 'Pause', ru: 'Пауза' },
+  'home.resume': { en: 'Resume', ru: 'Продолжить' },
+  'home.cancelled': { en: 'Cancelled', ru: 'Отменено' },
+  'home.paused': { en: 'Paused', ru: 'Приостановлено' },
+
   // Home — open buttons
   'home.openFolder': { en: 'Open folder', ru: 'Открыть папку' },
   'home.openFile': { en: 'Open file', ru: 'Открыть файл' },
