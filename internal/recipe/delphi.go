@@ -117,7 +117,7 @@ func (d *Delphi) Execute(ctx *Context) error {
 		}, "")
 		if result != nil && result.ExitCode != 0 {
 			log(fmt.Sprintf("Ghidra failed: exit %d", result.ExitCode))
-			report(3, Failed, time.Since(start), fmt.Errorf("Ghidra exit %d", result.ExitCode))
+			report(3, Failed, time.Since(start), fmt.Errorf("ghidra exit %d", result.ExitCode))
 		} else {
 			report(3, Success, time.Since(start), nil)
 		}

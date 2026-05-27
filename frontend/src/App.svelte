@@ -46,9 +46,9 @@
             case 'install-all': {
               try {
                 const statuses = await ToolsService.CheckAll();
-                const missing = (statuses || []).filter((s: any) => !(s.Installed ?? s.installed));
+                const missing = (statuses || []).filter((s: any) => !s.Installed);
                 for (const s of missing) {
-                  const name = s.Name ?? s.name ?? '';
+                  const name = s.Name ?? '';
                   if (!name) continue;
                   try {
                     await ToolsService.Install(name);

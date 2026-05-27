@@ -65,6 +65,7 @@ const initial: PipelineState = {
   reconResults: [],
   toolsInfo: '',
   logs: [],
+  outputStats: [],
   reconKind: '',
   compiler: '',
   obfuscator: '',
@@ -129,9 +130,9 @@ export function updateFromEvent(data: any) {
   pipelineState.update(s => {
     const next = { ...s };
 
-    const phase = d.Phase || d.phase || '';
-    const target = d.Target || d.target || '';
-    const message = d.Message || d.message || '';
+    const phase = d.Phase || '';
+    const target = d.Target || '';
+    const message = d.Message || '';
 
     // Phase update
     if (phase) {
@@ -153,8 +154,8 @@ export function updateFromEvent(data: any) {
       next.currentTarget = target;
     }
     // Output path (only set when explicitly provided)
-    if (d.Output || d.output) {
-      next.outputPath = d.Output || d.output;
+    if (d.Output) {
+      next.outputPath = d.Output;
     }
 
     // Status message
@@ -255,27 +256,27 @@ export function updateFromEvent(data: any) {
     }
 
     // File counts
-    if (d.FilesTotal || d.filesTotal) next.filesTotal = d.FilesTotal || d.filesTotal;
-    if (d.FilesProcessed !== undefined || d.filesProcessed !== undefined) {
-      next.filesProcessed = d.FilesProcessed ?? d.filesProcessed;
+    if (d.FilesTotal) next.filesTotal = d.FilesTotal;
+    if (d.FilesProcessed !== undefined) {
+      next.filesProcessed = d.FilesProcessed;
     }
 
     // Step progress
-    if (d.Progress || d.progress) {
-      const p = d.Progress || d.progress;
-      next.step = p.Step ?? p.step ?? s.step;
-      next.stepTotal = p.Total ?? p.total ?? s.stepTotal;
-      next.stepName = p.Name ?? p.name ?? s.stepName;
+    if (d.Progress) {
+      const p = d.Progress;
+      next.step = p.Step ?? s.step;
+      next.stepTotal = p.Total ?? s.stepTotal;
+      next.stepName = p.Name ?? s.stepName;
       next.progress = next.stepTotal > 0
         ? Math.round(((next.step + 1) / next.stepTotal) * 100)
         : 0;
     }
 
     // Done
-    if (d.Done || d.done) {
+    if (d.Done) {
       next.phase = 'done';
       next.progress = 100;
-      next.outputPath = d.OutputPath || d.Output || d.output || s.outputPath;
+      next.outputPath = d.OutputPath || d.Output || s.outputPath;
     }
 
     // Capture OutputPath whenever provided (any phase)
@@ -284,8 +285,8 @@ export function updateFromEvent(data: any) {
     }
 
     // Error
-    if (d.Error || d.error) {
-      const err = d.Error || d.error;
+    if (d.Error) {
+      const err = d.Error;
       next.error = typeof err === 'string' ? err : err.message || JSON.stringify(err);
       next.phase = 'error';
     }

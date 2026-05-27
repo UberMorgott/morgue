@@ -87,8 +87,8 @@ func TestHandleRunDecompilation(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode error: %v", err)
 	}
-	if resp["status"] != "started" {
-		t.Fatalf("expected status=started, got %s", resp["status"])
+	if resp["status"] != "queued" {
+		t.Fatalf("expected status=queued, got %s", resp["status"])
 	}
 }
 

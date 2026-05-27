@@ -182,19 +182,19 @@ func (m *Manager) RuntimePath(kind RuntimeKind) (string, error) {
 }
 
 // InstallRuntime downloads and installs a portable runtime.
-func (m *Manager) InstallRuntime(kind RuntimeKind) error {
+func (m *Manager) InstallRuntime(kind RuntimeKind, cb *InstallCallbacks) error {
 	switch kind {
 	case RuntimeDotnet:
-		return m.installDotnetSDK()
+		return m.installDotnetSDK(cb)
 	case RuntimeJava:
-		return m.installJavaJRE()
+		return m.installJavaJRE(cb)
 	default:
 		return fmt.Errorf("unknown runtime: %s", kind)
 	}
 }
 
 // installDotnetSDK downloads the .NET 8 SDK portable zip.
-func (m *Manager) installDotnetSDK() error {
+func (m *Manager) installDotnetSDK(cb *InstallCallbacks) error {
 	destDir := m.localRuntimeDir(RuntimeDotnet)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return fmt.Errorf("create dotnet dir: %w", err)
@@ -204,9 +204,9 @@ func (m *Manager) installDotnetSDK() error {
 	url := "https://aka.ms/dotnet/8.0/dotnet-sdk-win-x64.zip"
 
 	var progressCb func(bytesDown, bytesTotal int64)
-	if m.OnProgress != nil {
+	if cb != nil && cb.OnProgress != nil {
 		progressCb = func(bytesDown, bytesTotal int64) {
-			m.OnProgress("dotnet-sdk", bytesDown, bytesTotal)
+			cb.OnProgress("dotnet-sdk", bytesDown, bytesTotal)
 		}
 	}
 
@@ -238,7 +238,7 @@ type adoptiumAsset struct {
 }
 
 // installJavaJRE downloads Adoptium Temurin JRE 21.
-func (m *Manager) installJavaJRE() error {
+func (m *Manager) installJavaJRE(cb *InstallCallbacks) error {
 	destDir := m.localRuntimeDir(RuntimeJava)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return fmt.Errorf("create java dir: %w", err)
@@ -285,9 +285,9 @@ func (m *Manager) installJavaJRE() error {
 	zipPath := filepath.Join(m.baseDir, "runtimes", fileName)
 
 	var progressCb func(bytesDown, bytesTotal int64)
-	if m.OnProgress != nil {
+	if cb != nil && cb.OnProgress != nil {
 		progressCb = func(bytesDown, bytesTotal int64) {
-			m.OnProgress("java-jre", bytesDown, bytesTotal)
+			cb.OnProgress("java-jre", bytesDown, bytesTotal)
 		}
 	}
 
@@ -334,7 +334,7 @@ func (m *Manager) installJavaJRE() error {
 	// Verify
 	bin := m.localRuntimeBin(RuntimeJava)
 	if _, err := os.Stat(bin); err != nil {
-		return fmt.Errorf("Java JRE binary not found after extraction: %s", bin)
+		return fmt.Errorf("java JRE binary not found after extraction: %s", bin)
 	}
 	return nil
 }

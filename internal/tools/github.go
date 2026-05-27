@@ -64,18 +64,20 @@ func saveReleaseCache(baseDir string, rc releaseCache) {
 // fetchLatestCommit returns the short hash of the latest commit on default branch.
 // Uses atom feed — no API, no rate limit.
 func fetchLatestCommit(repo string) (string, error) {
+	client := &http.Client{Timeout: 15 * time.Second}
 	for _, branch := range []string{"main", "master"} {
 		url := fmt.Sprintf("https://github.com/%s/commits/%s.atom", repo, branch)
-		resp, err := http.Get(url)
+		resp, err := client.Get(url)
 		if err != nil {
 			continue
 		}
-		defer resp.Body.Close()
 		if resp.StatusCode != 200 {
+			resp.Body.Close()
 			continue
 		}
 
 		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil {
 			continue
 		}
@@ -258,7 +260,10 @@ func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(byte
 				archivePath := filepath.Join(destDir, asset.Name)
 
 				client := grab.NewClient()
-				req, _ := grab.NewRequest(archivePath, asset.URL)
+				req, err := grab.NewRequest(archivePath, asset.URL)
+				if err != nil {
+					return "", fmt.Errorf("create download request for %s: %w", asset.Name, err)
+				}
 
 				resp := client.Do(req)
 
@@ -377,18 +382,12 @@ func scrapeReleaseAssets(repo, tag string) ([]assetInfo, error) {
 		return nil, fmt.Errorf("expanded_assets returned %d", resp.StatusCode)
 	}
 
-	// Read body as string — these pages are small (typically < 100KB)
-	buf := make([]byte, 512*1024)
-	n, _ := resp.Body.Read(buf)
-	body := string(buf[:n])
-	// Read remaining if any
-	for n == len(buf) {
-		n2, _ := resp.Body.Read(buf)
-		if n2 == 0 {
-			break
-		}
-		body += string(buf[:n2])
+	// Read body — these pages are small (typically < 100KB), limit to 2MB safety cap
+	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
+	if err != nil {
+		return nil, fmt.Errorf("read expanded_assets body: %w", err)
 	}
+	body := string(rawBody)
 
 	// Parse href="/owner/repo/releases/download/tag/filename"
 	prefix := fmt.Sprintf("/%s/releases/download/", repo)

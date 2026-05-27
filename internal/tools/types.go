@@ -66,7 +66,8 @@ type ToolDef struct {
 	DotnetID      string // dotnet tool ID (for MethodDotnetTool)
 	DotnetVersion string // pinned version for dotnet tool install (optional)
 	AssetGlob   string // Glob pattern for matching GitHub release assets
-	Binary      string        // Expected executable name after install
+	SHA256      string // Expected SHA-256 hash of primary asset (empty = skip verification; populate for pinned versions)
+	Binary      string // Expected executable name after install
 	Optional    bool
 	RuntimeDeps []RuntimeKind `json:"RuntimeDeps,omitempty"`
 }

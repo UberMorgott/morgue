@@ -75,7 +75,9 @@ func runGUI() {
 	// HTTP API for hybrid mode
 	apiSrv = api.NewServer(pipelineSvc, toolsSvc, configSvc, reconSvc)
 	apiSrv.HookEvents(app)
-	go apiSrv.Start()
+	if err := apiSrv.Start(); err != nil {
+		log.Printf("api server: %v", err)
+	}
 
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Morgue",

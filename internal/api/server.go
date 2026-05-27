@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"time"
@@ -58,7 +59,7 @@ func NewServer(pipeline *services.PipelineService, tools *services.ToolsService,
 
 	s.http = &http.Server{
 		Addr:    listenAddr,
-		Handler: corsMiddleware(mux),
+		Handler: corsMiddleware(maxBodyMiddleware(mux)),
 	}
 
 	return s
@@ -72,6 +73,11 @@ func (s *Server) Start() error {
 		return fmt.Errorf("api: listen: %w", err)
 	}
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("api server panic: %v", r)
+			}
+		}()
 		_ = s.http.Serve(ln)
 	}()
 	return nil
@@ -79,6 +85,7 @@ func (s *Server) Start() error {
 
 // Stop gracefully shuts down the server.
 func (s *Server) Stop() error {
+	s.events.Shutdown()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return s.http.Shutdown(ctx)
@@ -122,6 +129,16 @@ func corsMiddleware(next http.Handler) http.Handler {
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// maxBodyMiddleware limits request body size to 1MB for POST/PUT methods.
+func maxBodyMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost || r.Method == http.MethodPut {
+			r.Body = http.MaxBytesReader(w, r.Body, 1*1024*1024)
 		}
 		next.ServeHTTP(w, r)
 	})

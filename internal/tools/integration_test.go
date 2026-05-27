@@ -40,13 +40,15 @@ func TestInstallStrings(t *testing.T) {
 	defer os.RemoveAll(baseDir)
 
 	mgr := NewManager(baseDir, config.Config{})
-	mgr.OnProgress = func(tool string, down, total int64) {
-		if total > 0 {
-			fmt.Printf("\r  %s download: %d/%d (%d%%)", tool, down, total, down*100/total)
-		}
+	cb := &InstallCallbacks{
+		OnProgress: func(tool string, down, total int64) {
+			if total > 0 {
+				fmt.Printf("\r  %s download: %d/%d (%d%%)", tool, down, total, down*100/total)
+			}
+		},
 	}
 
-	ver, err := mgr.Install("strings")
+	ver, err := mgr.Install("strings", cb)
 	fmt.Println()
 	if err != nil {
 		t.Fatalf("Install strings: %v", err)

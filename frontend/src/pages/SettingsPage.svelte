@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { Browser } from '@wailsio/runtime';
   import { ConfigService, ReconService } from '../lib/api';
   import { t, type Lang } from '../lib/i18n';
@@ -11,6 +11,8 @@
   let config: any = {};
   let loading = true;
   let saving = false;
+
+  onDestroy(() => clearTimeout(saveTimer));
 
   onMount(async () => {
     try {

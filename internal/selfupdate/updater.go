@@ -39,18 +39,24 @@ func isNewer(latestTag, currentVersion string) bool {
 
 const repo = "UberMorgott/morgue"
 
-// Check checks if a newer version is available.
-func Check(currentVersion string) error {
+// newUpdater creates a configured selfupdate.Updater with GitHub source.
+func newUpdater() (*selfupdate.Updater, error) {
 	source, err := selfupdate.NewGitHubSource(selfupdate.GitHubConfig{})
 	if err != nil {
-		return fmt.Errorf("github source: %w", err)
+		return nil, fmt.Errorf("github source: %w", err)
 	}
-
-	updater, err := selfupdate.NewUpdater(selfupdate.Config{
-		Source: source,
-	})
+	updater, err := selfupdate.NewUpdater(selfupdate.Config{Source: source})
 	if err != nil {
-		return fmt.Errorf("updater: %w", err)
+		return nil, fmt.Errorf("updater: %w", err)
+	}
+	return updater, nil
+}
+
+// Check checks if a newer version is available.
+func Check(currentVersion string) error {
+	updater, err := newUpdater()
+	if err != nil {
+		return err
 	}
 
 	ctx := context.Background()
@@ -74,14 +80,7 @@ func Check(currentVersion string) error {
 // CheckStatus returns update status string for TUI display.
 // Returns one of: "up to date", "update: vX.Y.Z", "offline".
 func CheckStatus(currentVersion string) string {
-	source, err := selfupdate.NewGitHubSource(selfupdate.GitHubConfig{})
-	if err != nil {
-		return "offline"
-	}
-
-	updater, err := selfupdate.NewUpdater(selfupdate.Config{
-		Source: source,
-	})
+	updater, err := newUpdater()
 	if err != nil {
 		return "offline"
 	}
@@ -103,16 +102,9 @@ func CheckStatus(currentVersion string) string {
 
 // Update downloads and applies the latest version.
 func Update(currentVersion string) error {
-	source, err := selfupdate.NewGitHubSource(selfupdate.GitHubConfig{})
+	updater, err := newUpdater()
 	if err != nil {
-		return fmt.Errorf("github source: %w", err)
-	}
-
-	updater, err := selfupdate.NewUpdater(selfupdate.Config{
-		Source: source,
-	})
-	if err != nil {
-		return fmt.Errorf("updater: %w", err)
+		return err
 	}
 
 	ctx := context.Background()

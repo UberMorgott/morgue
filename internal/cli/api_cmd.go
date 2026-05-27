@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -139,7 +140,63 @@ func APISettings() error {
 	return apiGet("/settings")
 }
 
+// settingTypes maps config field names to their Go types for proper JSON encoding.
+var settingTypes = map[string]string{
+	// bool fields
+	"SkipSystemLibs":         "bool",
+	"KeepIntermediates":      "bool",
+	"GenerateCallgraph":      "bool",
+	"GenerateDotFiles":       "bool",
+	"StopOnFirstError":       "bool",
+	"PreferSystemTools":      "bool",
+	"AutoUpdateCheck":        "bool",
+	"AutoUpdateTools":        "bool",
+	"AutoUpdateApp":          "bool",
+	"GeneratePDB":            "bool",
+	"DecompileProjectMode":   "bool",
+	"LogToFile":              "bool",
+	"LogTimestamps":          "bool",
+	"AllowDynamicExecution":  "bool",
+	"SandboxWarning":         "bool",
+	"UE5ExtractPAK":          "bool",
+	"UE5SDKDump":             "bool",
+	"UE5ExtractStrings":      "bool",
+	"UE5GhidraDecompile":     "bool",
+	"UE5NameResolution":      "bool",
+	"UE5BuildIndexes":        "bool",
+	"UE5ExportHookable":      "bool",
+	// int fields
+	"StepTimeoutMinutes":     "int",
+	"MaxFileSizeMB":          "int",
+	"ConcurrentTargets":      "int",
+	"DownloadRetries":        "int",
+	"DownloadTimeoutMinutes": "int",
+}
+
 // APISettingsSet updates a setting by key/value via the GUI.
+// It converts the string value to the appropriate type (bool/int) for JSON encoding.
 func APISettingsSet(key, value string) error {
-	return apiPut("/settings", map[string]string{"key": key, "value": value})
+	var typedValue any
+
+	switch settingTypes[key] {
+	case "bool":
+		switch value {
+		case "true", "1", "yes":
+			typedValue = true
+		case "false", "0", "no":
+			typedValue = false
+		default:
+			return fmt.Errorf("invalid boolean value %q for %s (use true/false)", value, key)
+		}
+	case "int":
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer value %q for %s", value, key)
+		}
+		typedValue = n
+	default:
+		typedValue = value
+	}
+
+	return apiPut("/settings", map[string]any{"key": key, "value": typedValue})
 }

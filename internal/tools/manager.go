@@ -14,12 +14,16 @@ import (
 
 const updateCheckInterval = 6 * time.Hour
 
-// Manager handles tool installation and resolution.
-type Manager struct {
-	baseDir    string
-	cfg        config.Config
+// InstallCallbacks holds optional progress callbacks for Install.
+type InstallCallbacks struct {
 	OnProgress func(tool string, bytesDown, bytesTotal int64)
 	OnExtract  func(tool string)
+}
+
+// Manager handles tool installation and resolution.
+type Manager struct {
+	baseDir string
+	cfg     config.Config
 }
 
 // NewManager creates a Manager that stores tools under baseDir.
@@ -123,7 +127,8 @@ func (m *Manager) IsInstalled(name string) bool {
 }
 
 // Install downloads and installs a tool. Returns the installed version and an error if any.
-func (m *Manager) Install(name string) (string, error) {
+// Callbacks are optional — pass nil for no progress reporting.
+func (m *Manager) Install(name string, cb *InstallCallbacks) (string, error) {
 	tool, ok := FindByName(name)
 	if !ok {
 		return "", fmt.Errorf("unknown tool: %s", name)
@@ -143,17 +148,29 @@ func (m *Manager) Install(name string) (string, error) {
 	}
 
 	var progressCb func(bytesDown, bytesTotal int64)
-	if m.OnProgress != nil {
+	if cb != nil && cb.OnProgress != nil {
 		progressCb = func(bytesDown, bytesTotal int64) {
-			m.OnProgress(name, bytesDown, bytesTotal)
+			cb.OnProgress(name, bytesDown, bytesTotal)
 		}
 	}
 
 	var extractCb func()
-	if m.OnExtract != nil {
+	if cb != nil && cb.OnExtract != nil {
 		extractCb = func() {
-			m.OnExtract(name)
+			cb.OnExtract(name)
 		}
+	}
+
+	var onExtractNuGet func(string)
+	if cb != nil && cb.OnExtract != nil {
+		onExtractNuGet = func(tool string) {
+			cb.OnExtract(tool)
+		}
+	}
+
+	var onProgressGitBuild func(string, int64, int64)
+	if cb != nil && cb.OnProgress != nil {
+		onProgressGitBuild = cb.OnProgress
 	}
 
 	switch tool.Method {
@@ -186,7 +203,7 @@ func (m *Manager) Install(name string) (string, error) {
 		os.WriteFile(versionFile, []byte(ver), 0644)
 		return ver, nil
 	case MethodNuGet:
-		ver, err := installFromNuGet(tool, destDir, progressCb, m.OnExtract)
+		ver, err := installFromNuGet(tool, destDir, progressCb, onExtractNuGet)
 		if err != nil {
 			return "", err
 		}
@@ -194,7 +211,7 @@ func (m *Manager) Install(name string) (string, error) {
 		os.WriteFile(versionFile, []byte(ver), 0644)
 		return ver, nil
 	case MethodGitBuild:
-		version, err := installFromGitBuild(tool, destDir, m.OnProgress, extractCb)
+		version, err := installFromGitBuild(tool, destDir, onProgressGitBuild, extractCb)
 		return version, err
 	default:
 		return "", fmt.Errorf("unsupported install method for %s", name)

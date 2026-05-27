@@ -225,7 +225,7 @@
     if (inputPath) {
       try {
         const status = await PipelineService.GetStatus();
-        if (status && (status.Running || status.running)) {
+        if (status && status.running) {
           lastProcessedPath = inputPath;
       
         }
@@ -244,7 +244,7 @@
       try {
         const rtStatuses = await ToolsService.CheckRuntimes();
         const missingRequired = (rtStatuses || []).filter((s: any) =>
-          (s.Required || s.required) && !(s.Available || s.available)
+          s.Required && !s.Available
         );
         if (missingRequired.length > 0) {
           pipelineState.update(s => ({ ...s, phase: 'error', error: t(lang, 'runtimes.missingForPipeline') }));

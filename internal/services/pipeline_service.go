@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"log"
 	"os"
 	"sync"
 
@@ -13,7 +14,7 @@ import (
 	"github.com/UberMorgott/morgue/internal/util"
 )
 
-// PipelineStatus describes the current state of the pipeline.
+// PipelineStatus is returned via Wails binding and HTTP API. Uses explicit json tags (camelCase).
 type PipelineStatus struct {
 	Running        bool   `json:"running"`
 	Paused         bool   `json:"paused"`
@@ -74,6 +75,11 @@ func (s *PipelineService) Run(input, output string) error {
 	s.mu.Unlock()
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("pipeline event drainer panic: %v", r)
+			}
+		}()
 		for ev := range events {
 			s.mu.Lock()
 			s.status.Phase = ev.Phase

@@ -60,7 +60,7 @@ func ToolsInstall() error {
 	fmt.Printf("Installing %d tools...\n", len(needed))
 	for _, name := range needed {
 		fmt.Printf("  Installing %s... ", name)
-		version, err := mgr.Install(name)
+		version, err := mgr.Install(name, nil)
 		if err != nil {
 			fmt.Printf("FAILED: %v\n", err)
 			continue
