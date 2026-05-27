@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"os"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -57,7 +58,15 @@ func (s *PipelineService) Run(input, output string) error {
 		return err
 	}
 
-	eng := engine.New(cfg, util.BaseDir())
+	if output == "" {
+		output = cfg.DefaultOutputDir
+	}
+	if output == "" {
+		output = util.DefaultOutputDir()
+	}
+	os.MkdirAll(output, 0755)
+
+	eng := engine.New(cfg, util.ToolsBaseDir())
 	events := make(chan engine.PipelineEvent, 100)
 
 	s.mu.Lock()
