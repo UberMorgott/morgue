@@ -393,8 +393,4 @@
   .tools-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
   .tools-loading { color: var(--text-muted); padding: 24px; text-align: center; }
 
-  .action-btn { all: unset; font-size: 11px; padding: 4px 10px; border-radius: 4px; cursor: pointer; transition: all 0.15s; }
-  .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .action-download { border: 1px solid var(--accent); color: var(--accent); }
-  .action-download:hover:not(:disabled) { background: var(--accent-dim); }
 </style>

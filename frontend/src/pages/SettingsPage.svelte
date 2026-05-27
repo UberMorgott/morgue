@@ -45,6 +45,13 @@
     onConfigChange();
   }
 
+  function handleToggleKey(e: KeyboardEvent, field: string) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggleField(field);
+    }
+  }
+
   async function pickOutputDir() {
     try {
       const dir = await ReconService.PickDirectory();
@@ -81,15 +88,15 @@
           <div class="card-rows">
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.autoUpdateCheck')}</span>
-              <div class="toggle" class:active={config.AutoUpdateCheck} on:click={() => toggleField('AutoUpdateCheck')} role="switch" tabindex="0" aria-checked={config.AutoUpdateCheck}></div>
+              <div class="toggle" class:active={config.AutoUpdateCheck} on:click={() => toggleField('AutoUpdateCheck')} on:keydown={(e) => handleToggleKey(e, 'AutoUpdateCheck')} role="switch" tabindex="0" aria-checked={config.AutoUpdateCheck}></div>
             </div>
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.autoUpdateApp')}</span>
-              <div class="toggle" class:active={config.AutoUpdateApp} on:click={() => toggleField('AutoUpdateApp')} role="switch" tabindex="0" aria-checked={config.AutoUpdateApp}></div>
+              <div class="toggle" class:active={config.AutoUpdateApp} on:click={() => toggleField('AutoUpdateApp')} on:keydown={(e) => handleToggleKey(e, 'AutoUpdateApp')} role="switch" tabindex="0" aria-checked={config.AutoUpdateApp}></div>
             </div>
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.autoUpdateTools')}</span>
-              <div class="toggle" class:active={config.AutoUpdateTools} on:click={() => toggleField('AutoUpdateTools')} role="switch" tabindex="0" aria-checked={config.AutoUpdateTools}></div>
+              <div class="toggle" class:active={config.AutoUpdateTools} on:click={() => toggleField('AutoUpdateTools')} on:keydown={(e) => handleToggleKey(e, 'AutoUpdateTools')} role="switch" tabindex="0" aria-checked={config.AutoUpdateTools}></div>
             </div>
           </div>
         </section>
@@ -100,11 +107,11 @@
           <div class="card-rows">
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.decompileProject')}</span>
-              <div class="toggle" class:active={config.DecompileProjectMode} on:click={() => toggleField('DecompileProjectMode')} role="switch" tabindex="0" aria-checked={config.DecompileProjectMode}></div>
+              <div class="toggle" class:active={config.DecompileProjectMode} on:click={() => toggleField('DecompileProjectMode')} on:keydown={(e) => handleToggleKey(e, 'DecompileProjectMode')} role="switch" tabindex="0" aria-checked={config.DecompileProjectMode}></div>
             </div>
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.generatePdb')}</span>
-              <div class="toggle" class:active={config.GeneratePDB} on:click={() => toggleField('GeneratePDB')} role="switch" tabindex="0" aria-checked={config.GeneratePDB}></div>
+              <div class="toggle" class:active={config.GeneratePDB} on:click={() => toggleField('GeneratePDB')} on:keydown={(e) => handleToggleKey(e, 'GeneratePDB')} role="switch" tabindex="0" aria-checked={config.GeneratePDB}></div>
             </div>
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.csharpVersion')}</span>
@@ -117,15 +124,15 @@
             </div>
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.keepIntermediates')}</span>
-              <div class="toggle" class:active={config.KeepIntermediates} on:click={() => toggleField('KeepIntermediates')} role="switch" tabindex="0" aria-checked={config.KeepIntermediates}></div>
+              <div class="toggle" class:active={config.KeepIntermediates} on:click={() => toggleField('KeepIntermediates')} on:keydown={(e) => handleToggleKey(e, 'KeepIntermediates')} role="switch" tabindex="0" aria-checked={config.KeepIntermediates}></div>
             </div>
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.skipSystemLibs')}</span>
-              <div class="toggle" class:active={config.SkipSystemLibs} on:click={() => toggleField('SkipSystemLibs')} role="switch" tabindex="0" aria-checked={config.SkipSystemLibs}></div>
+              <div class="toggle" class:active={config.SkipSystemLibs} on:click={() => toggleField('SkipSystemLibs')} on:keydown={(e) => handleToggleKey(e, 'SkipSystemLibs')} role="switch" tabindex="0" aria-checked={config.SkipSystemLibs}></div>
             </div>
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.stopOnFirstError')}</span>
-              <div class="toggle" class:active={config.StopOnFirstError} on:click={() => toggleField('StopOnFirstError')} role="switch" tabindex="0" aria-checked={config.StopOnFirstError}></div>
+              <div class="toggle" class:active={config.StopOnFirstError} on:click={() => toggleField('StopOnFirstError')} on:keydown={(e) => handleToggleKey(e, 'StopOnFirstError')} role="switch" tabindex="0" aria-checked={config.StopOnFirstError}></div>
             </div>
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.maxFileSize')}</span>
@@ -161,11 +168,11 @@
           <div class="card-rows">
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.allowDynamicExecution')}</span>
-              <div class="toggle" class:active={config.AllowDynamicExecution} on:click={() => toggleField('AllowDynamicExecution')} role="switch" tabindex="0" aria-checked={config.AllowDynamicExecution}></div>
+              <div class="toggle" class:active={config.AllowDynamicExecution} on:click={() => toggleField('AllowDynamicExecution')} on:keydown={(e) => handleToggleKey(e, 'AllowDynamicExecution')} role="switch" tabindex="0" aria-checked={config.AllowDynamicExecution}></div>
             </div>
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.sandboxWarning')}</span>
-              <div class="toggle" class:active={config.SandboxWarning} on:click={() => toggleField('SandboxWarning')} role="switch" tabindex="0" aria-checked={config.SandboxWarning}></div>
+              <div class="toggle" class:active={config.SandboxWarning} on:click={() => toggleField('SandboxWarning')} on:keydown={(e) => handleToggleKey(e, 'SandboxWarning')} role="switch" tabindex="0" aria-checked={config.SandboxWarning}></div>
             </div>
           </div>
         </section>
@@ -179,49 +186,49 @@
                 <span class="setting-label">{t(lang, 'settings.ue5.extractPak')}</span>
                 <span class="setting-hint-icon" title={t(lang, 'settings.ue5.extractPakHint')}>?</span>
               </div>
-              <div class="toggle" class:active={config.UE5ExtractPAK} on:click={() => toggleField('UE5ExtractPAK')} role="switch" tabindex="0" aria-checked={config.UE5ExtractPAK}></div>
+              <div class="toggle" class:active={config.UE5ExtractPAK} on:click={() => toggleField('UE5ExtractPAK')} on:keydown={(e) => handleToggleKey(e, 'UE5ExtractPAK')} role="switch" tabindex="0" aria-checked={config.UE5ExtractPAK}></div>
             </div>
             <div class="setting-row">
               <div class="setting-label-with-hint">
                 <span class="setting-label">{t(lang, 'settings.ue5.sdkDump')}</span>
                 <span class="setting-hint-icon" title={t(lang, 'settings.ue5.sdkDumpHint')}>?</span>
               </div>
-              <div class="toggle" class:active={config.UE5SDKDump} on:click={() => toggleField('UE5SDKDump')} role="switch" tabindex="0" aria-checked={config.UE5SDKDump}></div>
+              <div class="toggle" class:active={config.UE5SDKDump} on:click={() => toggleField('UE5SDKDump')} on:keydown={(e) => handleToggleKey(e, 'UE5SDKDump')} role="switch" tabindex="0" aria-checked={config.UE5SDKDump}></div>
             </div>
             <div class="setting-row">
               <div class="setting-label-with-hint">
                 <span class="setting-label">{t(lang, 'settings.ue5.extractStrings')}</span>
                 <span class="setting-hint-icon" title={t(lang, 'settings.ue5.extractStringsHint')}>?</span>
               </div>
-              <div class="toggle" class:active={config.UE5ExtractStrings} on:click={() => toggleField('UE5ExtractStrings')} role="switch" tabindex="0" aria-checked={config.UE5ExtractStrings}></div>
+              <div class="toggle" class:active={config.UE5ExtractStrings} on:click={() => toggleField('UE5ExtractStrings')} on:keydown={(e) => handleToggleKey(e, 'UE5ExtractStrings')} role="switch" tabindex="0" aria-checked={config.UE5ExtractStrings}></div>
             </div>
             <div class="setting-row">
               <div class="setting-label-with-hint">
                 <span class="setting-label">{t(lang, 'settings.ue5.ghidraDecompile')}</span>
                 <span class="setting-hint-icon" title={t(lang, 'settings.ue5.ghidraDecompileHint')}>?</span>
               </div>
-              <div class="toggle" class:active={config.UE5GhidraDecompile} on:click={() => toggleField('UE5GhidraDecompile')} role="switch" tabindex="0" aria-checked={config.UE5GhidraDecompile}></div>
+              <div class="toggle" class:active={config.UE5GhidraDecompile} on:click={() => toggleField('UE5GhidraDecompile')} on:keydown={(e) => handleToggleKey(e, 'UE5GhidraDecompile')} role="switch" tabindex="0" aria-checked={config.UE5GhidraDecompile}></div>
             </div>
             <div class="setting-row">
               <div class="setting-label-with-hint">
                 <span class="setting-label">{t(lang, 'settings.ue5.nameResolution')}</span>
                 <span class="setting-hint-icon" title={t(lang, 'settings.ue5.nameResolutionHint')}>?</span>
               </div>
-              <div class="toggle" class:active={config.UE5NameResolution} on:click={() => toggleField('UE5NameResolution')} role="switch" tabindex="0" aria-checked={config.UE5NameResolution}></div>
+              <div class="toggle" class:active={config.UE5NameResolution} on:click={() => toggleField('UE5NameResolution')} on:keydown={(e) => handleToggleKey(e, 'UE5NameResolution')} role="switch" tabindex="0" aria-checked={config.UE5NameResolution}></div>
             </div>
             <div class="setting-row">
               <div class="setting-label-with-hint">
                 <span class="setting-label">{t(lang, 'settings.ue5.buildIndexes')}</span>
                 <span class="setting-hint-icon" title={t(lang, 'settings.ue5.buildIndexesHint')}>?</span>
               </div>
-              <div class="toggle" class:active={config.UE5BuildIndexes} on:click={() => toggleField('UE5BuildIndexes')} role="switch" tabindex="0" aria-checked={config.UE5BuildIndexes}></div>
+              <div class="toggle" class:active={config.UE5BuildIndexes} on:click={() => toggleField('UE5BuildIndexes')} on:keydown={(e) => handleToggleKey(e, 'UE5BuildIndexes')} role="switch" tabindex="0" aria-checked={config.UE5BuildIndexes}></div>
             </div>
             <div class="setting-row">
               <div class="setting-label-with-hint">
                 <span class="setting-label">{t(lang, 'settings.ue5.exportHookable')}</span>
                 <span class="setting-hint-icon" title={t(lang, 'settings.ue5.exportHookableHint')}>?</span>
               </div>
-              <div class="toggle" class:active={config.UE5ExportHookable} on:click={() => toggleField('UE5ExportHookable')} role="switch" tabindex="0" aria-checked={config.UE5ExportHookable}></div>
+              <div class="toggle" class:active={config.UE5ExportHookable} on:click={() => toggleField('UE5ExportHookable')} on:keydown={(e) => handleToggleKey(e, 'UE5ExportHookable')} role="switch" tabindex="0" aria-checked={config.UE5ExportHookable}></div>
             </div>
           </div>
         </section>
@@ -241,7 +248,7 @@
             </div>
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.logToFile')}</span>
-              <div class="toggle" class:active={config.LogToFile} on:click={() => toggleField('LogToFile')} role="switch" tabindex="0" aria-checked={config.LogToFile}></div>
+              <div class="toggle" class:active={config.LogToFile} on:click={() => toggleField('LogToFile')} on:keydown={(e) => handleToggleKey(e, 'LogToFile')} role="switch" tabindex="0" aria-checked={config.LogToFile}></div>
             </div>
           </div>
         </section>
