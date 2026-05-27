@@ -27,3 +27,7 @@ runtimes/
 frontend/public/font-compare.html
 font-compare.html
 *.syso
+
+# Agent/tool configs
+.serena/
+docs/superpowers/
