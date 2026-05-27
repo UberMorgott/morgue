@@ -16,7 +16,7 @@ import (
 func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEvent) error {
 	defer func() {
 		if events != nil {
-			events <- PipelineEvent{Phase: "done", Done: true}
+			events <- PipelineEvent{Phase: "done", Done: true, OutputPath: opts.Output}
 		}
 	}()
 
@@ -108,6 +108,20 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				reconResult.Kind = recon.UnityIL2CPP
 			}
 
+			// Emit enriched recon event
+			if events != nil {
+				events <- PipelineEvent{
+					Phase:      "recon",
+					Target:     filePath,
+					Message:    reconResult.Kind.String(),
+					ReconKind:  reconResult.Kind.String(),
+					Compiler:   reconResult.Compiler,
+					Obfuscator: reconResult.Obfuscator,
+					FileSize:   reconResult.Size,
+					FilesTotal: filesTotal, FilesProcessed: filesProcessed,
+				}
+			}
+
 			// Match recipe
 			rec := e.MatchRecipe(&reconResult, opts.Recipe)
 			if rec == nil {
@@ -119,7 +133,27 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				})
 				continue
 			}
-			emit("match", filePath, fmt.Sprintf("Matched recipe: %s", rec.Name()))
+			if events != nil {
+				events <- PipelineEvent{
+					Phase:      "match",
+					Target:     filePath,
+					Message:    fmt.Sprintf("Recipe: %s", rec.Name()),
+					RecipeName: rec.Name(),
+					RecipeDesc: rec.Description(),
+					FilesTotal: filesTotal, FilesProcessed: filesProcessed,
+				}
+			}
+
+			// Emit tools event with full list before install
+			if events != nil {
+				events <- PipelineEvent{
+					Phase:       "tools",
+					Target:      filePath,
+					Message:     fmt.Sprintf("%d tools needed", len(rec.RequiredTools())),
+					ToolsNeeded: rec.RequiredTools(),
+					FilesTotal:  filesTotal, FilesProcessed: filesProcessed,
+				}
+			}
 
 			// Check required tools — auto-install if missing
 			needed := e.tools.ToolsNeeded(rec.RequiredTools())

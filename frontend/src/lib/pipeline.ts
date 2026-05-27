@@ -31,6 +31,15 @@ export interface PipelineState {
   reconResults: Array<{ file: string; kind: string }>;  // classification results
   toolsInfo: string;         // "All tools ready" or "Installing ilspycmd..."
   logs: string[];            // last N log messages (keep max 20)
+  // Enriched fields from backend events
+  reconKind: string;         // "Managed", "Native", "UnrealEngine"
+  compiler: string;          // "Delphi", "Go", ""
+  obfuscator: string;        // "ConfuserEx", ""
+  fileSize: number;          // bytes
+  recipeName: string;        // "dotnet-generic"
+  recipeDesc: string;        // "Decompile clean .NET assembly"
+  toolsNeeded: string[];     // ["ilspycmd", "strings"]
+  toolsInstalled: string[];  // tools that finished installing
 }
 
 const initial: PipelineState = {
@@ -53,6 +62,14 @@ const initial: PipelineState = {
   reconResults: [],
   toolsInfo: '',
   logs: [],
+  reconKind: '',
+  compiler: '',
+  obfuscator: '',
+  fileSize: 0,
+  recipeName: '',
+  recipeDesc: '',
+  toolsNeeded: [],
+  toolsInstalled: [],
 };
 
 export const pipelineState = writable<PipelineState>({ ...initial });
@@ -87,6 +104,14 @@ export function startPipeline(inputPath: string) {
     reconResults: [],
     toolsInfo: '',
     logs: [],
+    reconKind: '',
+    compiler: '',
+    obfuscator: '',
+    fileSize: 0,
+    recipeName: '',
+    recipeDesc: '',
+    toolsNeeded: [],
+    toolsInstalled: [],
   }));
 }
 
@@ -135,6 +160,11 @@ export function updateFromEvent(data: any) {
       if (!next.reconResults.find(r => r.file === fname)) {
         next.reconResults = [...s.reconResults, { file: fname, kind: '' }];
       }
+      // Capture enriched recon data
+      if (d.ReconKind) next.reconKind = d.ReconKind;
+      if (d.Compiler) next.compiler = d.Compiler;
+      if (d.Obfuscator) next.obfuscator = d.Obfuscator;
+      if (d.FileSize) next.fileSize = d.FileSize;
     }
 
     if (phase === 'match' && target && message) {
@@ -143,6 +173,9 @@ export function updateFromEvent(data: any) {
       next.reconResults = (next.reconResults.length ? next.reconResults : [...s.reconResults]).map(r =>
         r.file === fname ? { ...r, kind: recipe } : r
       );
+      // Capture recipe details
+      if (d.RecipeName) next.recipeName = d.RecipeName;
+      if (d.RecipeDesc) next.recipeDesc = d.RecipeDesc;
     }
 
     if (phase === 'skip' && target && message) {
@@ -151,6 +184,27 @@ export function updateFromEvent(data: any) {
     }
 
     if (phase === 'install' && message) {
+      // Capture tools needed list
+      if (d.ToolsNeeded && Array.isArray(d.ToolsNeeded)) {
+        next.toolsNeeded = d.ToolsNeeded;
+      }
+      // When a new "Installing Y..." arrives, mark the previous tool as installed
+      const installMatch = message.match(/^Installing\s+(\S+)/);
+      if (installMatch) {
+        const newTool = installMatch[1].replace(/\.{3}$/, '');
+        // Find the previously installing tool from old toolsInfo
+        const prevMatch = s.toolsInfo.match(/^Installing\s+(\S+)/);
+        if (prevMatch) {
+          const prevTool = prevMatch[1].replace(/\.{3}$/, '');
+          if (prevTool !== newTool && !s.toolsInstalled.includes(prevTool)) {
+            next.toolsInstalled = [...s.toolsInstalled, prevTool];
+          }
+        }
+      }
+      // "All tools ready" or similar completion message = mark all remaining as installed
+      if (message.toLowerCase().includes('ready') || message.toLowerCase().includes('done')) {
+        next.toolsInstalled = [...next.toolsNeeded];
+      }
       next.toolsInfo = message;
     }
 
@@ -179,7 +233,12 @@ export function updateFromEvent(data: any) {
     if (d.Done || d.done) {
       next.phase = 'done';
       next.progress = 100;
-      next.outputPath = d.Output || d.output || s.outputPath;
+      next.outputPath = d.OutputPath || d.Output || d.output || s.outputPath;
+    }
+
+    // Capture OutputPath whenever provided (any phase)
+    if (d.OutputPath) {
+      next.outputPath = d.OutputPath;
     }
 
     // Error
