@@ -22,9 +22,9 @@
   let runtimeBusy: Record<string, boolean> = {};
 
   let cleanups: Array<() => void> = [];
-  let eventSource: EventSource | null = null;
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-  // Shared event handlers — used by both Wails events and SSE
+  // Event handlers for Wails events (GUI-initiated operations)
   function handleDownloadStart(data: any) {
     const d = data.data || data;
     const toolName = d.tool || d.Tool;
@@ -76,54 +76,46 @@
     } catch (e) { console.error('Refresh after tool:installed failed:', e); }
   }
 
-  function handleInstallError(data: any) {
-    const d = data.data || data;
-    const toolName = d.tool || d.Tool;
-    if (!toolName) return;
-    updateOperation(`install-${toolName}`, { status: 'failed', error: d.error || d.Error || 'Unknown error' });
+  // Poll tool status periodically to catch API-triggered changes.
+  // SSE EventSource doesn't work inside the Wails webview (cross-origin blocked
+  // by the wails:// protocol), so we poll CheckAll() as a lightweight fallback.
+  function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(async () => {
+      try {
+        const statuses = await ToolsService.CheckAll();
+        if (!statuses) return;
+        let changed = false;
+        for (const s of statuses) {
+          const name = s.Name ?? s.name ?? '';
+          const installed = s.Installed ?? s.installed ?? false;
+          const version = s.Version ?? s.version ?? '';
+          const path = s.Path ?? s.path ?? '';
+          const existing = tools.find(t => t.name === name);
+          if (existing && (existing.installed !== installed || existing.version !== version)) {
+            changed = true;
+          }
+        }
+        if (changed) {
+          tools = tools.map(t => {
+            const fresh = (statuses as any[]).find((s: any) => (s.Name ?? s.name) === t.name);
+            if (!fresh) return t;
+            return {
+              ...t,
+              installed: fresh.Installed ?? fresh.installed ?? false,
+              version: fresh.Version ?? fresh.version ?? '',
+              path: fresh.Path ?? fresh.path ?? '',
+            };
+          });
+        }
+      } catch { /* ignore polling errors */ }
+    }, 3000);
   }
 
-  // Connect to the local SSE endpoint for API-triggered events
-  function connectSSE() {
-    try {
-      eventSource = new EventSource('http://127.0.0.1:19876/api/events');
-
-      eventSource.addEventListener('tool:download:start', (e) => {
-        handleDownloadStart(JSON.parse(e.data));
-      });
-      eventSource.addEventListener('tool:download:progress', (e) => {
-        handleDownloadProgress(JSON.parse(e.data));
-      });
-      eventSource.addEventListener('tool:download:complete', (e) => {
-        handleDownloadComplete(JSON.parse(e.data));
-      });
-      eventSource.addEventListener('tool:installed', (e) => {
-        handleToolInstalled(JSON.parse(e.data));
-      });
-      eventSource.addEventListener('tool:install:start', (e) => {
-        const d = JSON.parse(e.data);
-        const toolName = d.tool || d.Tool;
-        if (!toolName) return;
-        addOperation({ id: `install-${toolName}`, type: 'download', label: `${t(lang, 'status.installing')} ${toolName}`, status: 'running', progress: 0 });
-      });
-      eventSource.addEventListener('tool:install:complete', (e) => {
-        const d = JSON.parse(e.data);
-        const toolName = d.tool || d.Tool;
-        if (toolName) {
-          updateOperation(`install-${toolName}`, { status: 'success', progress: 100 });
-          handleToolInstalled(d);
-        }
-      });
-      eventSource.addEventListener('tool:install:error', (e) => {
-        handleInstallError(JSON.parse(e.data));
-      });
-
-      eventSource.onerror = () => {
-        // Silently handle — API server might not be running yet.
-        // EventSource will auto-reconnect per spec.
-      };
-    } catch {
-      // SSE not available — GUI-only mode, Wails events still work.
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
     }
   }
 
@@ -134,18 +126,15 @@
     cleanups.push(onEvent('tool:download:complete', handleDownloadComplete));
     cleanups.push(onEvent('tool:installed', handleToolInstalled));
 
-    // SSE listeners (for API-triggered operations)
-    connectSSE();
+    // Poll for API-triggered changes (SSE doesn't work in Wails webview)
+    startPolling();
 
     await Promise.all([loadTools(), loadRuntimes()]);
   });
 
   onDestroy(() => {
     cleanups.forEach(fn => fn());
-    if (eventSource) {
-      eventSource.close();
-      eventSource = null;
-    }
+    stopPolling();
   });
 
   async function loadRuntimes() {
