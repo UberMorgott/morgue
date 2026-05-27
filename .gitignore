@@ -6,7 +6,7 @@ node_modules/
 *.dylib
 dist/
 !frontend/dist/.gitkeep
-tools/
+/tools/
 de4dot-cex/
 ghidra/
 strings/
@@ -21,6 +21,7 @@ error.log
 testbed/
 .playwright-mcp/
 *.png
+!cmd/morgue/appicon.png
 bin/
 runtimes/
 frontend/public/font-compare.html
