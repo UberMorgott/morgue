@@ -51,6 +51,11 @@ type StepProgress struct {
 	Error    error
 }
 
+// PauseChecker allows recipes to check for pause between steps.
+type PauseChecker interface {
+	WaitIfPaused(ctx context.Context) error
+}
+
 // Context provides everything a recipe needs to execute.
 type Context struct {
 	Target   string
@@ -60,6 +65,7 @@ type Context struct {
 	Tools    *tools.Manager
 	Ctx      context.Context
 	Config   *config.Config
+	Pause    PauseChecker
 }
 
 // Recipe is the interface that all decompilation recipes must implement.

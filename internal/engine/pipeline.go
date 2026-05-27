@@ -59,6 +59,13 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			default:
 			}
 
+			// Block if paused, respecting cancellation
+			if opts.Pause != nil {
+				if err := opts.Pause.WaitIfPaused(ctx); err != nil {
+					return err
+				}
+			}
+
 			// Skip-list check
 			if !opts.NoSkip {
 				if skip, reason := e.ShouldSkip(filepath.Base(filePath)); skip {
@@ -147,6 +154,13 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				}
 			}
 
+			// Pause check before execution
+			if opts.Pause != nil {
+				if err := opts.Pause.WaitIfPaused(ctx); err != nil {
+					return err
+				}
+			}
+
 			// Execute recipe
 			targetOutput := filepath.Join(opts.Output, sanitizeName(filepath.Base(filePath)))
 			os.MkdirAll(targetOutput, 0755)
@@ -187,6 +201,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				Tools:    e.tools,
 				Ctx:      ctx,
 				Config:   &e.cfg,
+				Pause:    opts.Pause,
 			}
 
 			execErr := rec.Execute(rctx)

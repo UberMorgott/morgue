@@ -36,6 +36,22 @@ export function Run(input, output) {
 }
 
 /**
+ * Pause pauses the running pipeline. Tools in progress run to completion.
+ * @returns {$CancellablePromise<void>}
+ */
+export function Pause() {
+    return $Call.ByID(4050889830);
+}
+
+/**
+ * Resume resumes a paused pipeline.
+ * @returns {$CancellablePromise<void>}
+ */
+export function Resume() {
+    return $Call.ByID(4063019169);
+}
+
+/**
  * Stop cancels the running pipeline.
  * @returns {$CancellablePromise<void>}
  */
