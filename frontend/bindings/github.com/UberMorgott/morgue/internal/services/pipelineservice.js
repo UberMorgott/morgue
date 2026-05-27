@@ -26,21 +26,11 @@ export function GetStatus() {
 }
 
 /**
- * Run starts the decompilation pipeline on input, writing results to output.
- * @param {string} input
- * @param {string} output
- * @returns {$CancellablePromise<void>}
- */
-export function Run(input, output) {
-    return $Call.ByID(2207496875, input, output);
-}
-
-/**
  * Pause pauses the running pipeline. Tools in progress run to completion.
  * @returns {$CancellablePromise<void>}
  */
 export function Pause() {
-    return $Call.ByID(4050889830);
+    return $Call.ByID(3284135420);
 }
 
 /**
@@ -48,7 +38,17 @@ export function Pause() {
  * @returns {$CancellablePromise<void>}
  */
 export function Resume() {
-    return $Call.ByID(4063019169);
+    return $Call.ByID(4256786117);
+}
+
+/**
+ * Run starts the decompilation pipeline on input, writing results to output.
+ * @param {string} input
+ * @param {string} output
+ * @returns {$CancellablePromise<void>}
+ */
+export function Run(input, output) {
+    return $Call.ByID(2207496875, input, output);
 }
 
 /**

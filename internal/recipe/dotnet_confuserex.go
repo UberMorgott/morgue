@@ -176,8 +176,12 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 	srcDir := filepath.Join(ctx.Output, "src")
 	os.MkdirAll(srcDir, 0755)
 	result, runErr := util.RunCmd(ctx.Ctx, ilspyPath, []string{"-p", "-o", srcDir, current}, "")
-	if runErr != nil || (result != nil && result.ExitCode != 0) {
-		execErr := fmt.Errorf("ilspycmd failed: exit %d", result.ExitCode)
+	exitCode := -1
+	if result != nil {
+		exitCode = result.ExitCode
+	}
+	if runErr != nil || exitCode != 0 {
+		execErr := fmt.Errorf("ilspycmd failed: exit %d", exitCode)
 		report(8, Failed, time.Since(start), execErr)
 		return execErr
 	}

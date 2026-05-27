@@ -195,7 +195,7 @@ func (u *UE5) Execute(ctx *Context) error {
 // findPakFiles recursively finds .pak and .utoc files under root.
 func findPakFiles(root string) []string {
 	var paks []string
-	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -219,14 +219,18 @@ func findGameExe(root string) string {
 	var best string
 	var bestSize int64
 
-	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
 			return nil
 		}
 		if strings.ToLower(filepath.Ext(path)) != ".exe" {
 			return nil
 		}
 		if skipNames[strings.ToLower(filepath.Base(path))] {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
 			return nil
 		}
 		if info.Size() > bestSize {

@@ -20,7 +20,7 @@ type TargetResult struct {
 	SkipReason string
 }
 
-// PipelineEvent reports progress of the pipeline to the UI.
+// PipelineEvent is emitted via Wails events. JSON keys are PascalCase (Go defaults).
 type PipelineEvent struct {
 	Phase          string
 	Target         string

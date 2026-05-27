@@ -18,7 +18,7 @@ func parsePE(path string) (*peparser.File, error) {
 		return nil, fmt.Errorf("pe.New: %w", err)
 	}
 	if err := f.Parse(); err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, fmt.Errorf("pe.Parse: %w", err)
 	}
 	return f, nil
@@ -46,7 +46,7 @@ func Classify(path string) (Result, error) {
 		r.Fallback = true
 		return r, nil
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if f.HasCLR {
 		r.Kind = Managed
@@ -76,7 +76,7 @@ func Classify(path string) (Result, error) {
 		buf := make([]byte, maxHeuristicScan)
 		n, _ := hf.Read(buf)
 		fileData = buf[:n]
-		hf.Close()
+		_ = hf.Close()
 	}
 
 	// Enrich with heuristics

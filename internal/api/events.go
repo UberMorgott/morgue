@@ -8,9 +8,10 @@ import (
 
 // EventBroadcaster fans out server-sent events to connected clients.
 type EventBroadcaster struct {
-	mu       sync.RWMutex
-	clients  map[chan string]struct{}
-	shutdown chan struct{}
+	mu           sync.RWMutex
+	clients      map[chan string]struct{}
+	shutdown     chan struct{}
+	shutdownOnce sync.Once
 }
 
 // NewEventBroadcaster creates an EventBroadcaster.
@@ -75,14 +76,17 @@ func (eb *EventBroadcaster) Broadcast(event string, data []byte) {
 }
 
 // Shutdown closes the shutdown channel and disconnects all clients.
+// Safe to call multiple times.
 func (eb *EventBroadcaster) Shutdown() {
-	close(eb.shutdown)
+	eb.shutdownOnce.Do(func() {
+		close(eb.shutdown)
 
-	eb.mu.Lock()
-	defer eb.mu.Unlock()
+		eb.mu.Lock()
+		defer eb.mu.Unlock()
 
-	for ch := range eb.clients {
-		close(ch)
-		delete(eb.clients, ch)
-	}
+		for ch := range eb.clients {
+			close(ch)
+			delete(eb.clients, ch)
+		}
+	})
 }

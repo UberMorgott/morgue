@@ -14,7 +14,7 @@ import (
 	"github.com/UberMorgott/morgue/internal/util"
 )
 
-// APICommand represents a command pushed by the HTTP API for the frontend to execute.
+// APICommand represents a queued command from HTTP API to frontend. Uses explicit json tags (lowercase).
 type APICommand struct {
 	Action string `json:"action"` // "install", "install-all", "delete", "run"
 	Tool   string `json:"tool"`
@@ -60,33 +60,11 @@ func NewToolsService(appVersion string) *ToolsService {
 	cfg, _ := config.Load(util.ConfigPath())
 	mgr := tools.NewManager(util.ToolsBaseDir(), cfg)
 	svc := &ToolsService{
-		manager:   mgr,
+		manager:    mgr,
 		appVersion: appVersion,
-		apiQueue:  make(chan APICommand, 32),
-		activeOps: make(map[string]*OpState),
-		changeCh:  make(chan struct{}),
-	}
-	mgr.OnExtract = func(tool string) {
-		svc.updateOp(tool, "extracting", 100)
-		if app := application.Get(); app != nil {
-			app.Event.Emit("tool:extract:start", map[string]interface{}{
-				"tool": tool,
-			})
-		}
-	}
-	mgr.OnProgress = func(tool string, bytesDown, bytesTotal int64) {
-		pct := 0
-		if bytesTotal > 0 {
-			pct = int(bytesDown * 100 / bytesTotal)
-		}
-		svc.updateOp(tool, "installing", pct)
-		if app := application.Get(); app != nil {
-			app.Event.Emit("tool:download:progress", map[string]interface{}{
-				"tool":  tool,
-				"bytes": bytesDown,
-				"total": bytesTotal,
-			})
-		}
+		apiQueue:   make(chan APICommand, 32),
+		activeOps:  make(map[string]*OpState),
+		changeCh:   make(chan struct{}),
 	}
 	return svc
 }
@@ -216,6 +194,34 @@ func (s *ToolsService) ensureRuntimeDeps(name string) error {
 	return nil
 }
 
+// installCallbacks builds progress callbacks wired to Wails events and active operation tracking.
+func (s *ToolsService) installCallbacks() *tools.InstallCallbacks {
+	return &tools.InstallCallbacks{
+		OnProgress: func(tool string, bytesDown, bytesTotal int64) {
+			pct := 0
+			if bytesTotal > 0 {
+				pct = int(bytesDown * 100 / bytesTotal)
+			}
+			s.updateOp(tool, "installing", pct)
+			if app := application.Get(); app != nil {
+				app.Event.Emit("tool:download:progress", map[string]interface{}{
+					"tool":  tool,
+					"bytes": bytesDown,
+					"total": bytesTotal,
+				})
+			}
+		},
+		OnExtract: func(tool string) {
+			s.updateOp(tool, "extracting", 100)
+			if app := application.Get(); app != nil {
+				app.Event.Emit("tool:extract:start", map[string]interface{}{
+					"tool": tool,
+				})
+			}
+		},
+	}
+}
+
 // Install downloads and installs a single tool by name.
 func (s *ToolsService) Install(name string) error {
 	if err := s.ensureRuntimeDeps(name); err != nil {
@@ -225,7 +231,7 @@ func (s *ToolsService) Install(name string) error {
 	if app := application.Get(); app != nil {
 		app.Event.Emit("tool:download:start", map[string]string{"tool": name})
 	}
-	version, err := s.manager.Install(name)
+	version, err := s.manager.Install(name, s.installCallbacks())
 	s.removeOp(name)
 	if app := application.Get(); app != nil {
 		if err != nil {
@@ -285,7 +291,7 @@ func (s *ToolsService) InstallRuntime(kind string) error {
 	if app := application.Get(); app != nil {
 		app.Event.Emit("tool:download:start", map[string]string{"tool": opName})
 	}
-	err := s.manager.InstallRuntime(rk)
+	err := s.manager.InstallRuntime(rk, s.installCallbacks())
 	s.removeOp(opName)
 	if app := application.Get(); app != nil {
 		if err != nil {

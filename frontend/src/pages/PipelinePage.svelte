@@ -57,7 +57,9 @@
       }),
     );
 
-    await runPipeline();
+    if (inputPath) {
+      await runPipeline();
+    }
   });
 
   onDestroy(() => {
@@ -173,30 +175,7 @@
     font-weight: 700;
     flex-shrink: 0;
   }
-  .step-badge {
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--text-muted);
-    margin-left: auto;
-  }
-  .step-badge.ok { color: var(--success, #22c55e); }
-  .step-badge.warn { color: var(--warning, #eab308); }
   .step-content { margin-top: 12px; }
-  .step-loading {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--text-secondary);
-    font-size: 12px;
-    padding: 8px 0;
-  }
-  .spinner {
-    width: 14px; height: 14px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-  }
   .pipeline-log { height: 180px; margin-top: 8px; }
   .done-step { border-color: var(--success, #22c55e); }
   .done-content {
@@ -216,5 +195,4 @@
     background: rgba(255, 51, 102, 0.08);
     border-radius: 4px;
   }
-  @keyframes spin { to { transform: rotate(360deg); } }
 </style>

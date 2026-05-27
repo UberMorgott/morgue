@@ -96,8 +96,12 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 	srcDir := filepath.Join(ctx.Output, "src")
 	os.MkdirAll(srcDir, 0755)
 	result, err := util.RunCmd(ctx.Ctx, ilspyPath, []string{"-p", "-o", srcDir, ctx.Target}, "")
-	if err != nil || (result != nil && result.ExitCode != 0) {
-		execErr := fmt.Errorf("ilspycmd failed: exit %d", result.ExitCode)
+	exitCode := -1
+	if result != nil {
+		exitCode = result.ExitCode
+	}
+	if err != nil || exitCode != 0 {
+		execErr := fmt.Errorf("ilspycmd failed: exit %d", exitCode)
 		report(2, Failed, time.Since(start), execErr)
 		return execErr
 	}

@@ -31,3 +31,8 @@ font-compare.html
 # Agent/tool configs
 .serena/
 docs/superpowers/
+
+# Sensitive config
+morgue.yaml
+.env
+.env.local

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -30,7 +31,13 @@ func RunCmd(ctx context.Context, name string, args []string, dir string) (*CmdRe
 func RunCmdWithEnv(ctx context.Context, name string, args []string, dir string, env []string) (*CmdResult, error) {
 	if strings.HasSuffix(name, ".dll") {
 		args = append([]string{name}, args...)
-		name = "dotnet"
+		// Prefer local portable dotnet from tools base dir before falling back to PATH
+		localDotnet := filepath.Join(BaseDir(), "runtimes", "dotnet", "dotnet.exe")
+		if _, err := os.Stat(localDotnet); err == nil {
+			name = localDotnet
+		} else {
+			name = "dotnet"
+		}
 	}
 
 	start := time.Now()

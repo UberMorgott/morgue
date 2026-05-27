@@ -9,7 +9,7 @@
 - `cmd/morgue/main.go` — entry point (CLI args → Cobra, no args → Wails GUI + HTTP API)
 - `internal/` — core Go packages (api, app, cli, config, engine, recipe, recon, scanner, selfupdate, services, skiplist, tools, tui [legacy])
 - `internal/api/` — HTTP API server (localhost:19876) for hybrid mode. Handlers, SSE events, AI instructions.
-- `internal/tools/` — tool download/install manager; tools stored in `BaseDir()/<name>/`
+- `internal/tools/` — tool download/install manager; tools stored in `BaseDir()/tools/<name>/`
 - `frontend/src/` — Svelte SPA (components, pages, lib, stores)
 - `BaseDir()` = directory of the running executable (`internal/util/paths.go`)
 

@@ -103,3 +103,4 @@ dir /b "%DIST%"
 echo.
 echo Tools will be downloaded automatically on first run.
 echo Run dist\morgue.exe to test.
+pause

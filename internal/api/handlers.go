@@ -27,9 +27,8 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Push command to the queue for the frontend to pick up and execute through
-	// Wails bindings. This ensures progress events are emitted in the Wails
-	// context and reliably reach the webview.
+	// PushAPICommand enqueues the operation for frontend polling. Direct execution
+	// from HTTP goroutines would emit Wails events that don't reach the webview.
 	s.tools.PushAPICommand(services.APICommand{
 		Action: "run",
 		Path:   req.Path,
@@ -114,12 +113,29 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}
-	writeJSON(w, http.StatusOK, cfg)
+
+	// Redact sensitive fields before returning.
+	redacted := *cfg
+	if redacted.GitHubToken != "" {
+		redacted.GitHubToken = "***"
+	}
+	writeJSON(w, http.StatusOK, &redacted)
 }
 
 type updateSettingsRequest struct {
 	Key   string `json:"key"`
 	Value any    `json:"value"`
+}
+
+// settingsAllowlist defines which config keys may be modified via the API.
+var settingsAllowlist = map[string]bool{
+	"MaxFileSizeMB":          true,
+	"SkipSystemLibs":         true,
+	"GeneratePDB":            true,
+	"AutoUpdateCheck":        true,
+	"DefaultOutputDir":       true,
+	"UE5GhidraDecompile":    true,
+	"AllowDynamicExecution":  true,
 }
 
 func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
@@ -130,6 +146,11 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Key == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "key is required"})
+		return
+	}
+
+	if !settingsAllowlist[req.Key] {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "setting not modifiable via API"})
 		return
 	}
 
@@ -172,6 +193,10 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Redact sensitive fields before returning.
+	if cfg.GitHubToken != "" {
+		cfg.GitHubToken = "***"
+	}
 	writeJSON(w, http.StatusOK, cfg)
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,6 +13,7 @@ import (
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/recipe"
 	"github.com/UberMorgott/morgue/internal/scanner"
+	"github.com/UberMorgott/morgue/internal/tools"
 )
 
 // Run executes the full pipeline: scan → recon → skip → match → execute → save.
@@ -161,37 +163,39 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			needed := e.tools.ToolsNeeded(rec.RequiredTools())
 			if len(needed) > 0 {
 				// Wire download progress to pipeline events
-				e.tools.OnProgress = func(tool string, bytesDown, bytesTotal int64) {
-					if events != nil {
-						pct := 0
-						if bytesTotal > 0 {
-							pct = int(bytesDown * 100 / bytesTotal)
+				installCb := &tools.InstallCallbacks{
+					OnProgress: func(tool string, bytesDown, bytesTotal int64) {
+						if events != nil {
+							pct := 0
+							if bytesTotal > 0 {
+								pct = int(bytesDown * 100 / bytesTotal)
+							}
+							events <- PipelineEvent{
+								Phase:          "download",
+								Target:         filePath,
+								Message:        fmt.Sprintf("Downloading %s... %d%%", tool, pct),
+								FilesTotal:     filesTotal,
+								FilesProcessed: filesProcessed,
+							}
 						}
-						events <- PipelineEvent{
-							Phase:          "download",
-							Target:         filePath,
-							Message:        fmt.Sprintf("Downloading %s... %d%%", tool, pct),
-							FilesTotal:     filesTotal,
-							FilesProcessed: filesProcessed,
+					},
+					OnExtract: func(tool string) {
+						if events != nil {
+							events <- PipelineEvent{
+								Phase:          "extract",
+								Target:         filePath,
+								Message:        fmt.Sprintf("Extracting %s...", tool),
+								FilesTotal:     filesTotal,
+								FilesProcessed: filesProcessed,
+							}
 						}
-					}
-				}
-				e.tools.OnExtract = func(tool string) {
-					if events != nil {
-						events <- PipelineEvent{
-							Phase:          "extract",
-							Target:         filePath,
-							Message:        fmt.Sprintf("Extracting %s...", tool),
-							FilesTotal:     filesTotal,
-							FilesProcessed: filesProcessed,
-						}
-					}
+					},
 				}
 
 				installFailed := false
 				for _, name := range needed {
 					emit("install", filePath, fmt.Sprintf("Installing %s...", name))
-					if _, err := e.tools.Install(name); err != nil {
+					if _, err := e.tools.Install(name, installCb); err != nil {
 						emitErr("tools", filePath, fmt.Errorf("auto-install %s: %w", name, err))
 						installFailed = true
 						break
@@ -236,6 +240,11 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("progress forwarder panic: %v", r)
+					}
+				}()
 				for {
 					select {
 					case p, ok := <-progressCh:
@@ -368,16 +377,18 @@ func scanOutputDir(dir string) []string {
 	totalDirs := 0
 	var totalSize int64
 
-	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
-		if info.IsDir() {
+		if d.IsDir() {
 			totalDirs++
 			return nil
 		}
 		totalFiles++
-		totalSize += info.Size()
+		if info, err := d.Info(); err == nil {
+			totalSize += info.Size()
+		}
 		ext := strings.ToLower(filepath.Ext(path))
 		if ext == "" {
 			ext = "(no ext)"

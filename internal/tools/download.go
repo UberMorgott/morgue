@@ -20,7 +20,10 @@ import (
 // The grab library handles resume via ETag/partial files automatically.
 func downloadFile(url, destPath string, onProgress func(bytesDown, bytesTotal int64)) error {
 	client := grab.NewClient()
-	req, _ := grab.NewRequest(destPath, url)
+	req, err := grab.NewRequest(destPath, url)
+	if err != nil {
+		return fmt.Errorf("create download request for %s: %w", destPath, err)
+	}
 
 	resp := client.Do(req)
 
@@ -44,6 +47,23 @@ func downloadFile(url, destPath string, onProgress func(bytesDown, bytesTotal in
 	}
 
 	return resp.Err()
+}
+
+// verifyHash checks the SHA-256 hash of a downloaded file against an expected value.
+// If expectedHash is empty, verification is skipped.
+func verifyHash(path, expectedHash string) error {
+	if expectedHash == "" {
+		return nil
+	}
+	actual, err := util.SHA256File(path)
+	if err != nil {
+		return fmt.Errorf("compute hash of %s: %w", filepath.Base(path), err)
+	}
+	if actual != expectedHash {
+		os.Remove(path)
+		return fmt.Errorf("hash mismatch for %s: expected %s, got %s", filepath.Base(path), expectedHash, actual)
+	}
+	return nil
 }
 
 // isArchiveFile returns true if the file is an archive that should be extracted.
@@ -105,7 +125,8 @@ func extractZip(archivePath, destDir string) error {
 			return fmt.Errorf("create %s: %w", target, err)
 		}
 
-		_, copyErr := io.Copy(out, rc)
+		// Limit extracted file size to 2GB to prevent zip bombs
+		_, copyErr := io.Copy(out, io.LimitReader(rc, 2*1024*1024*1024))
 		rc.Close()
 		out.Close()
 		if copyErr != nil {
@@ -140,6 +161,9 @@ func installFromURLs(urls []string, destDir string, onProgress func(bytesDown, b
 func installFromURL(tool ToolDef, destDir string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
 	destPath := filepath.Join(destDir, filepath.Base(tool.URL))
 	if err := downloadFile(tool.URL, destPath, onProgress); err != nil {
+		return err
+	}
+	if err := verifyHash(destPath, tool.SHA256); err != nil {
 		return err
 	}
 	if onExtract != nil && isArchiveFile(destPath) {

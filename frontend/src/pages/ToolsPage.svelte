@@ -30,13 +30,13 @@
     if (!toolName) return;
     try {
       const st = await ToolsService.CheckAll();
-      const updated = (st || []).find((s: any) => (s.Name ?? s.name) === toolName);
+      const updated = (st || []).find((s: any) => s.Name === toolName);
       if (updated) {
         tools = tools.map(t => t.name === toolName ? {
           ...t,
-          installed: updated.Installed ?? updated.installed ?? false,
-          version: updated.Version ?? updated.version ?? '',
-          path: updated.Path ?? updated.path ?? '',
+          installed: updated.Installed ?? false,
+          version: updated.Version ?? '',
+          path: updated.Path ?? '',
         } : t);
       }
     } catch (e) { console.error('Refresh after tool:installed failed:', e); }
@@ -55,9 +55,9 @@
         if (!statuses) return;
         let changed = false;
         for (const s of statuses) {
-          const name = s.Name ?? s.name ?? '';
-          const installed = s.Installed ?? s.installed ?? false;
-          const version = s.Version ?? s.version ?? '';
+          const name = s.Name ?? '';
+          const installed = s.Installed ?? false;
+          const version = s.Version ?? '';
           const existing = tools.find(t => t.name === name);
           if (!existing) continue;
           if (existing.installed !== installed || existing.version !== version) {
@@ -66,13 +66,13 @@
         }
         if (changed) {
           tools = tools.map(t => {
-            const fresh = (statuses as any[]).find((s: any) => (s.Name ?? s.name) === t.name);
+            const fresh = (statuses as any[]).find((s: any) => s.Name === t.name);
             if (!fresh) return t;
             return {
               ...t,
-              installed: fresh.Installed ?? fresh.installed ?? false,
-              version: fresh.Version ?? fresh.version ?? '',
-              path: fresh.Path ?? fresh.path ?? '',
+              installed: fresh.Installed ?? false,
+              version: fresh.Version ?? '',
+              path: fresh.Path ?? '',
             };
           });
         }
@@ -105,12 +105,12 @@
     try {
       const statuses = await ToolsService.CheckRuntimes();
       runtimes = (statuses || []).map((s: any) => ({
-        kind: s.Kind ?? s.kind ?? '',
-        available: s.Available ?? s.available ?? false,
-        version: s.Version ?? s.version ?? '',
-        path: s.Path ?? s.path ?? '',
-        local: s.Local ?? s.local ?? false,
-        required: s.Required ?? s.required ?? false,
+        kind: s.Kind ?? '',
+        available: s.Available ?? false,
+        version: s.Version ?? '',
+        path: s.Path ?? '',
+        local: s.Local ?? false,
+        required: s.Required ?? false,
       }));
     } catch (e) { console.error('CheckRuntimes failed:', e); }
     finally { runtimesLoading = false; }
@@ -134,11 +134,11 @@
       // Phase 1: instant local status (no network calls)
       const statuses = await ToolsService.CheckAll();
       tools = (statuses || []).map((s: any) => ({
-        name: s.Name ?? s.name ?? '', installed: s.Installed ?? s.installed ?? false,
-        path: s.Path ?? s.path ?? '', version: s.Version ?? s.version ?? '',
+        name: s.Name ?? '', installed: s.Installed ?? false,
+        path: s.Path ?? '', version: s.Version ?? '',
         latestVersion: '', updateAvailable: false,
-        category: s.Category ?? s.category ?? '', description: s.Description ?? s.description ?? '',
-        checking: false, runtimeDeps: s.RuntimeDeps ?? s.runtimeDeps ?? [],
+        category: s.Category ?? '', description: s.Description ?? '',
+        checking: false, runtimeDeps: s.RuntimeDeps ?? [],
       }));
       loading = false;
 
@@ -187,13 +187,13 @@
       await ToolsService.Install(name);
       // Refresh only this tool's status, not the whole list
       const st = await ToolsService.CheckAll();
-      const updated = (st || []).find((s: any) => (s.Name ?? s.name) === name);
+      const updated = (st || []).find((s: any) => s.Name === name);
       if (updated) {
         tools = tools.map(t => t.name === name ? {
           ...t,
-          installed: updated.Installed ?? updated.installed ?? false,
-          version: updated.Version ?? updated.version ?? '',
-          path: updated.Path ?? updated.path ?? '',
+          installed: updated.Installed ?? false,
+          version: updated.Version ?? '',
+          path: updated.Path ?? '',
           checking: true,
         } : t);
         checkLatestVersion(name);
