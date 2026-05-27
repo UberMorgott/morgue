@@ -58,7 +58,7 @@ type ToolsService struct {
 // NewToolsService creates a ToolsService.
 func NewToolsService(appVersion string) *ToolsService {
 	cfg, _ := config.Load(util.ConfigPath())
-	mgr := tools.NewManager(util.BaseDir(), cfg)
+	mgr := tools.NewManager(util.ToolsBaseDir(), cfg)
 	svc := &ToolsService{
 		manager:   mgr,
 		appVersion: appVersion,

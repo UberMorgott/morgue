@@ -81,7 +81,7 @@ type Model struct {
 func New(version string) Model {
 	th := CyberpunkTheme()
 	cfg, _ := config.Load(util.ConfigPath())
-	eng := engine.New(cfg, util.BaseDir())
+	eng := engine.New(cfg, util.ToolsBaseDir())
 
 	sb := components.NewStatusBar(th.BG, th.FG)
 	sb.SetLeft("MORGUE")

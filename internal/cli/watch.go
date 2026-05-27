@@ -83,7 +83,15 @@ func RunWatch(opts RunOptions) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	eng := engine.New(cfg, util.BaseDir())
+	if opts.Output == "" {
+		opts.Output = cfg.DefaultOutputDir
+	}
+	if opts.Output == "" {
+		opts.Output = util.DefaultOutputDir()
+	}
+	os.MkdirAll(opts.Output, 0755)
+
+	eng := engine.New(cfg, util.ToolsBaseDir())
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()

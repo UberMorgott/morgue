@@ -14,9 +14,19 @@ func BaseDir() string {
 	return filepath.Dir(exe)
 }
 
+// ToolsBaseDir returns the root directory for all tools: BaseDir/tools/.
+func ToolsBaseDir() string {
+	return filepath.Join(BaseDir(), "tools")
+}
+
 // ToolDir returns the directory for a named tool under BaseDir/tools/.
 func ToolDir(name string) string {
-	return filepath.Join(BaseDir(), "tools", name)
+	return filepath.Join(ToolsBaseDir(), name)
+}
+
+// DefaultOutputDir returns the default output directory: BaseDir/output/.
+func DefaultOutputDir() string {
+	return filepath.Join(BaseDir(), "output")
 }
 
 // ToolPath returns the full path to an executable within a tool directory.

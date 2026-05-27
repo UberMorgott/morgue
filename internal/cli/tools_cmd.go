@@ -13,7 +13,7 @@ import (
 // ToolsCheck prints a table of all tools and their installation status.
 func ToolsCheck() error {
 	cfg, _ := config.Load(util.ConfigPath())
-	mgr := tools.NewManager(util.BaseDir(), cfg)
+	mgr := tools.NewManager(util.ToolsBaseDir(), cfg)
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "TOOL\tCATEGORY\tINSTALLED\tVERSION\tPATH")
@@ -43,7 +43,7 @@ func ToolsCheck() error {
 // ToolsInstall installs all missing tools.
 func ToolsInstall() error {
 	cfg, _ := config.Load(util.ConfigPath())
-	mgr := tools.NewManager(util.BaseDir(), cfg)
+	mgr := tools.NewManager(util.ToolsBaseDir(), cfg)
 
 	var needed []string
 	for _, def := range tools.Registry {
