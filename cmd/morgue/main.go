@@ -111,6 +111,7 @@ func runCLI() {
 	root.AddCommand(toolsCmd())
 	root.AddCommand(versionCmd())
 	root.AddCommand(selfUpdateCmd())
+	root.AddCommand(apiCmd())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
@@ -198,6 +199,82 @@ func selfUpdateCmd() *cobra.Command {
 	}
 
 	cmd.Flags().Bool("check", false, "Check only, don't download")
+
+	return cmd
+}
+
+func apiCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "api",
+		Short: "Interact with the running GUI's HTTP API",
+	}
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "Get GUI status",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.APIStatus()
+		},
+	})
+
+	apiRunCmd := &cobra.Command{
+		Use:   "run <file>",
+		Short: "Send a decompilation job to the GUI",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			output, _ := cmd.Flags().GetString("output")
+			return cli.APIRun(args[0], output)
+		},
+	}
+	apiRunCmd.Flags().StringP("output", "o", "", "Output directory")
+	cmd.AddCommand(apiRunCmd)
+
+	apiToolsCmd := &cobra.Command{
+		Use:   "tools",
+		Short: "List tools via GUI API",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.APITools()
+		},
+	}
+
+	apiToolsCmd.AddCommand(&cobra.Command{
+		Use:   "install [name]",
+		Short: "Install a tool via GUI API",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.APIToolsInstall(args[0])
+		},
+	})
+
+	apiToolsCmd.AddCommand(&cobra.Command{
+		Use:   "delete <name>",
+		Short: "Delete a tool via GUI API",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.APIToolsDelete(args[0])
+		},
+	})
+
+	cmd.AddCommand(apiToolsCmd)
+
+	apiSettingsCmd := &cobra.Command{
+		Use:   "settings",
+		Short: "Get current settings via GUI API",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.APISettings()
+		},
+	}
+
+	apiSettingsCmd.AddCommand(&cobra.Command{
+		Use:   "set <key> <value>",
+		Short: "Update a setting via GUI API",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.APISettingsSet(args[0], args[1])
+		},
+	})
+
+	cmd.AddCommand(apiSettingsCmd)
 
 	return cmd
 }
