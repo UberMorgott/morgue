@@ -8,16 +8,6 @@
   currentLang.subscribe(v => lang = v);
 
   let expanded = false;
-  let now = Date.now();
-
-  // Update elapsed time every second
-  let timer: ReturnType<typeof setInterval>;
-  $: if ($activeOperation) {
-    clearInterval(timer);
-    timer = setInterval(() => { now = Date.now(); }, 1000);
-  } else {
-    clearInterval(timer);
-  }
 
   function toggle() {
     if ($operations.length > 0) expanded = !expanded;
@@ -31,14 +21,6 @@
       case 'pipeline': return '⚙';
       default: return '●';
     }
-  }
-
-  function elapsed(op: Operation): string {
-    if (!op.startedAt) return '';
-    const diff = Math.floor((now - op.startedAt) / 1000);
-    const m = Math.floor(diff / 60);
-    const s = diff % 60;
-    return m > 0 ? `${m}м ${s}с` : `${s}с`;
   }
 
   function hasCompleted(ops: Operation[]): boolean {
@@ -68,7 +50,6 @@
     <div class="ops-right">
       {#if $activeOperation}
         <span class="ops-percent">{Math.round($activeOperation.progress)}%</span>
-        <span class="ops-elapsed">{elapsed($activeOperation)}</span>
       {:else if $operations.length > 0}
         <span class="ops-count">{$operations.length}</span>
       {/if}
@@ -199,11 +180,6 @@
   .ops-percent {
     color: var(--accent);
     font-weight: 600;
-  }
-
-  .ops-elapsed {
-    color: var(--text-muted);
-    font-size: 20px;
   }
 
   .ops-count {
