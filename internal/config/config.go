@@ -21,7 +21,7 @@ type Config struct {
 	MaxFileSizeMB          int             `json:"MaxFileSizeMB" yaml:"max_file_size_mb"`
 	ConcurrentTargets      int             `json:"ConcurrentTargets" yaml:"concurrent_targets"`
 	StopOnFirstError       bool            `json:"StopOnFirstError" yaml:"stop_on_first_error"`
-	GitHubToken            string          `json:"-" yaml:"github_token"`
+	GitHubToken            string          `json:"GitHubToken" yaml:"github_token"`
 	DownloadRetries        int             `json:"DownloadRetries" yaml:"download_retries"`
 	DownloadTimeoutMinutes int             `json:"DownloadTimeoutMinutes" yaml:"download_timeout_minutes"`
 	PreferSystemTools      bool            `json:"PreferSystemTools" yaml:"prefer_system_tools"`

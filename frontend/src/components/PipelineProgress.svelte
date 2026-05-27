@@ -2,6 +2,7 @@
   import { t, type Lang } from '../lib/i18n';
   import { pipelineState, type PipelinePhase, type PipelineState } from '../lib/pipeline';
   import PipelineSummary from './PipelineSummary.svelte';
+  import AnalysisPanel from './AnalysisPanel.svelte';
 
   let { lang = 'en' as Lang, inputPath = '', phase, paused, running, elapsed = '',
     showDetection, showTools, showExecution, showSummary,
@@ -87,14 +88,6 @@
 </script>
 
 <div class="pipeline-view animate-in">
-  <!-- File info bar -->
-  <div class="file-info glass">
-    <span class="file-path selectable">{inputPath}</span>
-    {#if $pipelineState.reconResults.length > 0 && $pipelineState.reconResults[0].kind && $pipelineState.reconResults[0].kind !== 'Unknown'}
-      <span class="tag tag-accent">{$pipelineState.reconResults[0].kind}</span>
-    {/if}
-  </div>
-
   <!-- Stage stepper -->
   <div class="stepper">
     {#each stageIds as id, i (id)}
@@ -126,72 +119,19 @@
   {#if phase !== 'idle'}
     <div class="acc-panel glass">
 
-      <!-- Section: Detection -->
+      <!-- Section: Analysis -->
       {#if showDetection}
-        <div class="acc-section">
-          <div class="acc-section-header">
-            <svg class="acc-icon" width="16" height="16" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-            <span class="acc-section-title">{t(lang, 'home.section.analysis')}</span>
-            {#if ['scan', 'recon'].includes(phase)}
-              <span class="spinner-sm"></span>
-            {/if}
-          </div>
-
-          {#if $pipelineState.reconKind}
-            {#each $pipelineState.reconResults as r, i (i)}
-              <div class="acc-detail-row">
-                <span class="acc-detail-mono">{r.file}</span>
-                {#if $pipelineState.reconKind}
-                  <span class="tag tag-kind">{$pipelineState.reconKind}</span>
-                {/if}
-                {#if r.kind}
-                  <span class="tag {r.kind === 'Skipped' ? 'tag-muted' : r.kind === 'Unknown' ? 'tag-muted' : 'tag-accent'}">{r.kind}</span>
-                {/if}
-              </div>
-            {/each}
-            {@const metaItems = [
-              $pipelineState.compiler ? `${t(lang, 'pipeline.compiler')} ${$pipelineState.compiler}` : '',
-              $pipelineState.obfuscator ? `${t(lang, 'pipeline.obfuscator')} ${$pipelineState.obfuscator}` : '',
-              $pipelineState.fileSize ? `${t(lang, 'pipeline.size')} ${formatFileSize($pipelineState.fileSize)}` : '',
-            ].filter(Boolean)}
-            {#if metaItems.length > 0}
-              <div class="acc-detail-row detect-meta">
-                {#each metaItems as item, i (i)}
-                  {#if i > 0}
-                    <span class="detect-meta-sep">|</span>
-                  {/if}
-                  <span class="detect-meta-value">{item}</span>
-                {/each}
-              </div>
-            {/if}
-            {#if $pipelineState.recipeName}
-              <div class="acc-detail-row">
-                <span class="acc-detail-label">{t(lang, 'pipeline.recipe')}</span>
-                <span class="acc-detail-mono">{$pipelineState.recipeName}</span>
-                {#if $pipelineState.recipeDesc}
-                  <span class="acc-detail-value muted">&mdash; {$pipelineState.recipeDesc}</span>
-                {/if}
-              </div>
-            {/if}
-          {:else}
-            {#each $pipelineState.reconResults as r, i (i)}
-              <div class="acc-detail-row">
-                <span class="acc-detail-mono">{r.file}</span>
-                {#if r.kind}
-                  <span class="tag {r.kind === 'Skipped' ? 'tag-muted' : r.kind === 'Unknown' ? 'tag-muted' : 'tag-accent'}">{r.kind}</span>
-                {:else}
-                  <span class="spinner-sm"></span>
-                {/if}
-              </div>
-            {/each}
-
-            {#if $pipelineState.reconResults.length === 0 && ['scan', 'recon'].includes(phase)}
-              <div class="acc-detail-row">
-                <span class="acc-detail-value muted">{t(lang, 'home.classifying')}</span>
-              </div>
-            {/if}
-          {/if}
-        </div>
+        <AnalysisPanel
+          {lang}
+          reconResults={$pipelineState.reconResults}
+          {phase}
+          reconKind={$pipelineState.reconKind}
+          compiler={$pipelineState.compiler}
+          obfuscator={$pipelineState.obfuscator}
+          fileSize={$pipelineState.fileSize}
+          recipeName={$pipelineState.recipeName}
+          recipeDesc={$pipelineState.recipeDesc}
+        />
       {/if}
 
       <!-- Section: Tools -->
@@ -267,20 +207,6 @@
             <div class="acc-detail-row">
               <span class="acc-detail-label">{t(lang, 'pipeline.target')}</span>
               <span class="acc-detail-mono">{basename($pipelineState.currentTarget)}</span>
-            </div>
-          {/if}
-
-          {#if $pipelineState.filesTotal > 0}
-            <div class="acc-files-row">
-              <div class="files-counter">
-                <span class="files-num">{$pipelineState.filesProcessed}</span>
-                <span class="files-sep">/</span>
-                <span class="files-total">{$pipelineState.filesTotal}</span>
-              </div>
-              <span class="files-label">{t(lang, 'home.filesProcessed')}</span>
-              <div class="files-progress-track">
-                <div class="files-progress-fill" style="width: {$pipelineState.filesTotal > 0 ? ($pipelineState.filesProcessed / $pipelineState.filesTotal) * 100 : 0}%"></div>
-              </div>
             </div>
           {/if}
 
@@ -371,28 +297,10 @@
     width: 100%;
   }
 
-  .file-info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 18px;
-    width: 100%;
-    overflow: hidden;
-  }
-  .file-path {
-    font-size: 13px;
-    font-family: 'Consolas', 'Courier New', monospace;
-    color: var(--text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1;
-  }
-
   /* -- Stage stepper (CSS grid) -- */
   .stepper {
     display: grid;
-    grid-template-columns: auto 1fr auto 1fr auto 1fr auto 1fr auto;
+    grid-template-columns: 32px 1fr 32px 1fr 32px 1fr 32px 1fr 32px;
     align-items: start;
     width: 100%;
     padding: 8px 16px;
@@ -536,12 +444,6 @@
     color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
   }
 
-  .tag-kind { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
-
-  .detect-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .detect-meta-value { font-size: 0.82rem; color: var(--text-primary); font-weight: 500; }
-  .detect-meta-sep { color: var(--border); font-size: 0.75rem; }
-
   /* Tools list */
   .tools-list { display: flex; flex-direction: column; gap: 4px; padding: 0 0 0 24px; }
   .tool-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
@@ -561,15 +463,6 @@
   .dl-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; box-shadow: 0 0 6px var(--accent-glow-soft); }
   .dl-pct { font-size: 0.75rem; color: var(--accent); min-width: 36px; text-align: right; }
   .dl-extracting { font-size: 0.75rem; color: var(--text-muted); font-style: italic; }
-
-  .acc-files-row { display: flex; align-items: center; gap: 12px; padding: 4px 0 4px 24px; flex-wrap: wrap; }
-  .files-counter { display: flex; align-items: baseline; gap: 2px; }
-  .files-num { font-size: 1.2rem; font-weight: 700; color: var(--accent); font-family: Consolas, ui-monospace, monospace; }
-  .files-sep { font-size: 0.9rem; color: var(--text-muted); margin: 0 2px; }
-  .files-total { font-size: 0.9rem; color: var(--text-muted); font-family: 'Orbitron', monospace; }
-  .files-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; }
-  .files-progress-track { flex: 1; min-width: 60px; height: 4px; background: rgba(255, 140, 40, 0.08); border-radius: 2px; overflow: hidden; }
-  .files-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.4s ease; }
 
   .acc-step-row { display: flex; flex-direction: column; gap: 8px; padding: 0 0 0 24px; }
   .step-info { display: flex; align-items: center; gap: 8px; }

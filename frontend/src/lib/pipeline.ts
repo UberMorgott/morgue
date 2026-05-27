@@ -17,8 +17,6 @@ export interface PipelineState {
   inputPath: string;
   outputPath: string;
   targets: PipelineTarget[];
-  filesTotal: number;
-  filesProcessed: number;
   step: number;
   stepTotal: number;
   stepName: string;
@@ -28,7 +26,7 @@ export interface PipelineState {
   lastMessage: string;     // last status message from engine
   startedAt: number;       // timestamp when pipeline started
   scanInfo: string;          // "Found 3 files in 1 group"
-  reconResults: Array<{ file: string; kind: string }>;  // classification results
+  reconResults: Array<{ file: string; kind: string; reconKind: string; compiler: string; obfuscator: string; size: number }>;  // classification results
   toolsInfo: string;         // "All tools ready" or "Installing ilspycmd..."
   logs: string[];            // last N log messages (keep max 20)
   outputStats: string[];     // post-execution file statistics
@@ -51,8 +49,6 @@ const initial: PipelineState = {
   inputPath: '',
   outputPath: '',
   targets: [],
-  filesTotal: 0,
-  filesProcessed: 0,
   step: 0,
   stepTotal: 0,
   stepName: '',
@@ -96,8 +92,6 @@ export function startPipeline(inputPath: string) {
     inputPath,
     outputPath: '',
     targets: [],
-    filesTotal: 0,
-    filesProcessed: 0,
     step: 0,
     stepTotal: 0,
     stepName: '',
@@ -143,8 +137,6 @@ export function updateFromEvent(data: any) {
       else if (phase === 'execute' || phase === 'log') next.phase = 'execute';
       else if (phase === 'done') {
         next.phase = 'done';
-        // Ensure filesProcessed matches filesTotal on completion
-        if (next.filesTotal > 0) next.filesProcessed = next.filesTotal;
       }
       else if (phase === 'skip') { /* keep current phase */ }
     }
@@ -171,7 +163,7 @@ export function updateFromEvent(data: any) {
     if (phase === 'recon' && target) {
       const fname = target.split(/[\\/]/).pop() || target;
       if (!next.reconResults.find(r => r.file === fname)) {
-        next.reconResults = [...s.reconResults, { file: fname, kind: '' }];
+        next.reconResults = [...s.reconResults, { file: fname, kind: '', reconKind: d.ReconKind || '', compiler: d.Compiler || '', obfuscator: d.Obfuscator || '', size: d.FileSize || 0 }];
       }
       // Capture enriched recon data
       if (d.ReconKind) next.reconKind = d.ReconKind;
@@ -182,7 +174,7 @@ export function updateFromEvent(data: any) {
 
     if (phase === 'match' && target && message) {
       const fname = target.split(/[\\/]/).pop() || target;
-      const recipe = message.replace('Matched recipe: ', '').replace('No matching recipe found', 'Unknown');
+      const recipe = message.replace('Recipe: ', '').replace('No matching recipe found', 'Unknown');
       next.reconResults = (next.reconResults.length ? next.reconResults : [...s.reconResults]).map(r =>
         r.file === fname ? { ...r, kind: recipe } : r
       );
@@ -193,7 +185,7 @@ export function updateFromEvent(data: any) {
 
     if (phase === 'skip' && target && message) {
       const fname = target.split(/[\\/]/).pop() || target;
-      next.reconResults = [...s.reconResults, { file: fname, kind: 'Skipped' }];
+      next.reconResults = [...s.reconResults, { file: fname, kind: 'Skipped', reconKind: '', compiler: '', obfuscator: '', size: 0 }];
     }
 
     if (phase === 'download' && message) {
@@ -253,12 +245,6 @@ export function updateFromEvent(data: any) {
     // Capture output stats
     if (phase === 'stats' && d.OutputStats) {
       next.outputStats = d.OutputStats;
-    }
-
-    // File counts
-    if (d.FilesTotal) next.filesTotal = d.FilesTotal;
-    if (d.FilesProcessed !== undefined) {
-      next.filesProcessed = d.FilesProcessed;
     }
 
     // Step progress

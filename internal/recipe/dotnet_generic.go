@@ -1,10 +1,12 @@
 package recipe
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/UberMorgott/morgue/internal/recon"
@@ -100,13 +102,105 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 		exitCode = result.ExitCode
 	}
 	if err != nil || exitCode != 0 {
-		execErr := fmt.Errorf("ilspycmd failed: exit %d", exitCode)
-		report(2, Failed, time.Since(start), execErr)
-		return execErr
+		// Project mode failed — retry without -p (flat .cs output, more tolerant)
+		log(fmt.Sprintf("ilspycmd project mode failed (exit %d), retrying without -p", exitCode))
+		os.RemoveAll(srcDir)
+		os.MkdirAll(srcDir, 0755)
+		result, err = util.RunCmd(ctx.Ctx, ilspyPath, []string{"-o", srcDir, ctx.Target}, "")
+		exitCode = -1
+		if result != nil {
+			exitCode = result.ExitCode
+		}
+		if err != nil || exitCode != 0 {
+			stderr := ""
+			if result != nil && result.Stderr != "" {
+				stderr = result.Stderr
+			}
+			originalErr := fmt.Errorf("ilspycmd failed (exit %d): %s", exitCode, stderr)
+
+			// Fallback: per-type decompilation
+			log("ilspycmd whole-assembly failed, trying per-type fallback...")
+			fallbackOK := perTypeFallback(ctx.Ctx, ilspyPath, ctx.Target, srcDir, log)
+			if !fallbackOK {
+				report(2, Failed, time.Since(start), originalErr)
+				return originalErr
+			}
+		} else {
+			log("ilspycmd succeeded without -p (flat file mode)")
+		}
+	} else {
+		log("ilspycmd succeeded in project mode")
 	}
 	report(2, Success, time.Since(start), nil)
 
 	return nil
+}
+
+// perTypeFallback enumerates all types in an assembly and decompiles them
+// one by one. Returns true if at least one type was decompiled successfully.
+func perTypeFallback(ctx context.Context, ilspyPath, target, srcDir string, log func(string)) bool {
+	listResult, listErr := util.RunCmd(ctx, ilspyPath, []string{
+		"-l", "c i s d e", "--disable-updatecheck", target,
+	}, "")
+	if listErr != nil || listResult == nil || listResult.ExitCode != 0 {
+		log("per-type fallback: failed to list types")
+		return false
+	}
+
+	types := parseTypeList(listResult.Stdout)
+	if len(types) == 0 {
+		log("per-type fallback: no types found in assembly")
+		return false
+	}
+
+	log(fmt.Sprintf("per-type fallback: found %d types, decompiling individually...", len(types)))
+	os.RemoveAll(srcDir)
+	os.MkdirAll(srcDir, 0o755)
+
+	succeeded := 0
+	failed := 0
+	for _, typeName := range types {
+		typeResult, _ := util.RunCmd(ctx, ilspyPath, []string{
+			"-t", typeName, "-o", srcDir, "--disable-updatecheck", target,
+		}, "")
+		if typeResult != nil && typeResult.ExitCode == 0 {
+			succeeded++
+		} else {
+			failed++
+		}
+	}
+
+	if succeeded == 0 {
+		log("per-type fallback: all types failed")
+		return false
+	}
+
+	log(fmt.Sprintf("per-type fallback: %d/%d types decompiled", succeeded, succeeded+failed))
+	return true
+}
+
+// parseTypeList extracts fully-qualified type names from ilspycmd -l output.
+// Each line has the format "TypeKind FullName", e.g. "Class Foo.Bar".
+func parseTypeList(output string) []string {
+	var types []string
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "ilspycmd") || strings.HasPrefix(line, "ICSharpCode") {
+			continue
+		}
+		// Strip type-kind prefix: "Class ", "Struct ", "Interface ", "Enum ", "Delegate "
+		if idx := strings.IndexByte(line, ' '); idx >= 0 {
+			line = line[idx+1:]
+		}
+		// Skip <Module> and compiler-generated types (e.g. <>c, <>c__DisplayClass).
+		// These contain <> which are invalid in Windows filenames, and their code
+		// is already included when decompiling the parent type.
+		if line == "" || strings.Contains(line, "<") {
+			continue
+		}
+		types = append(types, line)
+	}
+	return types
 }
 
 // copyFile copies src to dst.

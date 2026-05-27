@@ -131,6 +131,7 @@ The user sees all changes in the application window in real-time.`,
 	}
 
 	root.AddCommand(runCmd())
+	root.AddCommand(infoCmd())
 	root.AddCommand(toolsCmd())
 	root.AddCommand(versionCmd())
 	root.AddCommand(selfUpdateCmd())
@@ -149,6 +150,7 @@ func runCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			output, _ := cmd.Flags().GetString("output")
 			watch, _ := cmd.Flags().GetBool("watch")
+			quiet, _ := cmd.Flags().GetBool("quiet")
 			recipe, _ := cmd.Flags().GetString("recipe")
 			noSkip, _ := cmd.Flags().GetBool("no-skip")
 			exclude, _ := cmd.Flags().GetStringSlice("exclude")
@@ -160,12 +162,14 @@ func runCmd() *cobra.Command {
 				NoSkip:  noSkip,
 				Exclude: exclude,
 				Watch:   watch,
+				Quiet:   quiet,
 			})
 		},
 	}
 
 	cmd.Flags().StringP("output", "o", "./decompiled", "Output directory")
 	cmd.Flags().Bool("watch", false, "Show TUI progress in stderr")
+	cmd.Flags().BoolP("quiet", "q", false, "Suppress stderr output, only emit JSON to stdout")
 	cmd.Flags().String("recipe", "", "Force specific recipe")
 	cmd.Flags().Bool("no-skip", false, "Disable auto skip-list")
 	cmd.Flags().StringSlice("exclude", nil, "Additional exclude patterns")
@@ -188,9 +192,13 @@ func toolsCmd() *cobra.Command {
 	})
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "install",
-		Short: "Download and install required tools",
+		Use:   "install [name]",
+		Short: "Download and install required tools (all missing, or a specific one)",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 1 {
+				return cli.ToolsInstallOne(args[0])
+			}
 			return cli.ToolsInstall()
 		},
 	})
@@ -246,10 +254,15 @@ func apiCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			output, _ := cmd.Flags().GetString("output")
+			wait, _ := cmd.Flags().GetBool("wait")
+			if wait {
+				return cli.APIRunWait(args[0], output)
+			}
 			return cli.APIRun(args[0], output)
 		},
 	}
 	apiRunCmd.Flags().StringP("output", "o", "", "Output directory")
+	apiRunCmd.Flags().Bool("wait", false, "Wait until the pipeline completes, showing progress")
 	cmd.AddCommand(apiRunCmd)
 
 	apiToolsCmd := &cobra.Command{
@@ -267,10 +280,14 @@ func apiCmd() *cobra.Command {
 
 	apiToolsCmd.AddCommand(&cobra.Command{
 		Use:   "install [name]",
-		Short: "Install a tool via GUI API",
-		Args:  cobra.ExactArgs(1),
+		Short: "Install a tool (or all missing tools) via GUI API",
+		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cli.APIToolsInstall(args[0])
+			name := ""
+			if len(args) > 0 {
+				name = args[0]
+			}
+			return cli.APIToolsInstall(name)
 		},
 	})
 
@@ -304,5 +321,22 @@ func apiCmd() *cobra.Command {
 
 	cmd.AddCommand(apiSettingsCmd)
 
+	return cmd
+}
+
+func infoCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "info [file]",
+		Short: "Show binary information without decompiling",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			format, _ := cmd.Flags().GetString("format")
+			return cli.Info(cli.InfoOptions{
+				Target: args[0],
+				Format: format,
+			})
+		},
+	}
+	cmd.Flags().String("format", "json", "Output format: json or text")
 	return cmd
 }

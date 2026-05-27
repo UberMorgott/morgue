@@ -14,7 +14,7 @@ import * as tools$0 from "../tools/models.js";
 import * as time$0 from "../../../../../time/models.js";
 
 /**
- * APICommand represents a command pushed by the HTTP API for the frontend to execute.
+ * APICommand represents a queued command from HTTP API to frontend. Uses explicit json tags (lowercase).
  */
 export class APICommand {
     /**
@@ -237,7 +237,7 @@ export class EnrichedToolsResponse {
 }
 
 /**
- * PipelineStatus describes the current state of the pipeline.
+ * PipelineStatus is returned via Wails binding and HTTP API. Uses explicit json tags (camelCase).
  */
 export class PipelineStatus {
     /**

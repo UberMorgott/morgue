@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/recipe"
@@ -16,25 +17,40 @@ import (
 	"github.com/UberMorgott/morgue/internal/tools"
 )
 
+// PipelineSummary wraps results with aggregate stats.
+type PipelineSummary struct {
+	Stats   SummaryStats   `json:"stats"`
+	Results []summaryEntry `json:"results"`
+}
+
+// SummaryStats holds aggregate pipeline statistics.
+type SummaryStats struct {
+	Total    int            `json:"total"`
+	Success  int            `json:"success"`
+	Failed   int            `json:"failed"`
+	Skipped  int            `json:"skipped"`
+	Duration string         `json:"duration"`
+	ByKind   map[string]int `json:"by_kind"`
+	ByRecipe map[string]int `json:"by_recipe"`
+}
+
 // Run executes the full pipeline: scan → recon → skip → match → execute → save.
 func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEvent) error {
+	startTime := time.Now()
 	defer func() {
 		if events != nil {
 			events <- PipelineEvent{Phase: "done", Done: true, OutputPath: opts.Output}
 		}
 	}()
 
-	filesTotal := 0
-	filesProcessed := 0
-
 	emit := func(phase, target, msg string) {
 		if events != nil {
-			events <- PipelineEvent{Phase: phase, Target: target, Message: msg, FilesTotal: filesTotal, FilesProcessed: filesProcessed}
+			events <- PipelineEvent{Phase: phase, Target: target, Message: msg}
 		}
 	}
 	emitErr := func(phase, target string, err error) {
 		if events != nil {
-			events <- PipelineEvent{Phase: phase, Target: target, Error: err, FilesTotal: filesTotal, FilesProcessed: filesProcessed}
+			events <- PipelineEvent{Phase: phase, Target: target, Error: err}
 		}
 	}
 
@@ -45,11 +61,6 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 		emitErr("scan", opts.Input, err)
 		return fmt.Errorf("scan: %w", err)
 	}
-	// Count total files across all groups.
-	for _, g := range scanResult.Groups {
-		filesTotal += len(g.Files)
-	}
-
 	emit("scan", opts.Input, fmt.Sprintf("Found %d files in %d groups", len(scanResult.Files), len(scanResult.Groups)))
 
 	var results []TargetResult
@@ -76,7 +87,6 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 					results = append(results, TargetResult{
 						Group: group, Skipped: true, SkipReason: reason,
 					})
-					filesProcessed++
 					emit("skip", filePath, fmt.Sprintf("Skipped: %s", reason))
 					continue
 				}
@@ -87,7 +97,6 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				results = append(results, TargetResult{
 					Group: group, Skipped: true, SkipReason: "excluded",
 				})
-				filesProcessed++
 				emit("skip", filePath, "Excluded by pattern")
 				continue
 			}
@@ -96,7 +105,6 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			emit("recon", filePath, "Classifying...")
 			reconResult, err := e.Classify(ctx, filePath)
 			if err != nil {
-				filesProcessed++
 				emitErr("recon", filePath, err)
 				results = append(results, TargetResult{Group: group, Error: err})
 				continue
@@ -122,14 +130,12 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 					Compiler:   reconResult.Compiler,
 					Obfuscator: reconResult.Obfuscator,
 					FileSize:   reconResult.Size,
-					FilesTotal: filesTotal, FilesProcessed: filesProcessed,
 				}
 			}
 
 			// Match recipe
 			rec := e.MatchRecipe(&reconResult, opts.Recipe)
 			if rec == nil {
-				filesProcessed++
 				emit("match", filePath, "No matching recipe found")
 				results = append(results, TargetResult{
 					Group: group, Recon: reconResult,
@@ -144,7 +150,6 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 					Message:    fmt.Sprintf("Recipe: %s", rec.Name()),
 					RecipeName: rec.Name(),
 					RecipeDesc: rec.Description(),
-					FilesTotal: filesTotal, FilesProcessed: filesProcessed,
 				}
 			}
 
@@ -155,8 +160,70 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 					Target:      filePath,
 					Message:     fmt.Sprintf("%d tools needed", len(rec.RequiredTools())),
 					ToolsNeeded: rec.RequiredTools(),
-					FilesTotal:  filesTotal, FilesProcessed: filesProcessed,
 				}
+			}
+
+			// Check runtime dependencies — auto-install if missing
+			runtimeFailed := false
+			{
+				runtimeSeen := map[tools.RuntimeKind]bool{}
+				for _, tName := range rec.RequiredTools() {
+					if runtimeFailed {
+						break
+					}
+					td, ok := tools.FindByName(tName)
+					if !ok {
+						continue
+					}
+					for _, rk := range td.RuntimeDeps {
+						if runtimeSeen[rk] {
+							continue
+						}
+						runtimeSeen[rk] = true
+						if _, err := e.tools.RuntimePath(rk); err == nil {
+							continue // already available
+						}
+						emit("runtime", filePath, fmt.Sprintf("Installing runtime %s...", rk))
+						rtCb := &tools.InstallCallbacks{
+							OnProgress: func(name string, bytesDown, bytesTotal int64) {
+								if events != nil {
+									pct := 0
+									if bytesTotal > 0 {
+										pct = int(bytesDown * 100 / bytesTotal)
+									}
+									events <- PipelineEvent{
+										Phase:   "download",
+										Target:  filePath,
+										Message: fmt.Sprintf("Downloading runtime %s... %d%%", name, pct),
+									}
+								}
+							},
+							OnExtract: func(name string) {
+								if events != nil {
+									events <- PipelineEvent{
+										Phase:   "extract",
+										Target:  filePath,
+										Message: fmt.Sprintf("Extracting runtime %s...", name),
+									}
+								}
+							},
+						}
+						if err := e.tools.InstallRuntime(rk, rtCb); err != nil {
+							emitErr("runtime", filePath, fmt.Errorf("auto-install runtime %s: %w", rk, err))
+							runtimeFailed = true
+							break
+						}
+						emit("runtime", filePath, fmt.Sprintf("Runtime %s installed", rk))
+					}
+				}
+			}
+			if runtimeFailed {
+				filesProcessed++
+				results = append(results, TargetResult{
+					Group: group, Recon: reconResult, Recipe: rec,
+					Error: fmt.Errorf("failed to install required runtime"),
+				})
+				continue
 			}
 
 			// Check required tools — auto-install if missing
@@ -330,7 +397,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 	}
 
 	// Write summary.json
-	summary := buildSummary(results)
+	summary := buildSummary(results, time.Since(startTime))
 	summaryJSON, _ := json.MarshalIndent(summary, "", "  ")
 	os.WriteFile(filepath.Join(opts.Output, "summary.json"), summaryJSON, 0644)
 
@@ -346,8 +413,13 @@ type summaryEntry struct {
 	Error      string `json:"error,omitempty"`
 }
 
-func buildSummary(results []TargetResult) []summaryEntry {
+func buildSummary(results []TargetResult, elapsed time.Duration) PipelineSummary {
 	entries := make([]summaryEntry, 0, len(results))
+	stats := SummaryStats{
+		ByKind:   make(map[string]int),
+		ByRecipe: make(map[string]int),
+	}
+
 	for _, r := range results {
 		e := summaryEntry{
 			Path:       r.Recon.Path,
@@ -362,8 +434,31 @@ func buildSummary(results []TargetResult) []summaryEntry {
 			e.Error = r.Error.Error()
 		}
 		entries = append(entries, e)
+
+		stats.Total++
+		if e.Kind != "" {
+			stats.ByKind[e.Kind]++
+		}
+		if e.Recipe != "" {
+			stats.ByRecipe[e.Recipe]++
+		}
+
+		switch {
+		case r.Skipped:
+			stats.Skipped++
+		case r.Error != nil:
+			stats.Failed++
+		default:
+			stats.Success++
+		}
 	}
-	return entries
+
+	stats.Duration = elapsed.Round(time.Millisecond).String()
+
+	return PipelineSummary{
+		Stats:   stats,
+		Results: entries,
+	}
 }
 
 func matchesExclude(filename string, patterns []string) bool {

@@ -7,7 +7,7 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
- * Config holds all application configuration.
+ * Config holds application settings. JSON keys are PascalCase (Go defaults), matching frontend API contract.
  */
 export class Config {
     /**
