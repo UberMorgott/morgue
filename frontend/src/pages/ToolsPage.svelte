@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import ToolRow from '../components/ToolRow.svelte';
   import { ToolsService } from '../lib/api';
-  import { addOperation, updateOperation } from '../lib/operations';
+
   import { onEvent } from '../lib/events';
   import { t, type Lang } from '../lib/i18n';
 
@@ -24,49 +24,6 @@
   let cleanups: Array<() => void> = [];
   let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-  // Event handlers for Wails events (GUI-initiated operations)
-  function handleDownloadStart(data: any) {
-    const d = data?.data?.[0] || data?.data || data;
-    const toolName = d.tool || d.Tool;
-    if (!toolName) return;
-    const opId = `install-${toolName}`;
-    addOperation({ id: opId, type: 'download', label: `${t(lang, 'status.downloading')} ${toolName}`, status: 'running', progress: 0 });
-  }
-
-  function handleDownloadProgress(data: any) {
-    const d = data?.data?.[0] || data?.data || data;
-    const toolName = d.tool || d.Tool;
-    const bytes = d.bytes || d.Bytes || 0;
-    const total = d.total || d.Total || 1;
-    const pct = Math.round((bytes / total) * 100);
-    updateOperation(`install-${toolName}`, { progress: pct });
-    updateOperation(`download-${toolName}`, { progress: pct });
-    updateOperation(`update-${toolName}`, { progress: pct });
-  }
-
-  function handleExtractStart(data: any) {
-    const d = data?.data?.[0] || data?.data || data;
-    const toolName = d.tool || d.Tool;
-    if (!toolName) return;
-    updateOperation(`install-${toolName}`, { label: `Extracting ${toolName}...`, progress: 100 });
-    updateOperation(`download-${toolName}`, { label: `Extracting ${toolName}...`, progress: 100 });
-    updateOperation(`update-${toolName}`, { label: `Extracting ${toolName}...`, progress: 100 });
-  }
-
-  function handleDownloadComplete(data: any) {
-    const d = data?.data?.[0] || data?.data || data;
-    const toolName = d.tool || d.Tool;
-    const error = d.error || d.Error;
-    if (error) {
-      updateOperation(`install-${toolName}`, { status: 'failed', error: String(error) });
-      updateOperation(`download-${toolName}`, { status: 'failed', error: String(error) });
-      updateOperation(`update-${toolName}`, { status: 'failed', error: String(error) });
-    } else {
-      updateOperation(`install-${toolName}`, { status: 'success', progress: 100 });
-      updateOperation(`download-${toolName}`, { status: 'success', progress: 100 });
-      updateOperation(`update-${toolName}`, { status: 'success', progress: 100 });
-    }
-  }
 
   async function handleToolInstalled(data: any) {
     const toolName = typeof data === 'string' ? data : (data?.data || data?.tool || data?.Tool || '');
@@ -105,20 +62,6 @@
           if (!existing) continue;
           if (existing.installed !== installed || existing.version !== version) {
             changed = true;
-            // Generate operation log entries for state changes
-            if (!existing.installed && installed) {
-              // Tool was installed externally (via API)
-              const opId = `api-install-${name}`;
-              addOperation({ id: opId, type: 'download', label: `${name} ${t(lang, 'tools.installedViaApi')}`, status: 'success', progress: 100 });
-            } else if (existing.installed && !installed) {
-              // Tool was removed externally (via API)
-              const opId = `api-remove-${name}`;
-              addOperation({ id: opId, type: 'delete', label: `${name} ${t(lang, 'tools.removedViaApi')}`, status: 'success', progress: 100 });
-            } else if (existing.installed && installed && existing.version !== version) {
-              // Tool was updated externally (via API)
-              const opId = `api-update-${name}`;
-              addOperation({ id: opId, type: 'update', label: `${name} ${t(lang, 'tools.updatedViaApi')} → ${version}`, status: 'success', progress: 100 });
-            }
           }
         }
         if (changed) {
@@ -145,11 +88,6 @@
   }
 
   onMount(async () => {
-    // Wails event listeners (for GUI-initiated operations)
-    cleanups.push(onEvent('tool:download:start', handleDownloadStart));
-    cleanups.push(onEvent('tool:download:progress', handleDownloadProgress));
-    cleanups.push(onEvent('tool:extract:start', handleExtractStart));
-    cleanups.push(onEvent('tool:download:complete', handleDownloadComplete));
     cleanups.push(onEvent('tool:installed', handleToolInstalled));
 
     await Promise.all([loadTools(), loadRuntimes()]);
@@ -180,16 +118,11 @@
 
   async function installRuntime(kind: string) {
     runtimeBusy = { ...runtimeBusy, [kind]: true };
-    const opId = `install-runtime-${kind}`;
-    const label = `${t(lang, 'runtimes.installing')} ${kind === 'dotnet' ? '.NET SDK' : 'Java JRE'}`;
-    addOperation({ id: opId, type: 'download', label, status: 'running', progress: 0 });
     try {
       await ToolsService.InstallRuntime(kind);
-      updateOperation(opId, { status: 'success', progress: 100 });
       await loadRuntimes();
     } catch (err: any) {
       console.error('Runtime install failed:', err);
-      updateOperation(opId, { status: 'failed', error: err.message || String(err) });
     } finally {
       runtimeBusy = { ...runtimeBusy, [kind]: false };
     }
@@ -249,12 +182,9 @@
 
   async function installTool(e: CustomEvent<{ name: string }>) {
     const name = e.detail.name;
-    const opId = `install-${name}`;
     busy = true;
-    addOperation({ id: opId, type: 'download', label: `${t(lang, 'status.downloading')} ${name}`, status: 'running', progress: 0 });
     try {
       await ToolsService.Install(name);
-      updateOperation(opId, { status: 'success', progress: 100 });
       // Refresh only this tool's status, not the whole list
       const st = await ToolsService.CheckAll();
       const updated = (st || []).find((s: any) => (s.Name ?? s.name) === name);
@@ -270,25 +200,20 @@
       }
     } catch (err: any) {
       console.error('Install failed:', err);
-      updateOperation(opId, { status: 'failed', error: err.message || String(err) });
     } finally { busy = false; }
   }
 
   async function deleteTool(e: CustomEvent<{ name: string }>) {
     const name = e.detail.name;
-    const opId = `delete-${name}`;
     busy = true;
-    addOperation({ id: opId, type: 'delete', label: `${t(lang, 'tools.delete')} ${name}`, status: 'running', progress: 0 });
     try {
       await ToolsService.Delete(name);
-      updateOperation(opId, { status: 'success', progress: 100 });
       // Refresh only this tool's row
       tools = tools.map(t => t.name === name ? {
         ...t, installed: false, version: '', path: '',
       } : t);
     } catch (err: any) {
       console.error('Delete failed:', err);
-      updateOperation(opId, { status: 'failed', error: err.message || String(err) });
     } finally { busy = false; }
   }
 
@@ -297,18 +222,13 @@
     const missing = tools.filter(t => !t.installed);
     for (let i = 0; i < missing.length; i++) {
       const name = missing[i].name;
-      const opId = `download-${name}`;
-      const label = `${t(lang, 'status.downloading')} ${name} (${i + 1}/${missing.length})`;
-      addOperation({ id: opId, type: 'download', label, status: 'running', progress: 0 });
       try {
         await ToolsService.Install(name);
-        updateOperation(opId, { status: 'success', progress: 100 });
         // Update just this row
         tools = tools.map(t => t.name === name ? { ...t, installed: true, checking: true } : t);
         checkLatestVersion(name);
       } catch (e: any) {
         console.error('Install failed:', name, e);
-        updateOperation(opId, { status: 'failed', error: e.message || String(e) });
       }
     }
     busy = false;
@@ -319,17 +239,12 @@
     const outdated = tools.filter(t => t.updateAvailable);
     for (let i = 0; i < outdated.length; i++) {
       const name = outdated[i].name;
-      const opId = `update-${name}`;
-      const label = `${t(lang, 'tools.update')} ${name} (${i + 1}/${outdated.length})`;
-      addOperation({ id: opId, type: 'update', label, status: 'running', progress: 0 });
       try {
         await ToolsService.Install(name);
-        updateOperation(opId, { status: 'success', progress: 100 });
         tools = tools.map(t => t.name === name ? { ...t, updateAvailable: false, checking: true } : t);
         checkLatestVersion(name);
       } catch (e: any) {
         console.error('Update failed:', name, e);
-        updateOperation(opId, { status: 'failed', error: e.message || String(e) });
       }
     }
     busy = false;

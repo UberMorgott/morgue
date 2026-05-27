@@ -4,7 +4,7 @@
   import DropZone from '../components/DropZone.svelte';
   import { t, type Lang } from '../lib/i18n';
   import { PipelineService, ToolsService } from '../lib/api';
-  import { addOperation, updateOperation } from '../lib/operations';
+
   import {
     pipelineState,
     history,
@@ -26,8 +26,26 @@
   const stageIds: StageId[] = ['scan', 'recon', 'tools', 'execute', 'done'];
 
   let lastProcessedPath = '';
-  let pipelineOpAdded = false;
   let logEl: HTMLDivElement | null = null;
+
+  // Accumulating panel: once a section is shown, it stays visible for the run
+  let showDetection = false;
+  let showTools = false;
+  let showExecution = false;
+  let showSummary = false;
+
+  $: if (['scan', 'recon'].includes($pipelineState.phase)) showDetection = true;
+  $: if ($pipelineState.phase === 'tools') showTools = true;
+  $: if ($pipelineState.phase === 'execute') showExecution = true;
+  $: if ($pipelineState.phase === 'done') showSummary = true;
+
+  // Reset section visibility on pipeline reset
+  function resetSections() {
+    showDetection = false;
+    showTools = false;
+    showExecution = false;
+    showSummary = false;
+  }
 
   $: phase = $pipelineState.phase;
   $: paused = $pipelineState.paused;
@@ -132,7 +150,8 @@
 
   function handleClear() {
     resetPipeline();
-    pipelineOpAdded = false;
+    resetSections();
+
     lastProcessedPath = '';
     if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
     elapsed = '';
@@ -144,7 +163,6 @@
       await PipelineService.Stop();
     } catch {}
     pipelineState.update(s => ({ ...s, phase: 'cancelled', paused: false }));
-    updateOperation('pipeline', { status: 'failed', error: t(lang, 'home.cancelled') });
   }
 
   async function handlePause() {
@@ -184,7 +202,7 @@
         const status = await PipelineService.GetStatus();
         if (status && (status.Running || status.running)) {
           lastProcessedPath = inputPath;
-          pipelineOpAdded = false;
+      
         }
       } catch {}
     }
@@ -192,12 +210,9 @@
 
   async function runPipeline() {
     if (running) return;
-    pipelineOpAdded = false;
+
 
     storeStartPipeline(inputPath);
-
-    addOperation({ id: 'pipeline', type: 'pipeline', label: t(lang, 'home.decompiling'), status: 'running', progress: 0 });
-    pipelineOpAdded = true;
 
     try {
       // Preflight: check runtimes (quick local check, no tool install)
@@ -208,7 +223,6 @@
         );
         if (missingRequired.length > 0) {
           pipelineState.update(s => ({ ...s, phase: 'error', error: t(lang, 'runtimes.missingForPipeline') }));
-          updateOperation('pipeline', { status: 'failed', error: t(lang, 'runtimes.missingForPipeline') });
           return;
         }
       } catch {
@@ -227,20 +241,13 @@
         const isCancelled = msg.includes('context canceled') || msg.includes('context cancelled');
         if (isCancelled) {
           pipelineState.update(s => ({ ...s, phase: 'cancelled', paused: false }));
-          updateOperation('pipeline', { status: 'failed', error: t(lang, 'home.cancelled') });
         } else {
           pipelineState.update(s => ({ ...s, phase: 'error', error: msg }));
-          updateOperation('pipeline', { status: 'failed', error: msg });
         }
       }
     }
   }
 
-  // Keep operations footer in sync with pipeline store progress
-  $: if (pipelineOpAdded && $pipelineState.step > 0) {
-    const label = `${t(lang, 'home.step')} ${$pipelineState.step + 1}/${$pipelineState.stepTotal}: ${$pipelineState.stepName}`;
-    updateOperation('pipeline', { progress: $pipelineState.progress, label });
-  }
 </script>
 
 <div class="home-page">
@@ -308,185 +315,204 @@
         {/each}
       </div>
 
-      <!-- Progress details (phase-specific) -->
-      {#if running}
-        <div class="progress-card glass">
-          <!-- Phase-specific details -->
-          {#if phase === 'scan'}
-            <div class="phase-detail">
-              <span class="spinner"></span>
-              <span class="phase-text">{$pipelineState.scanInfo || t(lang, 'home.scanning')}</span>
-            </div>
+      <!-- Accumulating progress panel -->
+      {#if phase !== 'idle'}
+        <div class="acc-panel glass">
 
-          {:else if phase === 'recon'}
-            <div class="phase-detail-list">
+          <!-- Section: Detection -->
+          {#if showDetection}
+            <div class="acc-section">
+              <div class="acc-section-header">
+                <svg class="acc-icon" width="16" height="16" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                <span class="acc-section-title">{t(lang, 'home.stage.scan')}</span>
+                {#if ['scan', 'recon'].includes(phase)}
+                  <span class="spinner-sm"></span>
+                {/if}
+              </div>
+
+              {#if $pipelineState.scanInfo}
+                <div class="acc-detail-row">
+                  <span class="acc-detail-label">Info</span>
+                  <span class="acc-detail-value">{$pipelineState.scanInfo}</span>
+                </div>
+              {/if}
+
               {#each $pipelineState.reconResults as r}
-                <div class="recon-item">
-                  <span class="recon-file">{r.file}</span>
+                <div class="acc-detail-row">
+                  <span class="acc-detail-mono">{r.file}</span>
                   {#if r.kind}
-                    <span class="tag tag-accent">{r.kind}</span>
+                    <span class="tag {r.kind === 'Skipped' ? 'tag-muted' : r.kind === 'Unknown' ? 'tag-muted' : 'tag-accent'}">{r.kind}</span>
                   {:else}
                     <span class="spinner-sm"></span>
                   {/if}
                 </div>
               {/each}
-              {#if $pipelineState.reconResults.length === 0}
-                <div class="fallback-row">
-                  <span class="spinner"></span>
-                  <span class="fallback-text">{t(lang, 'home.classifying')}</span>
+
+              {#if $pipelineState.reconResults.length === 0 && ['scan', 'recon'].includes(phase)}
+                <div class="acc-detail-row">
+                  <span class="acc-detail-value muted">{t(lang, 'home.classifying')}</span>
                 </div>
               {/if}
             </div>
+          {/if}
 
-          {:else if phase === 'tools'}
-            <div class="phase-detail">
-              <span class="spinner"></span>
-              <span class="phase-text">{$pipelineState.toolsInfo || t(lang, 'home.preparingTools')}</span>
-            </div>
-
-          {:else if phase === 'execute'}
-            <!-- Current target -->
-            {#if $pipelineState.currentTarget}
-              <div class="target-row">
-                <span class="target-icon">&#9654;</span>
-                <span class="target-name">{basename($pipelineState.currentTarget)}</span>
+          <!-- Section: Tools -->
+          {#if showTools}
+            <div class="acc-section">
+              <div class="acc-section-header">
+                <svg class="acc-icon" width="16" height="16" viewBox="0 0 16 16"><path d="M9.5 2.5l4 4-7.5 7.5H2v-4L9.5 2.5z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/></svg>
+                <span class="acc-section-title">{t(lang, 'home.stage.tools')}</span>
+                {#if phase === 'tools'}
+                  <span class="spinner-sm"></span>
+                {/if}
               </div>
-            {/if}
 
-            <!-- Files counter -->
-            {#if $pipelineState.filesTotal > 0}
-              <div class="files-row">
-                <div class="files-counter">
-                  <span class="files-num">{$pipelineState.filesProcessed}</span>
-                  <span class="files-sep">/</span>
-                  <span class="files-total">{$pipelineState.filesTotal}</span>
-                </div>
-                <span class="files-label">{t(lang, 'home.filesProcessed')}</span>
-                <div class="files-progress-track">
-                  <div class="files-progress-fill" style="width: {$pipelineState.filesTotal > 0 ? ($pipelineState.filesProcessed / $pipelineState.filesTotal) * 100 : 0}%"></div>
-                </div>
+              <div class="acc-detail-row">
+                <span class="acc-detail-value">{$pipelineState.toolsInfo || t(lang, 'home.preparingTools')}</span>
+                {#if phase !== 'tools'}
+                  <svg class="acc-icon-ok" width="14" height="14" viewBox="0 0 14 14"><path d="M2.5 7l3 3 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                {/if}
               </div>
-            {/if}
-
-            <!-- Step progress -->
-            {#if $pipelineState.stepTotal > 0}
-              <div class="step-row">
-                <div class="step-info">
-                  <span class="step-badge">{$pipelineState.step + 1}/{$pipelineState.stepTotal}</span>
-                  <span class="step-name">{$pipelineState.stepName}</span>
-                </div>
-                <div class="progress-track">
-                  <div class="progress-fill" style="width: {$pipelineState.progress}%; height: 6px;"></div>
-                </div>
-              </div>
-            {:else}
-              <div class="fallback-row">
-                <span class="spinner"></span>
-                <span class="fallback-text">{t(lang, 'home.processing')}</span>
-              </div>
-            {/if}
-
-          {:else}
-            <div class="fallback-row">
-              <span class="spinner"></span>
-              <span class="fallback-text">{t(lang, 'home.processing')}</span>
             </div>
           {/if}
 
-          <!-- Status message + elapsed (always at bottom) -->
-          <div class="status-row">
-            {#if paused}
-              <span class="status-msg paused-label">{t(lang, 'home.paused')}</span>
-            {:else if $pipelineState.lastMessage}
-              <span class="status-msg">{$pipelineState.lastMessage}</span>
-            {/if}
-            {#if $pipelineState.startedAt > 0}
-              <span class="elapsed">{elapsed}</span>
-            {/if}
-          </div>
-
-          <!-- Pipeline controls -->
-          <div class="pipeline-controls">
-            {#if paused}
-              <button class="btn btn-sm btn-accent" on:click={handleResume}>
-                {t(lang, 'home.resume')}
-              </button>
-            {:else}
-              <button class="btn btn-sm btn-muted" on:click={handlePause}>
-                {t(lang, 'home.pause')}
-              </button>
-            {/if}
-            <button class="btn btn-sm btn-danger" on:click={handleCancel}>
-              {t(lang, 'home.cancel')}
-            </button>
-          </div>
-        </div>
-
-        <!-- Live log -->
-        {#if $pipelineState.logs.length > 0}
-          <div class="log-panel" bind:this={logEl}>
-            <pre class="log-text">{$pipelineState.logs.join('\n')}</pre>
-          </div>
-        {/if}
-      {/if}
-
-      <!-- Done state: summary -->
-      {#if phase === 'done'}
-        <div class="summary-panel glass">
-          <div class="summary-header">
-            <span class="summary-title">{t(lang, 'home.summary')}</span>
-            {#if $pipelineState.startedAt > 0}
-              <span class="summary-duration">{elapsed}</span>
-            {/if}
-          </div>
-
-          <!-- Stats row -->
-          <div class="summary-stats">
-            <div class="stat">
-              <span class="stat-num">{$pipelineState.filesProcessed || $pipelineState.reconResults.length}</span>
-              <span class="stat-label">{t(lang, 'home.summary.files')}</span>
-            </div>
-            <div class="stat">
-              <span class="stat-num">{$pipelineState.reconResults.filter(r => r.kind && r.kind !== 'Skipped' && r.kind !== 'Unknown').length}</span>
-              <span class="stat-label">{t(lang, 'home.summary.decompiled')}</span>
-            </div>
-            <div class="stat">
-              <span class="stat-num">{$pipelineState.reconResults.filter(r => r.kind === 'Skipped').length}</span>
-              <span class="stat-label">{t(lang, 'home.summary.skipped')}</span>
-            </div>
-          </div>
-
-          <!-- Per-file results -->
-          <div class="summary-files">
-            {#each $pipelineState.reconResults as r}
-              <div class="summary-file">
-                <span class="dot dot-success"></span>
-                <span class="summary-filename">{r.file}</span>
-                <span class="tag {r.kind === 'Skipped' ? 'tag-muted' : 'tag-accent'}">{r.kind || '?'}</span>
+          <!-- Section: Execution -->
+          {#if showExecution}
+            <div class="acc-section">
+              <div class="acc-section-header">
+                <svg class="acc-icon acc-icon-bolt" width="16" height="16" viewBox="0 0 16 16"><path d="M8.5 1L3 9h4.5L6.5 15 13 7H8.5L9.5 1z" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linejoin="round"/></svg>
+                <span class="acc-section-title">{phase === 'done' ? t(lang, 'home.stage.done') : t(lang, 'home.stage.execute')}</span>
+                {#if phase === 'execute'}
+                  <span class="spinner-sm"></span>
+                {/if}
               </div>
-            {/each}
-          </div>
 
-          <!-- Output path -->
-          <div class="summary-output">
-            <span class="result-label">{t(lang, 'home.result')}:</span>
-            <span class="result-path selectable">{$pipelineState.outputPath || inputPath}</span>
-          </div>
+              <!-- Current target -->
+              {#if $pipelineState.currentTarget}
+                <div class="acc-detail-row">
+                  <span class="acc-detail-label">Target</span>
+                  <span class="acc-detail-mono">{basename($pipelineState.currentTarget)}</span>
+                </div>
+              {/if}
 
-          <!-- Log tail -->
-          {#if $pipelineState.logs.length > 0}
-            <details class="summary-logs">
-              <summary class="logs-toggle">{t(lang, 'home.summary.log')} ({$pipelineState.logs.length})</summary>
-              <div class="logs-body">
-                <pre class="log-text">{$pipelineState.logs.join('\n')}</pre>
-              </div>
-            </details>
+              <!-- Files counter -->
+              {#if $pipelineState.filesTotal > 0}
+                <div class="acc-files-row">
+                  <div class="files-counter">
+                    <span class="files-num">{$pipelineState.filesProcessed}</span>
+                    <span class="files-sep">/</span>
+                    <span class="files-total">{$pipelineState.filesTotal}</span>
+                  </div>
+                  <span class="files-label">{t(lang, 'home.filesProcessed')}</span>
+                  <div class="files-progress-track">
+                    <div class="files-progress-fill" style="width: {$pipelineState.filesTotal > 0 ? ($pipelineState.filesProcessed / $pipelineState.filesTotal) * 100 : 0}%"></div>
+                  </div>
+                </div>
+              {/if}
+
+              <!-- Step progress -->
+              {#if $pipelineState.stepTotal > 0}
+                <div class="acc-step-row">
+                  <div class="step-info">
+                    <span class="step-badge">{$pipelineState.step + 1}/{$pipelineState.stepTotal}</span>
+                    <span class="step-name">{$pipelineState.stepName}</span>
+                  </div>
+                  <div class="progress-track">
+                    <div class="progress-fill" style="width: {$pipelineState.progress}%; height: 6px;"></div>
+                  </div>
+                </div>
+              {:else if phase === 'execute'}
+                <div class="acc-detail-row">
+                  <span class="spinner-sm"></span>
+                  <span class="acc-detail-value muted">{t(lang, 'home.processing')}</span>
+                </div>
+              {/if}
+
+              <!-- Mini log terminal (last 5 lines) -->
+              {#if $pipelineState.logs.length > 0}
+                <div class="acc-log-mini" bind:this={logEl}>
+                  <pre class="acc-log-text">{$pipelineState.logs.slice(-5).join('\n')}</pre>
+                </div>
+              {/if}
+            </div>
           {/if}
-        </div>
 
-        <button class="btn btn-primary" on:click={handleClear}>
-          {t(lang, 'home.newFile')}
-        </button>
+          <!-- Section: Summary -->
+          {#if showSummary}
+            <div class="acc-section acc-section-summary">
+              <div class="acc-section-header">
+                <svg class="acc-icon acc-icon-done" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M5 8l2 2 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span class="acc-section-title">{t(lang, 'home.summary')}</span>
+                {#if $pipelineState.startedAt > 0}
+                  <span class="acc-elapsed">{elapsed}</span>
+                {/if}
+              </div>
+
+              <!-- Stats row -->
+              <div class="summary-stats">
+                <div class="stat">
+                  <span class="stat-num">{$pipelineState.filesProcessed || $pipelineState.reconResults.length}</span>
+                  <span class="stat-label">{t(lang, 'home.summary.files')}</span>
+                </div>
+                <div class="stat">
+                  <span class="stat-num">{$pipelineState.reconResults.filter(r => r.kind && r.kind !== 'Skipped' && r.kind !== 'Unknown').length}</span>
+                  <span class="stat-label">{t(lang, 'home.summary.decompiled')}</span>
+                </div>
+                <div class="stat">
+                  <span class="stat-num">{$pipelineState.reconResults.filter(r => r.kind === 'Skipped').length}</span>
+                  <span class="stat-label">{t(lang, 'home.summary.skipped')}</span>
+                </div>
+              </div>
+
+              <!-- Output path -->
+              <div class="summary-output">
+                <span class="result-label">{t(lang, 'home.result')}:</span>
+                <span class="result-path selectable">{$pipelineState.outputPath || inputPath}</span>
+              </div>
+
+              <!-- Full log (expandable) -->
+              {#if $pipelineState.logs.length > 0}
+                <details class="summary-logs">
+                  <summary class="logs-toggle">{t(lang, 'home.summary.log')} ({$pipelineState.logs.length})</summary>
+                  <div class="logs-body">
+                    <pre class="log-text">{$pipelineState.logs.join('\n')}</pre>
+                  </div>
+                </details>
+              {/if}
+            </div>
+          {/if}
+
+          <!-- Status bar: message + elapsed + controls (shown while running) -->
+          {#if running}
+            <div class="acc-status-bar">
+              <div class="status-row">
+                {#if paused}
+                  <span class="status-msg paused-label">{t(lang, 'home.paused')}</span>
+                {:else if $pipelineState.lastMessage}
+                  <span class="status-msg">{$pipelineState.lastMessage}</span>
+                {/if}
+                {#if $pipelineState.startedAt > 0}
+                  <span class="elapsed">{elapsed}</span>
+                {/if}
+              </div>
+              <div class="pipeline-controls">
+                {#if paused}
+                  <button class="btn btn-sm btn-accent" on:click={handleResume}>
+                    {t(lang, 'home.resume')}
+                  </button>
+                {:else}
+                  <button class="btn btn-sm btn-muted" on:click={handlePause}>
+                    {t(lang, 'home.pause')}
+                  </button>
+                {/if}
+                <button class="btn btn-sm btn-danger" on:click={handleCancel}>
+                  {t(lang, 'home.cancel')}
+                </button>
+              </div>
+            </div>
+          {/if}
+
+        </div>
       {/if}
 
       <!-- Cancelled state -->
@@ -494,9 +520,6 @@
         <div class="error-card glass cancelled-card">
           <span class="cancelled-text">{t(lang, 'home.cancelled')}</span>
         </div>
-        <button class="btn btn-primary" on:click={handleClear}>
-          {t(lang, 'home.newFile')}
-        </button>
       {/if}
 
       <!-- Error state -->
@@ -504,6 +527,10 @@
         <div class="error-card glass">
           <span class="error-text">{$pipelineState.error}</span>
         </div>
+      {/if}
+
+      <!-- New file button (done/cancelled/error) -->
+      {#if phase === 'done' || phase === 'cancelled' || phase === 'error'}
         <button class="btn btn-primary" on:click={handleClear}>
           {t(lang, 'home.newFile')}
         </button>
@@ -625,6 +652,7 @@
     align-items: center;
     gap: 8px;
     z-index: 1;
+    flex-shrink: 0;
   }
 
   .stage-circle {
@@ -670,11 +698,22 @@
   }
 
   .stage-active .stage-circle {
-    border-color: var(--accent);
+    border-color: transparent;
     background: var(--accent-dim);
     color: var(--accent);
-    box-shadow: 0 0 12px var(--accent-glow);
-    animation: glow-breathe 2s ease-in-out infinite;
+    box-shadow: none;
+    position: relative;
+  }
+  .stage-active .stage-circle::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    border-top-color: var(--accent);
+    border-right-color: var(--accent);
+    animation: spin-neon 1s linear infinite;
+    filter: drop-shadow(0 0 6px var(--accent));
   }
   .stage-active .stage-dot {
     background: var(--accent);
@@ -684,6 +723,9 @@
   .stage-active .stage-label {
     color: var(--accent);
     font-weight: 600;
+  }
+  @keyframes spin-neon {
+    to { transform: rotate(360deg); }
   }
 
   .stage-error .stage-circle {
@@ -701,7 +743,7 @@
     flex: 1;
     height: 2px;
     background: var(--border-subtle);
-    margin-top: 16px; /* center with circle */
+    margin-top: 15px; /* center with 32px circle: (32-2)/2 = 15 */
     transition: background 0.3s;
   }
   .line-done {
@@ -717,38 +759,95 @@
     background: var(--error);
   }
 
-  /* ── Progress card ── */
-  .progress-card {
+  /* ── Accumulating panel ── */
+  .acc-panel {
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    padding: 20px;
+    gap: 0;
     width: 100%;
+    padding: 0;
+    max-height: 60vh;
+    overflow-y: auto;
   }
 
-  .target-row {
+  .acc-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .acc-section:last-of-type {
+    border-bottom: none;
+  }
+
+  .acc-section-header {
     display: flex;
     align-items: center;
     gap: 8px;
   }
-  .target-icon {
+  .acc-icon {
     color: var(--accent);
-    font-size: 0.7rem;
+    flex-shrink: 0;
   }
-  .target-name {
-    font-size: 0.9rem;
-    font-family: 'Consolas', 'Courier New', monospace;
+  .acc-icon-ok {
+    color: var(--success);
+    flex-shrink: 0;
+  }
+  .acc-icon-done {
+    color: var(--success);
+  }
+  .acc-icon-bolt {
+    color: var(--accent);
+  }
+  .acc-section-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-heading);
+    flex: 1;
+  }
+
+  .acc-detail-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 2px 0 2px 24px;
+  }
+  .acc-detail-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    flex-shrink: 0;
+    min-width: 48px;
+  }
+  .acc-detail-value {
+    font-size: 0.84rem;
     color: var(--text-primary);
-    font-weight: 500;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .acc-detail-value.muted {
+    color: var(--text-muted);
+  }
+  .acc-detail-mono {
+    font-size: 0.84rem;
+    font-family: 'Consolas', 'Courier New', monospace;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
 
-  .files-row {
+  .acc-files-row {
     display: flex;
     align-items: center;
     gap: 12px;
+    padding: 4px 0 4px 24px;
     flex-wrap: wrap;
   }
   .files-counter {
@@ -757,23 +856,23 @@
     gap: 2px;
   }
   .files-num {
-    font-size: 1.3rem;
+    font-size: 1.2rem;
     font-weight: 700;
     color: var(--accent);
     font-family: 'Orbitron', monospace;
   }
   .files-sep {
-    font-size: 1rem;
+    font-size: 0.9rem;
     color: var(--text-muted);
     margin: 0 2px;
   }
   .files-total {
-    font-size: 1rem;
+    font-size: 0.9rem;
     color: var(--text-muted);
     font-family: 'Orbitron', monospace;
   }
   .files-label {
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.3px;
@@ -793,10 +892,11 @@
     transition: width 0.4s ease;
   }
 
-  .step-row {
+  .acc-step-row {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    padding: 0 0 0 24px;
   }
   .step-info {
     display: flex;
@@ -817,6 +917,45 @@
     font-size: 0.85rem;
     color: var(--text-primary);
     font-weight: 500;
+  }
+
+  .acc-log-mini {
+    margin: 4px 0 0 24px;
+    padding: 8px 12px;
+    background: var(--bg-card-solid);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .acc-log-text {
+    font-size: 12px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    color: #c0b0a0;
+    line-height: 1.6;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .acc-elapsed {
+    font-size: 0.78rem;
+    font-family: 'Consolas', 'Courier New', monospace;
+    color: var(--text-muted);
+    margin-left: auto;
+  }
+
+  .acc-section-summary .summary-stats {
+    margin-top: 4px;
+  }
+
+  /* ── Status bar (controls) ── */
+  .acc-status-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--border-subtle);
   }
 
   .status-row {
@@ -841,36 +980,6 @@
     flex-shrink: 0;
   }
 
-  .phase-detail {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .phase-text {
-    font-size: 0.88rem;
-    color: var(--text-primary);
-  }
-
-  .phase-detail-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .recon-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 4px 0;
-  }
-  .recon-file {
-    font-size: 0.84rem;
-    font-family: 'Consolas', 'Courier New', monospace;
-    color: var(--text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
   .spinner-sm {
     width: 14px; height: 14px;
     border: 2px solid var(--border);
@@ -878,23 +987,6 @@
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
     flex-shrink: 0;
-  }
-
-  .fallback-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .spinner {
-    width: 20px; height: 20px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-  }
-  .fallback-text {
-    font-size: 0.85rem;
-    color: var(--text-muted);
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -943,15 +1035,6 @@
     100% { left: 200%; }
   }
 
-  .log-panel {
-    width: 100%;
-    max-height: 200px;
-    overflow-y: auto;
-    padding: 14px 18px;
-    background: var(--bg-card-solid);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-  }
   .log-text {
     font-size: 13px;
     font-family: 'Consolas', 'Courier New', monospace;
@@ -960,32 +1043,6 @@
     margin: 0;
     white-space: pre-wrap;
     word-break: break-all;
-  }
-
-  /* ── Summary panel ── */
-  .summary-panel {
-    width: 100%;
-    padding: 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-  }
-  .summary-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .summary-title {
-    font-family: 'Orbitron', 'Play', sans-serif;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--text-heading);
-    letter-spacing: 1px;
-  }
-  .summary-duration {
-    font-size: 0.9rem;
-    font-family: 'Consolas', 'Courier New', monospace;
-    color: var(--text-muted);
   }
 
   .summary-stats {
@@ -1014,27 +1071,6 @@
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-  }
-
-  .summary-files {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .summary-file {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 0;
-  }
-  .summary-filename {
-    font-size: 0.88rem;
-    font-family: 'Consolas', 'Courier New', monospace;
-    color: var(--text-primary);
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .summary-output {
