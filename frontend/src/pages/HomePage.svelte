@@ -195,6 +195,14 @@
     return p.split(/[\\/]/).pop() || p;
   }
 
+  function formatFileSize(bytes: number): string {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  }
+
   onMount(async () => {
     // Sync with backend if pipeline already running
     if (inputPath) {
@@ -337,21 +345,57 @@
                 </div>
               {/if}
 
-              {#each $pipelineState.reconResults as r}
+              <!-- Enriched recon info -->
+              {#if $pipelineState.reconKind}
                 <div class="acc-detail-row">
-                  <span class="acc-detail-mono">{r.file}</span>
-                  {#if r.kind}
-                    <span class="tag {r.kind === 'Skipped' ? 'tag-muted' : r.kind === 'Unknown' ? 'tag-muted' : 'tag-accent'}">{r.kind}</span>
-                  {:else}
-                    <span class="spinner-sm"></span>
+                  <span class="tag tag-accent">{$pipelineState.reconKind}</span>
+                  {#if $pipelineState.reconResults.length > 0 && $pipelineState.reconResults[0].kind && $pipelineState.reconResults[0].kind !== 'Unknown'}
+                    <span class="acc-detail-value">{$pipelineState.reconResults[0].kind}</span>
                   {/if}
                 </div>
-              {/each}
-
-              {#if $pipelineState.reconResults.length === 0 && ['scan', 'recon'].includes(phase)}
-                <div class="acc-detail-row">
-                  <span class="acc-detail-value muted">{t(lang, 'home.classifying')}</span>
+                <div class="acc-detail-row detect-meta">
+                  <span class="detect-meta-item">
+                    <span class="detect-meta-label">Compiler:</span>
+                    <span class="detect-meta-value">{$pipelineState.compiler || '\u2014'}</span>
+                  </span>
+                  <span class="detect-meta-sep">|</span>
+                  <span class="detect-meta-item">
+                    <span class="detect-meta-label">Obfuscator:</span>
+                    <span class="detect-meta-value">{$pipelineState.obfuscator || '\u2014'}</span>
+                  </span>
+                  <span class="detect-meta-sep">|</span>
+                  <span class="detect-meta-item">
+                    <span class="detect-meta-label">Size:</span>
+                    <span class="detect-meta-value">{formatFileSize($pipelineState.fileSize) || '\u2014'}</span>
+                  </span>
                 </div>
+                {#if $pipelineState.recipeName}
+                  <div class="acc-detail-row">
+                    <span class="acc-detail-label">Recipe</span>
+                    <span class="acc-detail-mono">{$pipelineState.recipeName}</span>
+                    {#if $pipelineState.recipeDesc}
+                      <span class="acc-detail-value muted">&mdash; {$pipelineState.recipeDesc}</span>
+                    {/if}
+                  </div>
+                {/if}
+              {:else}
+                <!-- Fallback: old-style recon results while enriched data hasn't arrived -->
+                {#each $pipelineState.reconResults as r}
+                  <div class="acc-detail-row">
+                    <span class="acc-detail-mono">{r.file}</span>
+                    {#if r.kind}
+                      <span class="tag {r.kind === 'Skipped' ? 'tag-muted' : r.kind === 'Unknown' ? 'tag-muted' : 'tag-accent'}">{r.kind}</span>
+                    {:else}
+                      <span class="spinner-sm"></span>
+                    {/if}
+                  </div>
+                {/each}
+
+                {#if $pipelineState.reconResults.length === 0 && ['scan', 'recon'].includes(phase)}
+                  <div class="acc-detail-row">
+                    <span class="acc-detail-value muted">{t(lang, 'home.classifying')}</span>
+                  </div>
+                {/if}
               {/if}
             </div>
           {/if}
@@ -367,12 +411,36 @@
                 {/if}
               </div>
 
-              <div class="acc-detail-row">
-                <span class="acc-detail-value">{$pipelineState.toolsInfo || t(lang, 'home.preparingTools')}</span>
-                {#if phase !== 'tools'}
-                  <svg class="acc-icon-ok" width="14" height="14" viewBox="0 0 14 14"><path d="M2.5 7l3 3 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                {/if}
-              </div>
+              {#if $pipelineState.toolsNeeded.length > 0}
+                <div class="tools-list">
+                  {#each $pipelineState.toolsNeeded as tool}
+                    {@const isInstalled = $pipelineState.toolsInstalled.includes(tool)}
+                    {@const isInstalling = !isInstalled && $pipelineState.toolsInfo.includes(tool)}
+                    <div class="tool-row">
+                      <span class="tool-icon" class:tool-ready={isInstalled} class:tool-installing={isInstalling}>
+                        {#if isInstalled}
+                          <svg width="14" height="14" viewBox="0 0 14 14"><path d="M2.5 7l3 3 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        {:else if isInstalling}
+                          <span class="spinner-sm"></span>
+                        {:else}
+                          <span class="tool-pending-dot"></span>
+                        {/if}
+                      </span>
+                      <span class="tool-name">{tool}</span>
+                      <span class="tool-status" class:tool-status-ready={isInstalled} class:tool-status-installing={isInstalling}>
+                        {isInstalled ? 'ready' : isInstalling ? 'installing...' : 'pending'}
+                      </span>
+                    </div>
+                  {/each}
+                </div>
+              {:else}
+                <div class="acc-detail-row">
+                  <span class="acc-detail-value">{$pipelineState.toolsInfo || t(lang, 'home.preparingTools')}</span>
+                  {#if phase !== 'tools'}
+                    <svg class="acc-icon-ok" width="14" height="14" viewBox="0 0 14 14"><path d="M2.5 7l3 3 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  {/if}
+                </div>
+              {/if}
             </div>
           {/if}
 
@@ -465,10 +533,12 @@
               </div>
 
               <!-- Output path -->
-              <div class="summary-output">
-                <span class="result-label">{t(lang, 'home.result')}:</span>
-                <span class="result-path selectable">{$pipelineState.outputPath || inputPath}</span>
-              </div>
+              {#if $pipelineState.outputPath}
+                <div class="summary-output">
+                  <span class="result-label">Output:</span>
+                  <span class="result-path selectable">{$pipelineState.outputPath}</span>
+                </div>
+              {/if}
 
               <!-- Full log (expandable) -->
               {#if $pipelineState.logs.length > 0}
@@ -638,10 +708,11 @@
     flex: 1;
   }
 
-  /* ── Stage stepper ── */
+  /* ── Stage stepper (CSS grid) ── */
   .stepper {
-    display: flex;
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: auto 1fr auto 1fr auto 1fr auto 1fr auto;
+    align-items: start;
     width: 100%;
     padding: 8px 0;
   }
@@ -652,7 +723,6 @@
     align-items: center;
     gap: 8px;
     z-index: 1;
-    flex-shrink: 0;
   }
 
   .stage-circle {
@@ -740,10 +810,11 @@
 
   /* Connecting lines */
   .stage-line {
-    flex: 1;
+    width: 100%;
     height: 2px;
     background: var(--border-subtle);
     margin-top: 15px; /* center with 32px circle: (32-2)/2 = 15 */
+    align-self: start;
     transition: background 0.3s;
   }
   .line-done {
@@ -841,6 +912,86 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     flex: 1;
+  }
+
+  /* Detection meta row */
+  .detect-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .detect-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .detect-meta-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+  .detect-meta-value {
+    font-size: 0.82rem;
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+  .detect-meta-sep {
+    color: var(--border);
+    font-size: 0.75rem;
+  }
+
+  /* Tools list */
+  .tools-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0 0 0 24px;
+  }
+  .tool-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 0;
+  }
+  .tool-icon {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--text-muted);
+  }
+  .tool-icon.tool-ready {
+    color: var(--success);
+  }
+  .tool-icon.tool-installing {
+    color: var(--accent);
+  }
+  .tool-pending-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    background: transparent;
+  }
+  .tool-name {
+    font-size: 0.84rem;
+    font-family: 'Consolas', 'Courier New', monospace;
+    color: var(--text-primary);
+    flex: 1;
+  }
+  .tool-status {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-transform: lowercase;
+    letter-spacing: 0.3px;
+  }
+  .tool-status-ready {
+    color: var(--success);
+  }
+  .tool-status-installing {
+    color: var(--accent);
   }
 
   .acc-files-row {

@@ -30,6 +30,15 @@ type PipelineEvent struct {
 	Error          error
 	FilesTotal     int // total targets found
 	FilesProcessed int // targets completed so far
+	// Enriched fields for frontend
+	ReconKind  string   // e.g. "Managed", "Native", "UnrealEngine"
+	Compiler   string   // e.g. "Delphi", "Go"
+	Obfuscator string   // e.g. "ConfuserEx"
+	FileSize   int64    // bytes
+	RecipeName string   // matched recipe name
+	RecipeDesc string   // matched recipe description
+	ToolsNeeded []string // all tools required for this recipe
+	OutputPath string   // output directory (on done)
 }
 
 // PauseGate allows pausing/resuming the pipeline between steps.
