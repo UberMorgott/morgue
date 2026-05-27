@@ -160,6 +160,34 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			// Check required tools — auto-install if missing
 			needed := e.tools.ToolsNeeded(rec.RequiredTools())
 			if len(needed) > 0 {
+				// Wire download progress to pipeline events
+				e.tools.OnProgress = func(tool string, bytesDown, bytesTotal int64) {
+					if events != nil {
+						pct := 0
+						if bytesTotal > 0 {
+							pct = int(bytesDown * 100 / bytesTotal)
+						}
+						events <- PipelineEvent{
+							Phase:          "download",
+							Target:         filePath,
+							Message:        fmt.Sprintf("Downloading %s... %d%%", tool, pct),
+							FilesTotal:     filesTotal,
+							FilesProcessed: filesProcessed,
+						}
+					}
+				}
+				e.tools.OnExtract = func(tool string) {
+					if events != nil {
+						events <- PipelineEvent{
+							Phase:          "extract",
+							Target:         filePath,
+							Message:        fmt.Sprintf("Extracting %s...", tool),
+							FilesTotal:     filesTotal,
+							FilesProcessed: filesProcessed,
+						}
+					}
+				}
+
 				installFailed := false
 				for _, name := range needed {
 					emit("install", filePath, fmt.Sprintf("Installing %s...", name))

@@ -41,6 +41,8 @@ export interface PipelineState {
   recipeDesc: string;        // "Decompile clean .NET assembly"
   toolsNeeded: string[];     // ["ilspycmd", "strings"]
   toolsInstalled: string[];  // tools that finished installing
+  downloadingTool: string;   // current tool being downloaded
+  downloadProgress: number;  // 0-100 or -1 for indeterminate (extracting)
 }
 
 const initial: PipelineState = {
@@ -71,6 +73,8 @@ const initial: PipelineState = {
   recipeDesc: '',
   toolsNeeded: [],
   toolsInstalled: [],
+  downloadingTool: '',
+  downloadProgress: 0,
 };
 
 export const pipelineState = writable<PipelineState>({ ...initial });
@@ -114,6 +118,8 @@ export function startPipeline(inputPath: string) {
     recipeDesc: '',
     toolsNeeded: [],
     toolsInstalled: [],
+    downloadingTool: '',
+    downloadProgress: 0,
   }));
 }
 
@@ -183,6 +189,21 @@ export function updateFromEvent(data: any) {
     if (phase === 'skip' && target && message) {
       const fname = target.split(/[\\/]/).pop() || target;
       next.reconResults = [...s.reconResults, { file: fname, kind: 'Skipped' }];
+    }
+
+    if (phase === 'download' && message) {
+      const match = message.match(/Downloading (.+?)\.\.\. (\d+)%/);
+      if (match) {
+        next.downloadingTool = match[1];
+        next.downloadProgress = parseInt(match[2]);
+      }
+    }
+    if (phase === 'extract' && message) {
+      const match = message.match(/Extracting (.+?)\.\.\./);
+      if (match) {
+        next.downloadingTool = match[1];
+        next.downloadProgress = -1; // indeterminate
+      }
     }
 
     if (phase === 'install' && message) {
