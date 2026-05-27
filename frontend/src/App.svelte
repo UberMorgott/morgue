@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import Header from './components/Header.svelte';
   import Sidebar from './components/Sidebar.svelte';
 
@@ -7,7 +7,7 @@
   import ToolsPage from './pages/ToolsPage.svelte';
   import SettingsPage from './pages/SettingsPage.svelte';
   import { ReconService, UpdateService, ToolsService } from './lib/api';
-  import { currentLang, startupBusy } from './lib/stores';
+  import { currentLang, startupBusy, apiRunSeq } from './lib/stores';
 
   import { onEvent } from './lib/events';
   import { pipelineState, updateFromEvent, addHistoryEntry, resetPipeline } from './lib/pipeline';
@@ -74,9 +74,16 @@
             case 'run': {
               const path = cmd.path || '';
               if (!path) break;
-              // Navigate to home and set input — HomePage reactive will trigger pipeline
+              // Reset pipeline and navigate to home, then bump the run
+              // signal so HomePage starts the pipeline regardless of its
+              // reactive guards (lastProcessedPath, phase, etc.).
+              // tick() ensures the DOM update completes (HomePage mounts
+              // with the correct inputPath prop) before the signal fires.
+              resetPipeline();
               pipelineInputPath = path;
               currentPage = 'home';
+              await tick();
+              apiRunSeq.update(n => n + 1);
               break;
             }
           }
