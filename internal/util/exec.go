@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,10 +26,21 @@ func RunCmd(ctx context.Context, name string, args []string, dir string) (*CmdRe
 	return RunCmdWithEnv(ctx, name, args, dir, nil)
 }
 
+// RunCmdWithStdin executes a command with custom stdin.
+// Useful for tools like Il2CppDumper that call Console.ReadKey() and crash
+// without a console — passing a newline lets them exit gracefully.
+func RunCmdWithStdin(ctx context.Context, name string, args []string, dir string, stdin io.Reader) (*CmdResult, error) {
+	return runCmd(ctx, name, args, dir, nil, stdin)
+}
+
 // RunCmdWithEnv executes a command with custom environment variables.
 // env is a list of "KEY=VALUE" strings that are appended to the current environment.
 // If env is nil, the default environment is used.
 func RunCmdWithEnv(ctx context.Context, name string, args []string, dir string, env []string) (*CmdResult, error) {
+	return runCmd(ctx, name, args, dir, env, nil)
+}
+
+func runCmd(ctx context.Context, name string, args []string, dir string, env []string, stdin io.Reader) (*CmdResult, error) {
 	if strings.HasSuffix(name, ".dll") {
 		args = append([]string{name}, args...)
 		// Prefer local portable dotnet from tools base dir before falling back to PATH
@@ -48,6 +60,10 @@ func RunCmdWithEnv(ctx context.Context, name string, args []string, dir string, 
 	}
 	if len(env) > 0 {
 		cmd.Env = append(os.Environ(), env...)
+	}
+
+	if stdin != nil {
+		cmd.Stdin = stdin
 	}
 
 	var stdout, stderr bytes.Buffer

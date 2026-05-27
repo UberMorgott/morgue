@@ -109,6 +109,15 @@ var Registry = []ToolDef{
 		Binary:      "retoc.exe",
 		Optional:    true,
 	},
+	{
+		Name:        "il2cppdumper",
+		Description: "Unity IL2CPP metadata extractor",
+		Category:    CategoryExtractor,
+		Method:      MethodGitHubRelease,
+		Repo:        "Perfare/Il2CppDumper",
+		AssetGlob:   "Il2CppDumper-win-*",
+		Binary:      "Il2CppDumper.exe",
+	},
 }
 
 // FindByName looks up a tool definition by name.
