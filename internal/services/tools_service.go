@@ -16,8 +16,10 @@ import (
 
 // APICommand represents a command pushed by the HTTP API for the frontend to execute.
 type APICommand struct {
-	Action string `json:"action"` // "install", "install-all", "delete"
+	Action string `json:"action"` // "install", "install-all", "delete", "run"
 	Tool   string `json:"tool"`
+	Path   string `json:"path,omitempty"`   // for "run" action
+	Output string `json:"output,omitempty"` // for "run" action
 }
 
 // OpState tracks a currently active tool operation.

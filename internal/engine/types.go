@@ -19,12 +19,14 @@ type TargetResult struct {
 
 // PipelineEvent reports progress of the pipeline to the UI.
 type PipelineEvent struct {
-	Phase    string
-	Target   string
-	Message  string
-	Progress *recipe.StepProgress
-	Done     bool
-	Error    error
+	Phase          string
+	Target         string
+	Message        string
+	Progress       *recipe.StepProgress
+	Done           bool
+	Error          error
+	FilesTotal     int // total targets found
+	FilesProcessed int // targets completed so far
 }
 
 // Options configures a pipeline run.

@@ -124,7 +124,9 @@ const translations: Record<string, Record<Lang, string>> = {
   'pipeline.error': { en: 'Error', ru: 'Ошибка' },
 
   // Home — pipeline inline
-  'home.processing': { en: 'Processing', ru: 'Обработка' },
+  'home.scanning': { en: 'Scanning for files...', ru: 'Поиск файлов...' },
+  'home.classifying': { en: 'Classifying files...', ru: 'Классификация файлов...' },
+  'home.processing': { en: 'Processing...', ru: 'Обработка...' },
   'home.newFile': { en: 'New file', ru: 'Новый файл' },
   'home.done': { en: 'Done!', ru: 'Готово!' },
   'home.result': { en: 'Result', ru: 'Результат' },
@@ -133,6 +135,26 @@ const translations: Record<string, Record<Lang, string>> = {
   'home.preparingTools': { en: 'Preparing tools...', ru: 'Подготовка инструментов...' },
   'home.decompiling': { en: 'Decompiling...', ru: 'Декомпиляция...' },
   'home.error': { en: 'Error', ru: 'Ошибка' },
+
+  // Home — stages
+  'home.stage.scan': { en: 'Scan', ru: 'Скан' },
+  'home.stage.recon': { en: 'Recon', ru: 'Анализ' },
+  'home.stage.tools': { en: 'Tools', ru: 'Инструменты' },
+  'home.stage.execute': { en: 'Execute', ru: 'Декомпиляция' },
+  'home.stage.done': { en: 'Done', ru: 'Готово' },
+  'home.preparing': { en: 'Preparing...', ru: 'Подготовка...' },
+  'home.step': { en: 'Step', ru: 'Шаг' },
+  'home.file': { en: 'File', ru: 'Файл' },
+  'home.filesProcessed': { en: 'files processed', ru: 'файлов обработано' },
+  'home.recent': { en: 'Recent', ru: 'Последние' },
+  'home.ago.minutes': { en: 'm ago', ru: 'мин назад' },
+  'home.ago.hours': { en: 'h ago', ru: 'ч назад' },
+  'home.ago.days': { en: 'd ago', ru: 'дн назад' },
+  'home.summary': { en: 'Summary', ru: 'Итоги' },
+  'home.summary.files': { en: 'files', ru: 'файлов' },
+  'home.summary.decompiled': { en: 'decompiled', ru: 'декомпилировано' },
+  'home.summary.skipped': { en: 'skipped', ru: 'пропущено' },
+  'home.summary.log': { en: 'Full log', ru: 'Полный лог' },
 
   // Home — open buttons
   'home.openFolder': { en: 'Open folder', ru: 'Открыть папку' },

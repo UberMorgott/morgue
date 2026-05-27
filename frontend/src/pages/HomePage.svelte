@@ -4,8 +4,15 @@
   import DropZone from '../components/DropZone.svelte';
   import { t, type Lang } from '../lib/i18n';
   import { ReconService, PipelineService, ToolsService } from '../lib/api';
-  import { onEvent } from '../lib/events';
   import { addOperation, updateOperation } from '../lib/operations';
+  import {
+    pipelineState,
+    history,
+    startPipeline as storeStartPipeline,
+    resetPipeline,
+    addHistoryEntry,
+    type PipelinePhase,
+  } from '../lib/pipeline';
 
   export let lang: Lang = 'en';
   export let inputPath: string = '';
@@ -13,22 +20,108 @@
 
   const dispatch = createEventDispatcher();
 
-  type PipelinePhase = 'idle' | 'analyzing' | 'tools' | 'decompiling' | 'done' | 'error';
+  type StageId = 'scan' | 'recon' | 'tools' | 'execute' | 'done';
+  type StageStatus = 'pending' | 'active' | 'done' | 'error';
 
-  let phase: PipelinePhase = 'idle';
-  let busy = false;
-  let outputPath = '';
-  let errorMessage = '';
+  const stageIds: StageId[] = ['scan', 'recon', 'tools', 'execute', 'done'];
+
+  // Local state for preflight (before engine events)
+  let preflight = false;
   let reconInfo = '';
-  let pipelineProgress = 0;
-  let pipelineStepLabel = '';
-  let cleanups: Array<() => void> = [];
-  let pipelineOpAdded = false;
   let lastProcessedPath = '';
+  let pipelineOpAdded = false;
+  let logEl: HTMLDivElement | null = null;
 
-  $: if (inputPath && inputPath !== lastProcessedPath && !busy && !startupBusy) {
+  $: phase = $pipelineState.phase;
+  $: running = phase !== 'idle' && phase !== 'done' && phase !== 'error';
+
+  // Auto-start pipeline when inputPath changes
+  $: if (inputPath && inputPath !== lastProcessedPath && !running && !startupBusy && phase === 'idle') {
     lastProcessedPath = inputPath;
-    startPipeline();
+    runPipeline();
+  }
+
+  // Compute stage statuses from pipeline phase
+  $: stages = computeStages(phase, preflight);
+
+  // Elapsed time ticker
+  let elapsedTimer: ReturnType<typeof setInterval> | null = null;
+  let elapsed = '';
+
+  $: if (running && $pipelineState.startedAt > 0) {
+    if (!elapsedTimer) {
+      elapsedTimer = setInterval(() => {
+        const sec = Math.floor((Date.now() - $pipelineState.startedAt) / 1000);
+        if (sec < 60) elapsed = `${sec}s`;
+        else if (sec < 3600) elapsed = `${Math.floor(sec / 60)}m ${sec % 60}s`;
+        else elapsed = `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
+      }, 1000);
+    }
+  } else {
+    if (elapsedTimer) {
+      clearInterval(elapsedTimer);
+      elapsedTimer = null;
+      // Compute final elapsed so summary shows correct duration
+      if ($pipelineState.startedAt > 0) {
+        const sec = Math.floor((Date.now() - $pipelineState.startedAt) / 1000);
+        if (sec < 60) elapsed = `${sec}s`;
+        else if (sec < 3600) elapsed = `${Math.floor(sec / 60)}m ${sec % 60}s`;
+        else elapsed = `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
+      }
+    }
+  }
+
+  $: if ($pipelineState.logs.length && logEl) {
+    setTimeout(() => { if (logEl) logEl.scrollTop = logEl.scrollHeight; }, 0);
+  }
+
+  onDestroy(() => {
+    if (elapsedTimer) clearInterval(elapsedTimer);
+  });
+
+  function computeStages(ph: PipelinePhase, pf: boolean): Record<StageId, StageStatus> {
+    const order: StageId[] = ['scan', 'recon', 'tools', 'execute', 'done'];
+    const result: Record<string, StageStatus> = {};
+
+    if (pf || ph === 'idle') {
+      for (const s of order) result[s] = 'pending';
+      return result as Record<StageId, StageStatus>;
+    }
+
+    if (ph === 'error') {
+      // Find where we were and mark that as error, previous as done, rest pending
+      const phaseToStage: Record<string, StageId> = {
+        scan: 'scan', recon: 'recon', tools: 'tools', execute: 'execute', done: 'done',
+      };
+      // Use stored phase from error - we check pipelineState directly
+      // Since phase is already 'error', we look at what stage was last active
+      // We'll track this via a derived approach: mark based on progress
+      let errorIdx = order.length - 2; // default to execute
+      if ($pipelineState.step === 0 && $pipelineState.stepTotal === 0) {
+        // Likely failed during preflight or early stage
+        errorIdx = 0;
+      }
+      for (let i = 0; i < order.length; i++) {
+        if (i < errorIdx) result[order[i]] = 'done';
+        else if (i === errorIdx) result[order[i]] = 'error';
+        else result[order[i]] = 'pending';
+      }
+      return result as Record<StageId, StageStatus>;
+    }
+
+    if (ph === 'done') {
+      for (const s of order) result[s] = 'done';
+      return result as Record<StageId, StageStatus>;
+    }
+
+    // Active phase
+    const activeIdx = order.indexOf(ph as StageId);
+    for (let i = 0; i < order.length; i++) {
+      if (i < activeIdx) result[order[i]] = 'done';
+      else if (i === activeIdx) result[order[i]] = 'active';
+      else result[order[i]] = 'pending';
+    }
+    return result as Record<StageId, StageStatus>;
   }
 
   function handleSelect(e: CustomEvent<{ path: string }>) {
@@ -40,84 +133,54 @@
   }
 
   function handleClear() {
-    phase = 'idle';
-    busy = false;
-    outputPath = '';
-    errorMessage = '';
+    resetPipeline();
+    preflight = false;
     reconInfo = '';
-    pipelineProgress = 0;
-    pipelineStepLabel = '';
     pipelineOpAdded = false;
     lastProcessedPath = '';
+    if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+    elapsed = '';
     dispatch('clear');
   }
 
+  function handleHistoryClick(path: string) {
+    dispatch('select', { path });
+  }
+
+  function relativeTime(ts: number): string {
+    const diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 60) return `<1${t(lang, 'home.ago.minutes')}`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}${t(lang, 'home.ago.minutes')}`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}${t(lang, 'home.ago.hours')}`;
+    return `${Math.floor(diff / 86400)}${t(lang, 'home.ago.days')}`;
+  }
+
+  function basename(p: string): string {
+    return p.split(/[\\/]/).pop() || p;
+  }
+
   onMount(async () => {
-    // If component re-mounts while pipeline is already running on backend,
-    // sync the phase so we don't re-trigger startPipeline
+    // Sync with backend if pipeline already running
     if (inputPath) {
       try {
         const status = await PipelineService.GetStatus();
         if (status && (status.Running || status.running)) {
-          phase = 'decompiling';
-          busy = true;
           lastProcessedPath = inputPath;
           pipelineOpAdded = false;
         }
       } catch {}
     }
-
-    cleanups.push(
-      onEvent('pipeline:progress', (data: any) => {
-        const d = data?.data?.[0] || data?.data || data;
-        if (d.Progress || d.progress) {
-          const p = d.Progress || d.progress;
-          const total = p.Total || p.total || 1;
-          const step = p.Step || p.step || 0;
-          pipelineProgress = ((step + 1) / total) * 100;
-          pipelineStepLabel = `${t(lang, 'pipeline.step')} ${step + 1}/${total}: ${p.Name || p.name || ''}`;
-          if (!pipelineOpAdded) {
-            addOperation({ id: 'pipeline', type: 'pipeline', label: pipelineStepLabel, status: 'running', progress: 0 });
-            pipelineOpAdded = true;
-          }
-          updateOperation('pipeline', { progress: pipelineProgress, label: pipelineStepLabel });
-        }
-        if (d.Done || d.done) {
-          phase = 'done';
-          busy = false;
-          pipelineProgress = 100;
-          outputPath = d.Output || d.output || inputPath;
-          updateOperation('pipeline', { status: 'success', progress: 100, label: t(lang, 'pipeline.done') });
-        }
-        if (d.Error || d.error) {
-          const err = d.Error || d.error;
-          errorMessage = typeof err === 'string' ? err : err.message || JSON.stringify(err);
-          phase = 'error';
-          busy = false;
-          updateOperation('pipeline', { status: 'failed', error: errorMessage });
-        }
-      }),
-      onEvent('pipeline:log', (_data: any) => {
-        // Logs handled by OperationsFooter
-      }),
-    );
   });
 
-  onDestroy(() => {
-    cleanups.forEach(fn => fn());
-  });
-
-  async function startPipeline() {
-    if (busy) return;
-    busy = true;
-    phase = 'analyzing';
-    errorMessage = '';
+  async function runPipeline() {
+    if (running) return;
+    preflight = true;
     reconInfo = '';
-    outputPath = '';
-    pipelineProgress = 0;
     pipelineOpAdded = false;
 
-    addOperation({ id: 'pipeline', type: 'pipeline', label: t(lang, 'home.analyzing'), status: 'running', progress: 0 });
+    storeStartPipeline(inputPath);
+
+    addOperation({ id: 'pipeline', type: 'pipeline', label: t(lang, 'home.preparing'), status: 'running', progress: 0 });
     pipelineOpAdded = true;
 
     try {
@@ -128,17 +191,16 @@
           (s.Required || s.required) && !(s.Available || s.available)
         );
         if (missingRequired.length > 0) {
-          errorMessage = t(lang, 'runtimes.missingForPipeline');
-          phase = 'error';
-          updateOperation('pipeline', { status: 'failed', error: errorMessage });
-          busy = false;
+          pipelineState.update(s => ({ ...s, phase: 'error', error: t(lang, 'runtimes.missingForPipeline') }));
+          updateOperation('pipeline', { status: 'failed', error: t(lang, 'runtimes.missingForPipeline') });
+          preflight = false;
           return;
         }
       } catch {
-        // If runtime check fails, continue — pipeline will handle errors
+        // Continue — pipeline will handle errors
       }
 
-      // Step 1: Classify the input file
+      // Classify file
       try {
         const result = await ReconService.ClassifyFile(inputPath);
         if (result) {
@@ -146,12 +208,9 @@
           const obf = result.Obfuscator || result.obfuscator || '';
           reconInfo = kind + (obf ? ` / ${obf}` : '');
         }
-      } catch {
-        // Classification is best-effort — pipeline will handle unknown files
-      }
+      } catch {}
 
-      // Step 2: Check tools and install missing
-      phase = 'tools';
+      // Check tools and install missing
       updateOperation('pipeline', { label: t(lang, 'home.preparingTools') });
       try {
         const statuses = await ToolsService.CheckAll();
@@ -159,84 +218,304 @@
         if (missing.length > 0) {
           await ToolsService.InstallAll();
         }
-      } catch {
-        // If tools check fails, still try to run — pipeline will report missing tools
-      }
+      } catch {}
 
-      // Step 3: Execute pipeline
-      phase = 'decompiling';
+      // Preflight done — engine will emit events from here
+      preflight = false;
       updateOperation('pipeline', { label: t(lang, 'home.decompiling'), progress: 0 });
+
       await PipelineService.Run(inputPath, '');
-    } catch (e: any) {
-      if (phase !== 'done') {
-        errorMessage = e.message || String(e);
-        phase = 'error';
-        updateOperation('pipeline', { status: 'failed', error: errorMessage });
+
+      // Give Wails events time to propagate
+      await new Promise(r => setTimeout(r, 500));
+
+      // Add history entry
+      const finalPhase = $pipelineState.phase;
+      addHistoryEntry({
+        path: inputPath,
+        kind: reconInfo,
+        output: $pipelineState.outputPath || inputPath,
+        timestamp: Date.now(),
+        success: finalPhase === 'done' || finalPhase === 'execute',
+        error: finalPhase === 'error' ? $pipelineState.error : undefined,
+      });
+
+      // If events set 'done' or Run() returned without error during execute, mark done
+      if (finalPhase === 'done' || finalPhase === 'execute') {
+        pipelineState.update(s => ({ ...s, phase: 'done', progress: 100 }));
+        updateOperation('pipeline', { status: 'success', progress: 100, label: t(lang, 'pipeline.done') });
       }
-    } finally {
-      busy = false;
+    } catch (e: any) {
+      preflight = false;
+      if ($pipelineState.phase !== 'done') {
+        const msg = e.message || String(e);
+        pipelineState.update(s => ({ ...s, phase: 'error', error: msg }));
+        updateOperation('pipeline', { status: 'failed', error: msg });
+
+        addHistoryEntry({
+          path: inputPath,
+          kind: reconInfo,
+          output: '',
+          timestamp: Date.now(),
+          success: false,
+          error: msg,
+        });
+      }
     }
+  }
+
+  // Keep operations footer in sync with pipeline store progress
+  $: if (pipelineOpAdded && $pipelineState.step > 0) {
+    const label = `${t(lang, 'home.step')} ${$pipelineState.step + 1}/${$pipelineState.stepTotal}: ${$pipelineState.stepName}`;
+    updateOperation('pipeline', { progress: $pipelineState.progress, label });
   }
 </script>
 
 <div class="home-page">
   {#if !inputPath}
+    <!-- IDLE STATE -->
     <div class="home-hero">
       <h1 class="hero-title">{t(lang, 'home.title')}</h1>
       <p class="hero-subtitle">{t(lang, 'home.subtitle')}</p>
     </div>
-    <DropZone {lang} disabled={busy || startupBusy} on:select={handleSelect} on:browse={handleBrowse} />
-  {:else}
-    <div class="pipeline-status">
-      <div class="file-path-display">
-        <span class="file-icon">📄</span>
-        <span class="file-path">{inputPath}</span>
+    <DropZone {lang} disabled={running || startupBusy} on:select={handleSelect} on:browse={handleBrowse} />
+
+    {#if $history.length > 0}
+      <div class="history-section animate-in">
+        <h3 class="history-heading">{t(lang, 'home.recent')}</h3>
+        <div class="history-list glass">
+          {#each $history.slice(0, 5) as entry}
+            <button class="history-item" on:click={() => handleHistoryClick(entry.path)}>
+              <span class="dot {entry.success ? 'dot-success' : 'dot-error'}"></span>
+              <span class="history-name">{basename(entry.path)}</span>
+              {#if entry.kind}
+                <span class="tag tag-accent">{entry.kind}</span>
+              {/if}
+              <span class="history-time">{relativeTime(entry.timestamp)}</span>
+            </button>
+          {/each}
+        </div>
       </div>
+    {/if}
 
-      {#if reconInfo}
-        <div class="recon-badge">{reconInfo}</div>
-      {/if}
-
-      <div class="status-indicator" class:analyzing={phase === 'analyzing'} class:tools={phase === 'tools'} class:decompiling={phase === 'decompiling'} class:done={phase === 'done'} class:error={phase === 'error'}>
-        {#if phase === 'analyzing'}
-          <span class="spinner"></span>
-          <span class="status-text">{t(lang, 'home.analyzing')}</span>
-        {:else if phase === 'tools'}
-          <span class="spinner"></span>
-          <span class="status-text">{t(lang, 'home.preparingTools')}</span>
-        {:else if phase === 'decompiling'}
-          <span class="spinner"></span>
-          <span class="status-text">{t(lang, 'home.decompiling')}</span>
-          {#if pipelineStepLabel}
-            <span class="step-label">{pipelineStepLabel}</span>
-          {/if}
-          {#if pipelineProgress > 0}
-            <div class="progress-bar-wrap">
-              <div class="progress-bar-fill" style="width: {pipelineProgress}%"></div>
-            </div>
-          {/if}
-        {:else if phase === 'done'}
-          <span class="done-icon">✓</span>
-          <span class="status-text">{t(lang, 'home.done')}</span>
-        {:else if phase === 'error'}
-          <span class="error-icon">!</span>
-          <span class="status-text">{t(lang, 'home.error')}</span>
+  {:else}
+    <!-- RUNNING / DONE / ERROR STATE -->
+    <div class="pipeline-view animate-in">
+      <!-- File info bar -->
+      <div class="file-info glass">
+        <span class="file-path selectable">{inputPath}</span>
+        {#if reconInfo && reconInfo !== 'Unknown'}
+          <span class="tag tag-accent">{reconInfo}</span>
         {/if}
       </div>
 
-      {#if phase === 'done' && outputPath}
-        <div class="result-section">
-          <span class="result-label">{t(lang, 'home.result')}:</span>
-          <span class="result-path selectable">{outputPath}</span>
+      <!-- Preparing label -->
+      {#if preflight}
+        <div class="preparing-label neon-text">{t(lang, 'home.preparing')}</div>
+      {/if}
+
+      <!-- Stage stepper -->
+      <div class="stepper">
+        {#each stageIds as id, i}
+          {@const status = stages[id]}
+          <div class="stage" class:stage-done={status === 'done'} class:stage-active={status === 'active'} class:stage-error={status === 'error'} class:stage-pending={status === 'pending'}>
+            <div class="stage-circle">
+              {#if status === 'done'}
+                <svg width="14" height="14" viewBox="0 0 14 14"><path d="M2.5 7l3 3 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              {:else if status === 'error'}
+                <svg width="14" height="14" viewBox="0 0 14 14"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+              {:else}
+                <span class="stage-dot"></span>
+              {/if}
+            </div>
+            <span class="stage-label">{t(lang, `home.stage.${id}`)}</span>
+          </div>
+          {#if i < stageIds.length - 1}
+            {@const nextStatus = stages[stageIds[i + 1]]}
+            <div class="stage-line"
+              class:line-done={status === 'done' && (nextStatus === 'done' || nextStatus === 'active')}
+              class:line-active={status === 'done' && nextStatus === 'active'}
+              class:line-error={status === 'error' || nextStatus === 'error'}
+            ></div>
+          {/if}
+        {/each}
+      </div>
+
+      <!-- Progress details (phase-specific) -->
+      {#if running || preflight}
+        <div class="progress-card glass">
+          <!-- Phase-specific details -->
+          {#if preflight}
+            <div class="fallback-row">
+              <span class="spinner"></span>
+              <span class="fallback-text">{t(lang, 'home.preparing')}</span>
+            </div>
+
+          {:else if phase === 'scan'}
+            <div class="phase-detail">
+              <span class="spinner"></span>
+              <span class="phase-text">{$pipelineState.scanInfo || t(lang, 'home.scanning')}</span>
+            </div>
+
+          {:else if phase === 'recon'}
+            <div class="phase-detail-list">
+              {#each $pipelineState.reconResults as r}
+                <div class="recon-item">
+                  <span class="recon-file">{r.file}</span>
+                  {#if r.kind}
+                    <span class="tag tag-accent">{r.kind}</span>
+                  {:else}
+                    <span class="spinner-sm"></span>
+                  {/if}
+                </div>
+              {/each}
+              {#if $pipelineState.reconResults.length === 0}
+                <div class="fallback-row">
+                  <span class="spinner"></span>
+                  <span class="fallback-text">{t(lang, 'home.classifying')}</span>
+                </div>
+              {/if}
+            </div>
+
+          {:else if phase === 'tools'}
+            <div class="phase-detail">
+              <span class="spinner"></span>
+              <span class="phase-text">{$pipelineState.toolsInfo || t(lang, 'home.preparingTools')}</span>
+            </div>
+
+          {:else if phase === 'execute'}
+            <!-- Current target -->
+            {#if $pipelineState.currentTarget}
+              <div class="target-row">
+                <span class="target-icon">&#9654;</span>
+                <span class="target-name">{basename($pipelineState.currentTarget)}</span>
+              </div>
+            {/if}
+
+            <!-- Files counter -->
+            {#if $pipelineState.filesTotal > 0}
+              <div class="files-row">
+                <div class="files-counter">
+                  <span class="files-num">{$pipelineState.filesProcessed}</span>
+                  <span class="files-sep">/</span>
+                  <span class="files-total">{$pipelineState.filesTotal}</span>
+                </div>
+                <span class="files-label">{t(lang, 'home.filesProcessed')}</span>
+                <div class="files-progress-track">
+                  <div class="files-progress-fill" style="width: {$pipelineState.filesTotal > 0 ? ($pipelineState.filesProcessed / $pipelineState.filesTotal) * 100 : 0}%"></div>
+                </div>
+              </div>
+            {/if}
+
+            <!-- Step progress -->
+            {#if $pipelineState.stepTotal > 0}
+              <div class="step-row">
+                <div class="step-info">
+                  <span class="step-badge">{$pipelineState.step + 1}/{$pipelineState.stepTotal}</span>
+                  <span class="step-name">{$pipelineState.stepName}</span>
+                </div>
+                <div class="progress-track">
+                  <div class="progress-fill" style="width: {$pipelineState.progress}%; height: 6px;"></div>
+                </div>
+              </div>
+            {:else}
+              <div class="fallback-row">
+                <span class="spinner"></span>
+                <span class="fallback-text">{t(lang, 'home.processing')}</span>
+              </div>
+            {/if}
+
+          {:else}
+            <div class="fallback-row">
+              <span class="spinner"></span>
+              <span class="fallback-text">{t(lang, 'home.processing')}</span>
+            </div>
+          {/if}
+
+          <!-- Status message + elapsed (always at bottom) -->
+          <div class="status-row">
+            {#if $pipelineState.lastMessage}
+              <span class="status-msg">{$pipelineState.lastMessage}</span>
+            {/if}
+            {#if $pipelineState.startedAt > 0}
+              <span class="elapsed">{elapsed}</span>
+            {/if}
+          </div>
         </div>
+
+        <!-- Live log -->
+        {#if $pipelineState.logs.length > 0}
+          <div class="log-panel" bind:this={logEl}>
+            <pre class="log-text">{$pipelineState.logs.join('\n')}</pre>
+          </div>
+        {/if}
       {/if}
 
-      {#if phase === 'error' && errorMessage}
-        <div class="error-msg">{errorMessage}</div>
+      <!-- Done state: summary -->
+      {#if phase === 'done'}
+        <div class="summary-panel glass">
+          <div class="summary-header">
+            <span class="summary-title">{t(lang, 'home.summary')}</span>
+            {#if $pipelineState.startedAt > 0}
+              <span class="summary-duration">{elapsed}</span>
+            {/if}
+          </div>
+
+          <!-- Stats row -->
+          <div class="summary-stats">
+            <div class="stat">
+              <span class="stat-num">{$pipelineState.filesProcessed || $pipelineState.reconResults.length}</span>
+              <span class="stat-label">{t(lang, 'home.summary.files')}</span>
+            </div>
+            <div class="stat">
+              <span class="stat-num">{$pipelineState.reconResults.filter(r => r.kind && r.kind !== 'Skipped' && r.kind !== 'Unknown').length}</span>
+              <span class="stat-label">{t(lang, 'home.summary.decompiled')}</span>
+            </div>
+            <div class="stat">
+              <span class="stat-num">{$pipelineState.reconResults.filter(r => r.kind === 'Skipped').length}</span>
+              <span class="stat-label">{t(lang, 'home.summary.skipped')}</span>
+            </div>
+          </div>
+
+          <!-- Per-file results -->
+          <div class="summary-files">
+            {#each $pipelineState.reconResults as r}
+              <div class="summary-file">
+                <span class="dot dot-success"></span>
+                <span class="summary-filename">{r.file}</span>
+                <span class="tag {r.kind === 'Skipped' ? 'tag-muted' : 'tag-accent'}">{r.kind || '?'}</span>
+              </div>
+            {/each}
+          </div>
+
+          <!-- Output path -->
+          <div class="summary-output">
+            <span class="result-label">{t(lang, 'home.result')}:</span>
+            <span class="result-path selectable">{$pipelineState.outputPath || inputPath}</span>
+          </div>
+
+          <!-- Log tail -->
+          {#if $pipelineState.logs.length > 0}
+            <details class="summary-logs">
+              <summary class="logs-toggle">{t(lang, 'home.summary.log')} ({$pipelineState.logs.length})</summary>
+              <div class="logs-body">
+                <pre class="log-text">{$pipelineState.logs.join('\n')}</pre>
+              </div>
+            </details>
+          {/if}
+        </div>
+
+        <button class="btn btn-primary" on:click={handleClear}>
+          {t(lang, 'home.newFile')}
+        </button>
       {/if}
 
-      {#if phase === 'done' || phase === 'error'}
-        <button class="new-file-btn" on:click={handleClear}>
+      <!-- Error state -->
+      {#if phase === 'error'}
+        <div class="error-card glass">
+          <span class="error-text">{$pipelineState.error}</span>
+        </div>
+        <button class="btn btn-primary" on:click={handleClear}>
           {t(lang, 'home.newFile')}
         </button>
       {/if}
@@ -249,11 +528,12 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     gap: 24px;
     height: 100%;
     padding: 32px;
+    overflow-y: auto;
   }
+
   .home-hero { text-align: center; }
   .hero-title {
     font-size: clamp(28px, 4vw, 56px);
@@ -268,168 +548,548 @@
     margin: 0;
   }
 
-  .pipeline-status {
+  /* ── History ── */
+  .history-section {
+    width: 100%;
+    max-width: 480px;
+  }
+  .history-heading {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin: 0 0 8px 4px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .history-list {
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    gap: 2px;
+  }
+  .history-item {
+    all: unset;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .history-item:hover {
+    background: var(--bg-card-hover);
+  }
+  .history-name {
+    font-size: 0.88rem;
+    color: var(--text-primary);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: 'Consolas', 'Courier New', monospace;
+  }
+  .history-time {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  /* ── Pipeline view ── */
+  .pipeline-view {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 20px;
-    max-width: 560px;
     width: 100%;
   }
 
-  .file-path-display {
+  .file-info {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     padding: 12px 18px;
-    background: var(--bg-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
     width: 100%;
     overflow: hidden;
   }
-  .file-icon { font-size: 20px; flex-shrink: 0; }
   .file-path {
     font-size: 13px;
-    font-family: ui-monospace, monospace;
+    font-family: 'Consolas', 'Courier New', monospace;
     color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    user-select: all;
+    flex: 1;
   }
 
-  .recon-badge {
-    font-size: 11px;
-    padding: 4px 10px;
-    border-radius: 4px;
-    background: var(--accent-dim);
-    color: var(--accent);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+  .preparing-label {
+    font-size: 0.9rem;
     font-weight: 600;
+    animation: pulse-neon 2s ease-in-out infinite;
   }
 
-  .status-indicator {
+  /* ── Stage stepper ── */
+  .stepper {
+    display: flex;
+    align-items: flex-start;
+    width: 100%;
+    padding: 8px 0;
+  }
+
+  .stage {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
-    padding: 24px;
-    width: 100%;
-    border-radius: 10px;
-    background: var(--bg-card);
-    border: 1px solid var(--border-subtle);
-  }
-  .status-indicator.done {
-    border-color: var(--success, #22c55e);
-  }
-  .status-indicator.error {
-    border-color: var(--error, #ef4444);
+    gap: 8px;
+    z-index: 1;
   }
 
-  .status-text {
-    font-size: 16px;
+  .stage-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--border);
+    background: var(--bg-card-solid);
+    color: var(--text-muted);
+    transition: all 0.3s ease;
+  }
+
+  .stage-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    opacity: 0.4;
+  }
+
+  .stage-label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    font-weight: 500;
+    transition: color 0.3s;
+    white-space: nowrap;
+  }
+
+  /* Stage states */
+  .stage-done .stage-circle {
+    border-color: var(--success);
+    background: var(--success-dim);
+    color: var(--success);
+    box-shadow: 0 0 8px rgba(85, 238, 160, 0.3);
+  }
+  .stage-done .stage-label {
+    color: var(--success);
+  }
+
+  .stage-active .stage-circle {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+    color: var(--accent);
+    box-shadow: 0 0 12px var(--accent-glow);
+    animation: glow-breathe 2s ease-in-out infinite;
+  }
+  .stage-active .stage-dot {
+    background: var(--accent);
+    opacity: 1;
+    animation: pulse-neon 2s ease-in-out infinite;
+  }
+  .stage-active .stage-label {
+    color: var(--accent);
     font-weight: 600;
+  }
+
+  .stage-error .stage-circle {
+    border-color: var(--error);
+    background: var(--error-dim);
+    color: var(--error);
+    box-shadow: 0 0 8px rgba(255, 68, 102, 0.3);
+  }
+  .stage-error .stage-label {
+    color: var(--error);
+  }
+
+  /* Connecting lines */
+  .stage-line {
+    flex: 1;
+    height: 2px;
+    background: var(--border-subtle);
+    margin-top: 16px; /* center with circle */
+    transition: background 0.3s;
+  }
+  .line-done {
+    background: var(--success);
+    box-shadow: 0 0 4px rgba(85, 238, 160, 0.3);
+  }
+  .line-active {
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent-glow);
+    animation: pulse-neon 2s ease-in-out infinite;
+  }
+  .line-error {
+    background: var(--error);
+  }
+
+  /* ── Progress card ── */
+  .progress-card {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px;
+    width: 100%;
+  }
+
+  .target-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .target-icon {
+    color: var(--accent);
+    font-size: 0.7rem;
+  }
+  .target-name {
+    font-size: 0.9rem;
+    font-family: 'Consolas', 'Courier New', monospace;
+    color: var(--text-primary);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .files-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .files-counter {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+  }
+  .files-num {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--accent);
+    font-family: 'Orbitron', monospace;
+  }
+  .files-sep {
+    font-size: 1rem;
+    color: var(--text-muted);
+    margin: 0 2px;
+  }
+  .files-total {
+    font-size: 1rem;
+    color: var(--text-muted);
+    font-family: 'Orbitron', monospace;
+  }
+  .files-label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .files-progress-track {
+    flex: 1;
+    min-width: 60px;
+    height: 4px;
+    background: rgba(255, 140, 40, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .files-progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.4s ease;
+  }
+
+  .step-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .step-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .step-badge {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-weight: 600;
+    font-family: 'Consolas', 'Courier New', monospace;
+    flex-shrink: 0;
+  }
+  .step-name {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  .status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 20px;
+  }
+  .status-msg {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+  .elapsed {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-family: 'Consolas', 'Courier New', monospace;
+    flex-shrink: 0;
+  }
+
+  .phase-detail {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .phase-text {
+    font-size: 0.88rem;
     color: var(--text-primary);
   }
-  .step-label {
-    font-size: 12px;
-    color: var(--text-muted);
+
+  .phase-detail-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .recon-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 0;
+  }
+  .recon-file {
+    font-size: 0.84rem;
+    font-family: 'Consolas', 'Courier New', monospace;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .spinner-sm {
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    flex-shrink: 0;
   }
 
+  .fallback-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
   .spinner {
-    width: 24px; height: 24px;
-    border: 3px solid var(--border);
+    width: 20px; height: 20px;
+    border: 2px solid var(--border);
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
   }
-
-  .done-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px; height: 32px;
-    border-radius: 50%;
-    background: var(--success, #22c55e);
-    color: #fff;
-    font-size: 16px;
-    font-weight: 700;
+  .fallback-text {
+    font-size: 0.85rem;
+    color: var(--text-muted);
   }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
-  .error-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px; height: 32px;
-    border-radius: 50%;
-    background: var(--error, #ef4444);
-    color: #fff;
-    font-size: 16px;
-    font-weight: 700;
-  }
-
-  .progress-bar-wrap {
-    width: 100%;
-    height: 6px;
-    background: var(--border);
-    border-radius: 3px;
-    overflow: hidden;
-  }
-  .progress-bar-fill {
-    height: 100%;
-    background: var(--accent);
-    border-radius: 3px;
-    transition: width 0.3s ease;
-  }
-
-  .result-section {
+  /* ── Result card ── */
+  .result-card {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--text-secondary);
-    padding: 10px 16px;
-    background: var(--bg-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
+    gap: 10px;
+    padding: 14px 18px;
     width: 100%;
   }
-  .result-label { font-weight: 600; color: var(--text-primary); flex-shrink: 0; }
+  .result-label {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    flex-shrink: 0;
+  }
   .result-path {
-    font-family: ui-monospace, monospace;
+    font-size: 0.84rem;
+    font-family: 'Consolas', 'Courier New', monospace;
+    color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    user-select: all;
   }
 
-  .error-msg {
-    font-size: 12px;
-    color: var(--error, #ef4444);
-    font-family: ui-monospace, monospace;
-    padding: 10px 14px;
-    background: rgba(255, 51, 102, 0.08);
-    border-radius: 6px;
+  /* ── Error card ── */
+  .error-card {
+    padding: 14px 18px;
     width: 100%;
+    border-color: rgba(255, 68, 102, 0.25) !important;
+  }
+  .error-text {
+    font-size: 0.82rem;
+    color: var(--error);
+    font-family: 'Consolas', 'Courier New', monospace;
     word-break: break-word;
   }
 
-  .new-file-btn {
-    all: unset;
-    font-size: 13px;
-    padding: 10px 24px;
-    border-radius: 8px;
-    background: var(--accent);
-    color: var(--bg-page);
-    font-weight: 600;
-    cursor: pointer;
-    transition: box-shadow 0.15s;
+  /* Shimmer on active progress bars */
+  :global(.progress-fill) {
+    position: relative;
+    overflow: hidden;
   }
-  .new-file-btn:hover {
-    box-shadow: 0 0 16px var(--accent-dim);
+  :global(.progress-fill)::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%; width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    0% { left: -100%; }
+    100% { left: 200%; }
   }
 
-  @keyframes spin { to { transform: rotate(360deg); } }
+  .log-panel {
+    width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 14px 18px;
+    background: var(--bg-card-solid);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+  .log-text {
+    font-size: 13px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    color: #e0d0c0;
+    line-height: 2;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  /* ── Summary panel ── */
+  .summary-panel {
+    width: 100%;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .summary-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .summary-title {
+    font-family: 'Orbitron', 'Play', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-heading);
+    letter-spacing: 1px;
+  }
+  .summary-duration {
+    font-size: 0.9rem;
+    font-family: 'Consolas', 'Courier New', monospace;
+    color: var(--text-muted);
+  }
+
+  .summary-stats {
+    display: flex;
+    gap: 24px;
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    padding: 12px;
+    background: var(--bg-card);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+  }
+  .stat-num {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent);
+    font-family: 'Orbitron', monospace;
+  }
+  .stat-label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .summary-files {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .summary-file {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+  }
+  .summary-filename {
+    font-size: 0.88rem;
+    font-family: 'Consolas', 'Courier New', monospace;
+    color: var(--text-primary);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .summary-output {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+  }
+
+  .summary-logs {
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 12px;
+  }
+  .logs-toggle {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px 0;
+  }
+  .logs-toggle:hover {
+    color: var(--text-secondary);
+  }
+  .logs-body {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: 8px;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 </style>
