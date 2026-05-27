@@ -138,6 +138,7 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // Home — stages
   'home.stage.scan': { en: 'Scan', ru: 'Скан' },
+  'home.section.analysis': { en: 'Analysis', ru: 'Анализ' },
   'home.stage.recon': { en: 'Recon', ru: 'Анализ' },
   'home.stage.tools': { en: 'Tools', ru: 'Инструменты' },
   'home.stage.execute': { en: 'Execute', ru: 'Декомпиляция' },

@@ -332,43 +332,39 @@
             <div class="acc-section">
               <div class="acc-section-header">
                 <svg class="acc-icon" width="16" height="16" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                <span class="acc-section-title">{t(lang, 'home.stage.scan')}</span>
+                <span class="acc-section-title">{t(lang, 'home.section.analysis')}</span>
                 {#if ['scan', 'recon'].includes(phase)}
                   <span class="spinner-sm"></span>
                 {/if}
               </div>
 
-              {#if $pipelineState.scanInfo}
-                <div class="acc-detail-row">
-                  <span class="acc-detail-label">Info</span>
-                  <span class="acc-detail-value">{$pipelineState.scanInfo}</span>
-                </div>
-              {/if}
-
               <!-- Enriched recon info -->
               {#if $pipelineState.reconKind}
-                <div class="acc-detail-row">
-                  <span class="tag tag-accent">{$pipelineState.reconKind}</span>
-                  {#if $pipelineState.reconResults.length > 0 && $pipelineState.reconResults[0].kind && $pipelineState.reconResults[0].kind !== 'Unknown'}
-                    <span class="acc-detail-value">{$pipelineState.reconResults[0].kind}</span>
-                  {/if}
-                </div>
-                <div class="acc-detail-row detect-meta">
-                  <span class="detect-meta-item">
-                    <span class="detect-meta-label">Compiler:</span>
-                    <span class="detect-meta-value">{$pipelineState.compiler || '\u2014'}</span>
-                  </span>
-                  <span class="detect-meta-sep">|</span>
-                  <span class="detect-meta-item">
-                    <span class="detect-meta-label">Obfuscator:</span>
-                    <span class="detect-meta-value">{$pipelineState.obfuscator || '\u2014'}</span>
-                  </span>
-                  <span class="detect-meta-sep">|</span>
-                  <span class="detect-meta-item">
-                    <span class="detect-meta-label">Size:</span>
-                    <span class="detect-meta-value">{formatFileSize($pipelineState.fileSize) || '\u2014'}</span>
-                  </span>
-                </div>
+                <!-- Recon results: file list with kind badges -->
+                {#each $pipelineState.reconResults as r}
+                  <div class="acc-detail-row">
+                    <span class="acc-detail-mono">{r.file}</span>
+                    {#if r.kind}
+                      <span class="tag {r.kind === 'Skipped' ? 'tag-muted' : r.kind === 'Unknown' ? 'tag-muted' : 'tag-accent'}">{r.kind}</span>
+                    {/if}
+                  </div>
+                {/each}
+                <!-- Detection meta: only show fields with actual values -->
+                {@const metaItems = [
+                  $pipelineState.compiler ? `Compiler: ${$pipelineState.compiler}` : '',
+                  $pipelineState.obfuscator ? `Obfuscator: ${$pipelineState.obfuscator}` : '',
+                  $pipelineState.fileSize ? `Size: ${formatFileSize($pipelineState.fileSize)}` : '',
+                ].filter(Boolean)}
+                {#if metaItems.length > 0}
+                  <div class="acc-detail-row detect-meta">
+                    {#each metaItems as item, i}
+                      {#if i > 0}
+                        <span class="detect-meta-sep">|</span>
+                      {/if}
+                      <span class="detect-meta-value">{item}</span>
+                    {/each}
+                  </div>
+                {/if}
                 {#if $pipelineState.recipeName}
                   <div class="acc-detail-row">
                     <span class="acc-detail-label">Recipe</span>
@@ -929,15 +925,6 @@
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
-  }
-  .detect-meta-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-  .detect-meta-label {
-    font-size: 0.75rem;
-    color: var(--text-muted);
   }
   .detect-meta-value {
     font-size: 0.82rem;
