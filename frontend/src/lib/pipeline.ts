@@ -140,7 +140,11 @@ export function updateFromEvent(data: any) {
       else if (phase === 'recon' || phase === 'match') next.phase = 'recon';
       else if (phase === 'tools' || phase === 'install') next.phase = 'tools';
       else if (phase === 'execute' || phase === 'log') next.phase = 'execute';
-      else if (phase === 'done') next.phase = 'done';
+      else if (phase === 'done') {
+        next.phase = 'done';
+        // Ensure filesProcessed matches filesTotal on completion
+        if (next.filesTotal > 0) next.filesProcessed = next.filesTotal;
+      }
       else if (phase === 'skip') { /* keep current phase */ }
     }
 
