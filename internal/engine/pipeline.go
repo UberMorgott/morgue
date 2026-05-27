@@ -292,9 +292,6 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				emit("execute", filePath, "Complete")
 				// Post-execution: scan output and report stats
 				stats := scanOutputDir(targetOutput)
-				for _, line := range stats {
-					emit("log", filePath, line)
-				}
 				if events != nil {
 					events <- PipelineEvent{
 						Phase: "stats", Target: filePath,
