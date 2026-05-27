@@ -154,6 +154,8 @@ func (n *Native) Execute(ctx *Context) error {
 		if r != nil {
 			os.WriteFile(stringsOut, []byte(r.Stdout), 0644)
 		}
+		// Analyze and structure strings
+		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
 		report(1, Success, time.Since(start), nil)
 	}
 

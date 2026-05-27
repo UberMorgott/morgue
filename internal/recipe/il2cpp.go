@@ -247,6 +247,8 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 			lines := strings.Count(res.Stdout, "\n")
 			log(fmt.Sprintf("Extracted %d strings from GameAssembly.dll", lines))
 		}
+		// Analyze and structure strings
+		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
 		report(3, Success, time.Since(start), nil)
 	}
 
