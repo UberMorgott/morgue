@@ -21,10 +21,10 @@
   let busy = false;
   let runtimeBusy: Record<string, boolean> = {};
 
-  let cleanupProgress: (() => void) | null = null;
+  let cleanups: Array<() => void> = [];
 
   onMount(async () => {
-    cleanupProgress = onEvent('tool:download:progress', (data: any) => {
+    cleanups.push(onEvent('tool:download:progress', (data: any) => {
       const d = data.data || data;
       const toolName = d.tool || d.Tool;
       const bytes = d.bytes || d.Bytes || 0;
@@ -33,12 +33,42 @@
       updateOperation(`install-${toolName}`, { progress: pct });
       updateOperation(`download-${toolName}`, { progress: pct });
       updateOperation(`update-${toolName}`, { progress: pct });
-    });
+    }));
+
+    cleanups.push(onEvent('tool:download:complete', (data: any) => {
+      const d = data.data || data;
+      const toolName = d.tool || d.Tool;
+      const error = d.error || d.Error;
+      if (error) {
+        updateOperation(`install-${toolName}`, { status: 'failed', error: String(error) });
+        updateOperation(`download-${toolName}`, { status: 'failed', error: String(error) });
+        updateOperation(`update-${toolName}`, { status: 'failed', error: String(error) });
+      }
+    }));
+
+    cleanups.push(onEvent('tool:installed', async (data: any) => {
+      const toolName = typeof data === 'string' ? data : (data?.data || data?.tool || data?.Tool || '');
+      if (!toolName) return;
+      // Refresh status for the installed tool
+      try {
+        const st = await ToolsService.CheckAll();
+        const updated = (st || []).find((s: any) => (s.Name ?? s.name) === toolName);
+        if (updated) {
+          tools = tools.map(t => t.name === toolName ? {
+            ...t,
+            installed: updated.Installed ?? updated.installed ?? false,
+            version: updated.Version ?? updated.version ?? '',
+            path: updated.Path ?? updated.path ?? '',
+          } : t);
+        }
+      } catch (e) { console.error('Refresh after tool:installed failed:', e); }
+    }));
+
     await Promise.all([loadTools(), loadRuntimes()]);
   });
 
   onDestroy(() => {
-    if (cleanupProgress) cleanupProgress();
+    cleanups.forEach(fn => fn());
   });
 
   async function loadRuntimes() {
