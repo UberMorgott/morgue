@@ -99,18 +99,20 @@
 
   let cleanupDownloadProgress: (() => void) | null = null;
   let cleanupDownloadComplete: (() => void) | null = null;
+  let cleanupExtractStart: (() => void) | null = null;
 
   onDestroy(() => {
     stopApiPoll();
     cleanupDownloadProgress?.();
     cleanupDownloadComplete?.();
+    cleanupExtractStart?.();
   });
 
   onMount(async () => {
     startApiPoll();
 
     cleanupDownloadProgress = onEvent('tool:download:progress', (data: any) => {
-      const d = data.data || data;
+      const d = data?.data?.[0] || data?.data || data;
       const toolName = d.tool || d.Tool;
       const bytes = d.bytes || d.Bytes || 0;
       const total = d.total || d.Total || 1;
@@ -118,8 +120,16 @@
       updateOperation(`api-install-${toolName}`, { progress: pct });
     });
 
+    cleanupExtractStart = onEvent('tool:extract:start', (data: any) => {
+      const d = data?.data?.[0] || data?.data || data;
+      const toolName = d.tool || d.Tool;
+      if (toolName) {
+        updateOperation(`api-install-${toolName}`, { label: `Extracting ${toolName}...`, progress: 100 });
+      }
+    });
+
     cleanupDownloadComplete = onEvent('tool:download:complete', (data: any) => {
-      const d = data.data || data;
+      const d = data?.data?.[0] || data?.data || data;
       const toolName = d.tool || d.Tool;
       const error = d.error || d.Error;
       if (error) {

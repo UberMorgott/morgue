@@ -6,6 +6,13 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as tools$0 from "../tools/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as time$0 from "../../../../../time/models.js";
+
 /**
  * APICommand represents a command pushed by the HTTP API for the frontend to execute.
  */
@@ -42,6 +49,174 @@ export class APICommand {
     static createFrom($$source = {}) {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new APICommand(/** @type {Partial<APICommand>} */($$parsedSource));
+    }
+}
+
+/**
+ * EnrichedToolStatus extends ToolStatus with operation state.
+ */
+export class EnrichedToolStatus {
+    /**
+     * Creates a new EnrichedToolStatus instance.
+     * @param {Partial<EnrichedToolStatus>} [$$source = {}] - The source object to create the EnrichedToolStatus.
+     */
+    constructor($$source = {}) {
+        if (!("Name" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["Name"] = "";
+        }
+        if (!("Installed" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["Installed"] = false;
+        }
+        if (!("Path" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["Path"] = "";
+        }
+        if (!("Version" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["Version"] = "";
+        }
+        if (!("LatestVersion" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["LatestVersion"] = "";
+        }
+        if (!("UpdateAvailable" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["UpdateAvailable"] = false;
+        }
+        if (!("Category" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["Category"] = "";
+        }
+        if (!("Description" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["Description"] = "";
+        }
+        if (!("Optional" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["Optional"] = false;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {tools$0.RuntimeKind[] | undefined}
+             */
+            this["RuntimeDeps"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {boolean | undefined}
+             */
+            this["installing"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {number | undefined}
+             */
+            this["progress"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {time$0.Time | undefined}
+             */
+            this["lastActivity"] = undefined;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new EnrichedToolStatus instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {EnrichedToolStatus}
+     */
+    static createFrom($$source = {}) {
+        const $$createField9_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("RuntimeDeps" in $$parsedSource) {
+            $$parsedSource["RuntimeDeps"] = $$createField9_0($$parsedSource["RuntimeDeps"]);
+        }
+        return new EnrichedToolStatus(/** @type {Partial<EnrichedToolStatus>} */($$parsedSource));
+    }
+}
+
+/**
+ * EnrichedToolsResponse is the enriched /api/tools response.
+ */
+export class EnrichedToolsResponse {
+    /**
+     * Creates a new EnrichedToolsResponse instance.
+     * @param {Partial<EnrichedToolsResponse>} [$$source = {}] - The source object to create the EnrichedToolsResponse.
+     */
+    constructor($$source = {}) {
+        if (!("tools" in $$source)) {
+            /**
+             * @member
+             * @type {EnrichedToolStatus[]}
+             */
+            this["tools"] = [];
+        }
+        if (!("busy" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["busy"] = false;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {boolean | undefined}
+             */
+            this["changed"] = undefined;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new EnrichedToolsResponse instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {EnrichedToolsResponse}
+     */
+    static createFrom($$source = {}) {
+        const $$createField0_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tools" in $$parsedSource) {
+            $$parsedSource["tools"] = $$createField0_0($$parsedSource["tools"]);
+        }
+        return new EnrichedToolsResponse(/** @type {Partial<EnrichedToolsResponse>} */($$parsedSource));
     }
 }
 
@@ -172,3 +347,8 @@ export class UpdateStatus {
         return new UpdateStatus(/** @type {Partial<UpdateStatus>} */($$parsedSource));
     }
 }
+
+// Private type creation functions
+const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = EnrichedToolStatus.createFrom;
+const $$createType2 = $Create.Array($$createType1);

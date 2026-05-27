@@ -241,9 +241,14 @@ func apiCmd() *cobra.Command {
 		Use:   "tools",
 		Short: "List tools via GUI API",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			wait, _ := cmd.Flags().GetBool("wait")
+			if wait {
+				return cli.APIToolsWait()
+			}
 			return cli.APITools()
 		},
 	}
+	apiToolsCmd.Flags().Bool("wait", false, "Wait until all tool operations finish")
 
 	apiToolsCmd.AddCommand(&cobra.Command{
 		Use:   "install [name]",

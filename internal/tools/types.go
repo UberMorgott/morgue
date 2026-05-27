@@ -34,6 +34,7 @@ const (
 	MethodDirectURL
 	MethodDotnetTool
 	MethodGitBuild
+	MethodNuGet
 )
 
 var methodNames = [...]string{
@@ -41,6 +42,7 @@ var methodNames = [...]string{
 	"DirectURL",
 	"DotnetTool",
 	"GitBuild",
+	"NuGet",
 }
 
 func (m Method) String() string {
@@ -57,7 +59,8 @@ type ToolDef struct {
 	Category    Category
 	Method      Method
 	Repo        string // GitHub owner/repo
-	URL         string // Direct download URL (for MethodDirectURL)
+	URL          string   // Direct download URL (for MethodDirectURL)
+	DownloadURLs []string // Multiple direct download URLs (for MethodDirectURL)
 	DotnetID      string // dotnet tool ID (for MethodDotnetTool)
 	DotnetVersion string // pinned version for dotnet tool install (optional)
 	AssetGlob   string // Glob pattern for matching GitHub release assets

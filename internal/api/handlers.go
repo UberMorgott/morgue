@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/UberMorgott/morgue/internal/services"
 )
@@ -43,8 +45,23 @@ func (s *Server) handleGetPipelineStatus(w http.ResponseWriter, _ *http.Request)
 
 // --- Tools handlers ---
 
-func (s *Server) handleGetTools(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.tools.CheckAll())
+func (s *Server) handleGetTools(w http.ResponseWriter, r *http.Request) {
+	waitStr := r.URL.Query().Get("wait")
+	if waitStr != "" {
+		waitSec, err := strconv.Atoi(waitStr)
+		if err != nil || waitSec < 1 {
+			waitSec = 30
+		}
+		if waitSec > 120 {
+			waitSec = 120
+		}
+		changed := s.tools.WaitForChange(time.Duration(waitSec) * time.Second)
+		resp := s.tools.GetToolsEnriched()
+		resp.Changed = changed
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.tools.GetToolsEnriched())
 }
 
 type toolRequest struct {

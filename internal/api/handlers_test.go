@@ -34,13 +34,13 @@ func TestHandleGetTools(t *testing.T) {
 		t.Fatalf("expected application/json, got %s", ct)
 	}
 
-	var tools []any
-	if err := json.NewDecoder(rec.Body).Decode(&tools); err != nil {
+	var result map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
 		t.Fatalf("decode error: %v", err)
 	}
-	// CheckAll should return a non-nil slice.
-	if tools == nil {
-		t.Fatal("expected non-nil tools array")
+	tools, ok := result["tools"].([]any)
+	if !ok || tools == nil {
+		t.Fatal("expected non-nil tools array in response")
 	}
 }
 

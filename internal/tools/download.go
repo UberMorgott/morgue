@@ -46,6 +46,12 @@ func downloadFile(url, destPath string, onProgress func(bytesDown, bytesTotal in
 	return resp.Err()
 }
 
+// isArchiveFile returns true if the file is an archive that should be extracted.
+func isArchiveFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".zip"
+}
+
 // extractArchive extracts an archive file into destDir.
 // Standalone executables (.exe) are kept as-is (no extraction needed).
 func extractArchive(archivePath, destDir string) error {
@@ -109,11 +115,35 @@ func extractZip(archivePath, destDir string) error {
 	return nil
 }
 
+// installFromURLs downloads multiple files from direct URLs into destDir.
+// Archives (.zip) are extracted; plain files are kept as-is.
+func installFromURLs(urls []string, destDir string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
+	for _, u := range urls {
+		destPath := filepath.Join(destDir, filepath.Base(u))
+		if err := downloadFile(u, destPath, onProgress); err != nil {
+			return fmt.Errorf("download %s: %w", filepath.Base(u), err)
+		}
+		if isArchiveFile(destPath) {
+			if onExtract != nil {
+				onExtract()
+			}
+			if err := extractArchive(destPath, destDir); err != nil {
+				return err
+			}
+			os.Remove(destPath)
+		}
+	}
+	return nil
+}
+
 // installFromURL downloads a tool from a direct URL and extracts it.
-func installFromURL(tool ToolDef, destDir string, onProgress func(bytesDown, bytesTotal int64)) error {
+func installFromURL(tool ToolDef, destDir string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
 	destPath := filepath.Join(destDir, filepath.Base(tool.URL))
 	if err := downloadFile(tool.URL, destPath, onProgress); err != nil {
 		return err
+	}
+	if onExtract != nil && isArchiveFile(destPath) {
+		onExtract()
 	}
 	if err := extractArchive(destPath, destDir); err != nil {
 		return err
@@ -146,7 +176,7 @@ func installDotnetTool(tool ToolDef, destDir string) error {
 // installFromGitBuild downloads a GitHub repo as zip, builds it with dotnet, and
 // places the output binaries in destDir. This is used for tools that have no
 // pre-built releases.
-func installFromGitBuild(tool ToolDef, destDir string, onProgress func(string, int64, int64)) (string, error) {
+func installFromGitBuild(tool ToolDef, destDir string, onProgress func(string, int64, int64), onExtract func()) (string, error) {
 	// 1. Check for a tagged release; fall back to "main" branch.
 	version, _ := fetchLatestVersion(tool.Repo)
 	if version == "" {
@@ -173,6 +203,9 @@ func installFromGitBuild(tool ToolDef, destDir string, onProgress func(string, i
 	// 3. Extract into a temporary src directory.
 	srcDir := filepath.Join(destDir, "src")
 	os.MkdirAll(srcDir, 0755)
+	if onExtract != nil {
+		onExtract()
+	}
 	if err := extractArchive(zipPath, srcDir); err != nil {
 		return "", fmt.Errorf("extract source: %w", err)
 	}
@@ -213,6 +246,41 @@ func installFromGitBuild(tool ToolDef, destDir string, onProgress func(string, i
 		version = "main"
 	}
 	os.WriteFile(filepath.Join(destDir, ".version"), []byte(version), 0644)
+
+	return version, nil
+}
+
+// installFromNuGet downloads a NuGet package (.nupkg) and extracts it as a ZIP.
+// This bypasses `dotnet tool install` which requires a matching SDK version.
+func installFromNuGet(tool ToolDef, destDir string, onProgress func(int64, int64), onExtract func(string)) (string, error) {
+	version := tool.DotnetVersion
+	if version == "" {
+		var err error
+		version, err = fetchNuGetLatestVersion(tool.DotnetID)
+		if err != nil {
+			return "", fmt.Errorf("fetch latest version: %w", err)
+		}
+	}
+
+	url := fmt.Sprintf("https://www.nuget.org/api/v2/package/%s/%s", tool.DotnetID, version)
+	nupkgPath := filepath.Join(destDir, "package.zip")
+
+	if err := downloadFile(url, nupkgPath, func(down, total int64) {
+		if onProgress != nil {
+			onProgress(down, total)
+		}
+	}); err != nil {
+		return "", fmt.Errorf("download nupkg: %w", err)
+	}
+
+	if onExtract != nil {
+		onExtract(tool.Name)
+	}
+
+	if err := extractArchive(nupkgPath, destDir); err != nil {
+		return "", fmt.Errorf("extract nupkg: %w", err)
+	}
+	os.Remove(nupkgPath)
 
 	return version, nil
 }

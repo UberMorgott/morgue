@@ -135,7 +135,7 @@ func TestInstallGitHubToolDirect(t *testing.T) {
 		if total > 0 {
 			t.Logf("  download: %d/%d (%d%%)", down, total, down*100/total)
 		}
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("tryDirectDownload: %v", err)
 	}

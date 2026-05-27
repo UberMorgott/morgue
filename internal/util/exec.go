@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -27,6 +28,11 @@ func RunCmd(ctx context.Context, name string, args []string, dir string) (*CmdRe
 // env is a list of "KEY=VALUE" strings that are appended to the current environment.
 // If env is nil, the default environment is used.
 func RunCmdWithEnv(ctx context.Context, name string, args []string, dir string, env []string) (*CmdResult, error) {
+	if strings.HasSuffix(name, ".dll") {
+		args = append([]string{name}, args...)
+		name = "dotnet"
+	}
+
 	start := time.Now()
 
 	cmd := exec.CommandContext(ctx, name, args...)

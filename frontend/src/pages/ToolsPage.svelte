@@ -26,7 +26,7 @@
 
   // Event handlers for Wails events (GUI-initiated operations)
   function handleDownloadStart(data: any) {
-    const d = data.data || data;
+    const d = data?.data?.[0] || data?.data || data;
     const toolName = d.tool || d.Tool;
     if (!toolName) return;
     const opId = `install-${toolName}`;
@@ -34,7 +34,7 @@
   }
 
   function handleDownloadProgress(data: any) {
-    const d = data.data || data;
+    const d = data?.data?.[0] || data?.data || data;
     const toolName = d.tool || d.Tool;
     const bytes = d.bytes || d.Bytes || 0;
     const total = d.total || d.Total || 1;
@@ -44,8 +44,17 @@
     updateOperation(`update-${toolName}`, { progress: pct });
   }
 
+  function handleExtractStart(data: any) {
+    const d = data?.data?.[0] || data?.data || data;
+    const toolName = d.tool || d.Tool;
+    if (!toolName) return;
+    updateOperation(`install-${toolName}`, { label: `Extracting ${toolName}...`, progress: 100 });
+    updateOperation(`download-${toolName}`, { label: `Extracting ${toolName}...`, progress: 100 });
+    updateOperation(`update-${toolName}`, { label: `Extracting ${toolName}...`, progress: 100 });
+  }
+
   function handleDownloadComplete(data: any) {
-    const d = data.data || data;
+    const d = data?.data?.[0] || data?.data || data;
     const toolName = d.tool || d.Tool;
     const error = d.error || d.Error;
     if (error) {
@@ -139,6 +148,7 @@
     // Wails event listeners (for GUI-initiated operations)
     cleanups.push(onEvent('tool:download:start', handleDownloadStart));
     cleanups.push(onEvent('tool:download:progress', handleDownloadProgress));
+    cleanups.push(onEvent('tool:extract:start', handleExtractStart));
     cleanups.push(onEvent('tool:download:complete', handleDownloadComplete));
     cleanups.push(onEvent('tool:installed', handleToolInstalled));
 
