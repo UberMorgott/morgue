@@ -17,6 +17,14 @@ import (
 	"github.com/UberMorgott/morgue/internal/tools"
 )
 
+// pauseChecker returns nil interface if pg is nil, avoiding the nil-pointer-in-interface trap.
+func pauseChecker(pg *PauseGate) recipe.PauseChecker {
+	if pg == nil {
+		return nil
+	}
+	return pg
+}
+
 // PipelineSummary wraps results with aggregate stats.
 type PipelineSummary struct {
 	Stats   SummaryStats   `json:"stats"`
@@ -218,7 +226,6 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				}
 			}
 			if runtimeFailed {
-				filesProcessed++
 				results = append(results, TargetResult{
 					Group: group, Recon: reconResult, Recipe: rec,
 					Error: fmt.Errorf("failed to install required runtime"),
@@ -238,22 +245,18 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 								pct = int(bytesDown * 100 / bytesTotal)
 							}
 							events <- PipelineEvent{
-								Phase:          "download",
-								Target:         filePath,
-								Message:        fmt.Sprintf("Downloading %s... %d%%", tool, pct),
-								FilesTotal:     filesTotal,
-								FilesProcessed: filesProcessed,
+								Phase:   "download",
+								Target:  filePath,
+								Message: fmt.Sprintf("Downloading %s... %d%%", tool, pct),
 							}
 						}
 					},
 					OnExtract: func(tool string) {
 						if events != nil {
 							events <- PipelineEvent{
-								Phase:          "extract",
-								Target:         filePath,
-								Message:        fmt.Sprintf("Extracting %s...", tool),
-								FilesTotal:     filesTotal,
-								FilesProcessed: filesProcessed,
+								Phase:   "extract",
+								Target:  filePath,
+								Message: fmt.Sprintf("Extracting %s...", tool),
 							}
 						}
 					},
@@ -269,7 +272,6 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 					}
 				}
 				if installFailed {
-					filesProcessed++
 					results = append(results, TargetResult{
 						Group: group, Recon: reconResult, Recipe: rec,
 						Error: fmt.Errorf("failed to auto-install required tools"),
@@ -280,7 +282,6 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				needed = e.tools.ToolsNeeded(rec.RequiredTools())
 				if len(needed) > 0 {
 					err := fmt.Errorf("still missing after install: %v", needed)
-					filesProcessed++
 					emitErr("tools", filePath, err)
 					results = append(results, TargetResult{
 						Group: group, Recon: reconResult, Recipe: rec, Error: err,
@@ -299,7 +300,6 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			// Execute recipe
 			targetOutput := filepath.Join(opts.Output, sanitizeName(filepath.Base(filePath)))
 			if err := os.MkdirAll(targetOutput, 0755); err != nil {
-				filesProcessed++
 				emitErr("execute", filePath, fmt.Errorf("create output dir: %w", err))
 				results = append(results, TargetResult{
 					Group: group, Recon: reconResult, Recipe: rec, Error: err,
@@ -331,7 +331,6 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 						if events != nil {
 							events <- PipelineEvent{
 								Phase: "execute", Target: filePath, Progress: &p,
-								FilesTotal: filesTotal, FilesProcessed: filesProcessed,
 							}
 						}
 					case msg, ok := <-logCh:
@@ -352,14 +351,13 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				Tools:    e.tools,
 				Ctx:      ctx,
 				Config:   &e.cfg,
-				Pause:    opts.Pause,
+				Pause:    pauseChecker(opts.Pause),
 			}
 
 			execErr := rec.Execute(rctx)
 			close(progressCh)
 			close(logCh)
 			<-done
-			filesProcessed++
 
 			// Save recon.json per target
 			reconJSON, _ := json.MarshalIndent(reconResult, "", "  ")
@@ -376,11 +374,10 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			if execErr != nil {
 				emitErr("execute", filePath, execErr)
 			} else {
-				// Emit complete with updated file count
+				// Emit complete
 				if events != nil {
 					events <- PipelineEvent{
 						Phase: "execute", Target: filePath, Message: "Complete",
-						FilesTotal: filesTotal, FilesProcessed: filesProcessed,
 					}
 				}
 				// Post-execution: scan output and report stats
@@ -389,7 +386,6 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 					events <- PipelineEvent{
 						Phase: "stats", Target: filePath,
 						OutputStats: stats,
-						FilesTotal: filesTotal, FilesProcessed: filesProcessed,
 					}
 				}
 			}
