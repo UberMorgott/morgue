@@ -103,8 +103,16 @@ func runGUI() {
 func runCLI() {
 	root := &cobra.Command{
 		Use:   "morgue",
-		Short: "Binary decompiler orchestrator",
-		Long:  "Morgue — automated binary decompilation pipeline for .NET, Delphi, and native targets.",
+		Short: "Binary Decompilation Orchestrator",
+		Long: `Morgue — Binary Decompilation Orchestrator
+
+Modes:
+  morgue                Launch GUI (hybrid mode — AI can control via 'morgue api')
+  morgue run <file>     Headless decompilation (CLI only)
+  morgue api <command>  Control running GUI instance
+
+When GUI is running, AI agents can use 'morgue api' to control it.
+The user sees all changes in the application window in real-time.`,
 	}
 
 	root.AddCommand(runCmd())
