@@ -437,6 +437,20 @@
                   {/if}
                 </div>
               {/if}
+
+              {#if $pipelineState.downloadingTool}
+                <div class="dl-progress-row">
+                  <span class="dl-tool-name">{$pipelineState.downloadingTool}</span>
+                  {#if $pipelineState.downloadProgress >= 0}
+                    <div class="dl-bar">
+                      <div class="dl-bar-fill" style="width: {$pipelineState.downloadProgress}%"></div>
+                    </div>
+                    <span class="dl-pct">{$pipelineState.downloadProgress}%</span>
+                  {:else}
+                    <span class="dl-extracting">extracting...</span>
+                  {/if}
+                </div>
+              {/if}
             </div>
           {/if}
 
@@ -989,6 +1003,14 @@
   .tool-status-installing {
     color: var(--accent);
   }
+
+  /* Download progress */
+  .dl-progress-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 0 0 0 24px; }
+  .dl-tool-name { font-size: 0.8rem; color: var(--text-secondary); min-width: 80px; }
+  .dl-bar { flex: 1; height: 4px; background: var(--border-subtle); border-radius: 2px; overflow: hidden; }
+  .dl-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; box-shadow: 0 0 6px var(--accent-glow-soft); }
+  .dl-pct { font-size: 0.75rem; color: var(--accent); min-width: 36px; text-align: right; }
+  .dl-extracting { font-size: 0.75rem; color: var(--text-muted); font-style: italic; }
 
   .acc-files-row {
     display: flex;
