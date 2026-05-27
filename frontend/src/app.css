@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Play:wght@400;700&display=swap');
 @import "tailwindcss";
 
 /* ══════════════════════════════════════════════════
@@ -13,8 +14,6 @@
   font-display: swap;
   src: url('https://fonts.gstatic.com/s/orbitron/v31/yMJMMIlzdpvBhQQL_SC3X9yhF25-T1nyGy6BoWgz.woff2') format('woff2');
 }
-
-@import url('https://fonts.googleapis.com/css2?family=Play:wght@400;700&display=swap');
 
 :root {
   color-scheme: dark;

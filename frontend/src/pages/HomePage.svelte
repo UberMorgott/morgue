@@ -975,14 +975,6 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ── Result card ── */
-  .result-card {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 18px;
-    width: 100%;
-  }
   .result-label {
     font-size: 0.88rem;
     font-weight: 600;
