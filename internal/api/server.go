@@ -57,7 +57,7 @@ func NewServer(pipeline *services.PipelineService, tools *services.ToolsService,
 
 	s.http = &http.Server{
 		Addr:    listenAddr,
-		Handler: mux,
+		Handler: corsMiddleware(mux),
 	}
 
 	return s
@@ -100,6 +100,21 @@ func (s *Server) HookEvents(app *application.App) {
 			s.events.Broadcast(eventName, data)
 		})
 	}
+}
+
+// corsMiddleware adds permissive CORS headers so the Wails webview
+// (which runs on a different origin) can call the local API.
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
