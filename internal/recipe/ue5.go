@@ -140,6 +140,8 @@ func (u *UE5) Execute(ctx *Context) error {
 					lines := strings.Count(result.Stdout, "\n")
 					log(fmt.Sprintf("Extracted %d strings", lines))
 				}
+				// Analyze and structure strings
+				analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
 				report(2, Success, time.Since(start), nil)
 			}
 		}

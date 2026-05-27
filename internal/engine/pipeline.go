@@ -363,6 +363,16 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			reconJSON, _ := json.MarshalIndent(reconResult, "", "  ")
 			os.WriteFile(filepath.Join(targetOutput, "recon.json"), reconJSON, 0644)
 
+			// Cleanup intermediates if configured and execution succeeded
+			if execErr == nil && !e.cfg.KeepIntermediates {
+				// Remove bulky original binaries (already processed)
+				os.RemoveAll(filepath.Join(targetOutput, "original"))
+				// For IL2CPP: remove DummyDll (already decompiled to src/)
+				os.RemoveAll(filepath.Join(targetOutput, "metadata", "DummyDll"))
+				// Remove raw strings.txt (structured strings.json is kept)
+				os.Remove(filepath.Join(targetOutput, "strings.txt"))
+			}
+
 			results = append(results, TargetResult{
 				Group:  group,
 				Recon:  reconResult,
