@@ -3,9 +3,22 @@ package selfupdate
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/creativeprojects/go-selfupdate"
 )
+
+// baseVersion extracts clean semver from git describe output.
+// "v0.1.0-34-gbaae1cb-dirty" → "0.1.0"
+// "v0.1.0" → "0.1.0"
+// "0.1.0" → "0.1.0"
+func baseVersion(v string) string {
+	v = strings.TrimPrefix(v, "v")
+	if idx := strings.IndexByte(v, '-'); idx != -1 {
+		v = v[:idx]
+	}
+	return v
+}
 
 const repo = "UberMorgott/morgue"
 
@@ -33,7 +46,7 @@ func Check(currentVersion string) error {
 		return nil
 	}
 
-	if latest.Version() == currentVersion {
+	if latest.Version() == baseVersion(currentVersion) {
 		fmt.Printf("Already up to date: %s\n", currentVersion)
 	} else {
 		fmt.Printf("Update available: %s → %s\n", currentVersion, latest.Version())
@@ -65,7 +78,7 @@ func CheckStatus(currentVersion string) string {
 		return "up to date"
 	}
 
-	if latest.Version() == currentVersion {
+	if latest.Version() == baseVersion(currentVersion) {
 		return "up to date"
 	}
 	return "update: " + latest.Version()
@@ -95,14 +108,14 @@ func Update(currentVersion string) error {
 		return nil
 	}
 
-	if latest.Version() == currentVersion {
+	if latest.Version() == baseVersion(currentVersion) {
 		fmt.Printf("Already up to date: %s\n", currentVersion)
 		return nil
 	}
 
 	fmt.Printf("Updating %s → %s...\n", currentVersion, latest.Version())
 
-	_, err = updater.UpdateSelf(ctx, currentVersion, selfupdate.ParseSlug(repo))
+	_, err = updater.UpdateSelf(ctx, baseVersion(currentVersion), selfupdate.ParseSlug(repo))
 	if err != nil {
 		return fmt.Errorf("update: %w", err)
 	}

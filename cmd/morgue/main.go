@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	"log"
 	"os"
@@ -13,6 +14,9 @@ import (
 	"github.com/UberMorgott/morgue/internal/selfupdate"
 	"github.com/UberMorgott/morgue/internal/services"
 )
+
+//go:embed appicon.png
+var appIcon []byte
 
 var (
 	Version = "dev"
@@ -59,6 +63,7 @@ func runGUI() {
 	// System tray
 	tray := app.SystemTray.New()
 	tray.SetTooltip("Morgue — Binary Decompiler")
+	tray.SetIcon(appIcon)
 
 	trayMenu := app.NewMenu()
 	trayMenu.Add("Show/Hide").OnClick(func(ctx *application.Context) {

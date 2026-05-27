@@ -18,9 +18,11 @@ error.log
 .vite/
 
 # Dev artifacts
+testbed/
 .playwright-mcp/
 *.png
 bin/
 runtimes/
 frontend/public/font-compare.html
 font-compare.html
+*.syso

@@ -25,7 +25,7 @@ export class Config {
         if (!("SkipCategories" in $$source)) {
             /**
              * @member
-             * @type {{ [_: string]: boolean }}
+             * @type {{ [_ in string]?: boolean }}
              */
             this["SkipCategories"] = {};
         }
