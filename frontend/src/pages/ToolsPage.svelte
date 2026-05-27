@@ -269,6 +269,8 @@
   </div>
   {#if loading}
     <div class="tools-loading">{t(lang, 'tools.checking')}</div>
+  {:else if tools.length === 0}
+    <div class="tools-empty">{t(lang, 'tools.empty')}</div>
   {:else}
     <div class="tools-list">
       {#each tools as tool (tool.name)}
@@ -296,5 +298,6 @@
   .header-btn-accent:hover:not(:disabled) { box-shadow: 0 0 12px var(--accent-dim); }
   .tools-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
   .tools-loading { color: var(--text-muted); padding: 24px; text-align: center; }
+  .tools-empty { color: var(--text-muted); padding: 24px; text-align: center; }
 
 </style>

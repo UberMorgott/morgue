@@ -1,6 +1,8 @@
 package scanner
 
 import (
+	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,7 +22,12 @@ func Scan(root string) (ScanResult, error) {
 
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil // skip errors
+			log.Printf("scanner: skipping %s: %v", path, err)
+			result.Skipped = append(result.Skipped, SkippedFile{
+				Path:   path,
+				Reason: fmt.Sprintf("walk error: %v", err),
+			})
+			return nil
 		}
 		if d.IsDir() {
 			return nil

@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"context"
+
 	"github.com/UberMorgott/morgue/internal/config"
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/recipe"
@@ -31,8 +33,8 @@ func (e *Engine) Scan(input string) (scanner.ScanResult, error) {
 }
 
 // Classify performs recon on a single file.
-func (e *Engine) Classify(path string) (recon.Result, error) {
-	return recon.Classify(path)
+func (e *Engine) Classify(ctx context.Context, path string) (recon.Result, error) {
+	return recon.Classify(ctx, path)
 }
 
 // MatchRecipe finds the best recipe for a recon result, or uses a forced recipe name.

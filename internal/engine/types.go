@@ -9,6 +9,8 @@ import (
 	"github.com/UberMorgott/morgue/internal/scanner"
 )
 
+var _ recipe.PauseChecker = (*PauseGate)(nil)
+
 // TargetResult holds the outcome for a single target.
 type TargetResult struct {
 	Group      scanner.TargetGroup
@@ -43,73 +45,71 @@ type PipelineEvent struct {
 }
 
 // PauseGate allows pausing/resuming the pipeline between steps.
+// Uses a channel-based approach: closed channel = running, open channel = paused.
 type PauseGate struct {
-	mu     sync.Mutex
-	cond   *sync.Cond
-	paused bool
+	mu sync.Mutex
+	ch chan struct{} // closed = running, open = paused (blocks on receive)
 }
 
-// NewPauseGate creates a new PauseGate.
+// NewPauseGate creates a new PauseGate in the unpaused state.
 func NewPauseGate() *PauseGate {
-	pg := &PauseGate{}
-	pg.cond = sync.NewCond(&pg.mu)
-	return pg
+	ch := make(chan struct{})
+	close(ch) // start unpaused — reads proceed immediately
+	return &PauseGate{ch: ch}
 }
 
 // Pause blocks future WaitIfPaused calls until Resume is called.
 func (pg *PauseGate) Pause() {
 	pg.mu.Lock()
-	pg.paused = true
-	pg.mu.Unlock()
+	defer pg.mu.Unlock()
+	// Only pause if currently running (channel is closed).
+	select {
+	case <-pg.ch:
+		// Channel was closed (running) — replace with a new open channel to block waiters.
+		pg.ch = make(chan struct{})
+	default:
+		// Already paused (channel is open/blocking) — nothing to do.
+	}
 }
 
 // Resume unblocks any goroutine waiting in WaitIfPaused.
 func (pg *PauseGate) Resume() {
 	pg.mu.Lock()
-	pg.paused = false
-	pg.cond.Broadcast()
-	pg.mu.Unlock()
+	defer pg.mu.Unlock()
+	// Only resume if currently paused (channel is open).
+	select {
+	case <-pg.ch:
+		// Already running (closed channel) — nothing to do.
+	default:
+		// Paused — close to unblock all waiters.
+		close(pg.ch)
+	}
 }
 
 // IsPaused returns whether the gate is currently paused.
 func (pg *PauseGate) IsPaused() bool {
 	pg.mu.Lock()
-	defer pg.mu.Unlock()
-	return pg.paused
+	ch := pg.ch
+	pg.mu.Unlock()
+	select {
+	case <-ch:
+		return false // channel closed = running
+	default:
+		return true // channel open = paused
+	}
 }
 
 // WaitIfPaused blocks if paused. Returns ctx.Err() if context is cancelled while waiting.
 func (pg *PauseGate) WaitIfPaused(ctx context.Context) error {
 	pg.mu.Lock()
-	for pg.paused {
-		// Check context before blocking
-		select {
-		case <-ctx.Done():
-			pg.mu.Unlock()
-			return ctx.Err()
-		default:
-		}
-		// Wait with periodic context checks
-		done := make(chan struct{})
-		go func() {
-			pg.cond.Wait()
-			close(done)
-		}()
-		pg.mu.Unlock()
-
-		select {
-		case <-done:
-			pg.mu.Lock()
-			continue
-		case <-ctx.Done():
-			// Wake up the waiting goroutine so it doesn't leak
-			pg.cond.Broadcast()
-			<-done
-			return ctx.Err()
-		}
-	}
+	ch := pg.ch
 	pg.mu.Unlock()
-	return nil
+	select {
+	case <-ch:
+		return nil // not paused or just resumed
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // Options configures a pipeline run.
