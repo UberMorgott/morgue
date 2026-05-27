@@ -35,7 +35,7 @@
             case 'install': {
               const name = cmd.tool || '';
               if (!name) break;
-              const opId = `install-${name}`;
+              const opId = `api-install-${name}`;
               addOperation({ id: opId, type: 'download', label: `Installing ${name}...`, status: 'running', progress: 0 });
               try {
                 await ToolsService.Install(name);
@@ -54,7 +54,7 @@
                 for (const s of missing) {
                   const name = s.Name ?? s.name ?? '';
                   if (!name) continue;
-                  const toolOpId = `download-${name}`;
+                  const toolOpId = `api-install-${name}`;
                   addOperation({ id: toolOpId, type: 'download', label: `Installing ${name}...`, status: 'running', progress: 0 });
                   try {
                     await ToolsService.Install(name);
@@ -97,12 +97,37 @@
     }
   }
 
+  let cleanupDownloadProgress: (() => void) | null = null;
+  let cleanupDownloadComplete: (() => void) | null = null;
+
   onDestroy(() => {
     stopApiPoll();
+    cleanupDownloadProgress?.();
+    cleanupDownloadComplete?.();
   });
 
   onMount(async () => {
     startApiPoll();
+
+    cleanupDownloadProgress = onEvent('tool:download:progress', (data: any) => {
+      const d = data.data || data;
+      const toolName = d.tool || d.Tool;
+      const bytes = d.bytes || d.Bytes || 0;
+      const total = d.total || d.Total || 1;
+      const pct = Math.round((bytes / total) * 100);
+      updateOperation(`api-install-${toolName}`, { progress: pct });
+    });
+
+    cleanupDownloadComplete = onEvent('tool:download:complete', (data: any) => {
+      const d = data.data || data;
+      const toolName = d.tool || d.Tool;
+      const error = d.error || d.Error;
+      if (error) {
+        updateOperation(`api-install-${toolName}`, { status: 'failed', error: String(error) });
+      } else {
+        updateOperation(`api-install-${toolName}`, { status: 'success', progress: 100 });
+      }
+    });
     const opId = 'startup-check';
     addOperation({ id: opId, type: 'update', label: 'Checking for updates...', status: 'running', progress: 0 });
 
