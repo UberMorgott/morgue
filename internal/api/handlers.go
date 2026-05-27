@@ -1,11 +1,15 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
+	"github.com/UberMorgott/morgue/internal/recipe"
+	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/services"
 )
 
@@ -27,8 +31,24 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// PushAPICommand enqueues the operation for frontend polling. Direct execution
-	// from HTTP goroutines would emit Wails events that don't reach the webview.
+	// Direct execution: run pipeline in a background goroutine.
+	// Progress is available via GET /api/run/status and SSE /api/events.
+	// Opt-in via ?direct=true — used by CLI --wait to poll completion.
+	if r.URL.Query().Get("direct") == "true" {
+		go func() {
+			if err := s.pipeline.Run(req.Path, req.Output); err != nil {
+				s.events.Broadcast("pipeline:error", marshalJSON(map[string]string{
+					"error": err.Error(),
+				}))
+			}
+		}()
+		writeJSON(w, http.StatusOK, map[string]string{"status": "started"})
+		return
+	}
+
+	// Default: push to command queue for frontend polling (GUI-coordinated runs).
+	// Direct execution from HTTP goroutines emits Wails events that don't reach the
+	// webview, so the frontend must pick these up and execute via Wails bindings.
 	s.tools.PushAPICommand(services.APICommand{
 		Action: "run",
 		Path:   req.Path,
@@ -212,4 +232,45 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// --- Info handler ---
+
+func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path query parameter is required"})
+		return
+	}
+
+	if _, err := os.Stat(path); err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
+		return
+	}
+
+	result, err := recon.Classify(context.Background(), path)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return
+	}
+
+	recipeName := ""
+	if rec := recipe.Match(&result); rec != nil {
+		recipeName = rec.Name()
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"path":                path,
+		"size":                result.Size,
+		"sha256":              result.SHA256,
+		"kind":                result.Kind.String(),
+		"runtime":             result.Runtime,
+		"compiler":            result.Compiler,
+		"obfuscator":          result.Obfuscator,
+		"obfuscator_features": result.ObfuscatorFeatures,
+		"packed":              result.Packed,
+		"embedded_suspected":  result.EmbeddedSuspected,
+		"embedded_signals":    result.EmbeddedSignals,
+		"recipe":              recipeName,
+	})
 }

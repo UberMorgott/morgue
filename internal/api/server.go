@@ -55,6 +55,9 @@ func NewServer(pipeline *services.PipelineService, tools *services.ToolsService,
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
 	mux.HandleFunc("PUT /api/settings", s.handleUpdateSettings)
 
+	// Recon
+	mux.HandleFunc("GET /api/info", s.handleInfo)
+
 	// Instructions
 	mux.HandleFunc("GET /api/instructions", s.handleInstructions)
 

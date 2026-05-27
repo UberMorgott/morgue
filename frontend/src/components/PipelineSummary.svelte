@@ -20,7 +20,7 @@
 
   <div class="summary-stats">
     <div class="stat">
-      <span class="stat-num">{state.filesProcessed || state.reconResults.length}</span>
+      <span class="stat-num">{state.reconResults.length}</span>
       <span class="stat-label">{t(lang, 'home.summary.files')}</span>
     </div>
     <div class="stat">

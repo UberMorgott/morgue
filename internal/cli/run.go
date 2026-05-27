@@ -21,11 +21,12 @@ type RunOptions struct {
 	NoSkip  bool
 	Exclude []string
 	Watch   bool
+	Quiet   bool
 }
 
 // Run executes the decompilation pipeline from CLI.
 func Run(opts RunOptions) error {
-	if opts.Watch {
+	if opts.Watch && !opts.Quiet {
 		return RunWatch(opts)
 	}
 
@@ -51,6 +52,9 @@ func Run(opts RunOptions) error {
 
 	go func() {
 		for ev := range events {
+			if opts.Quiet {
+				continue
+			}
 			if ev.Progress != nil {
 				p := ev.Progress
 				fmt.Fprintf(os.Stderr, "[%s] Step %d/%d: %s — %s (%s)\n",
@@ -81,11 +85,20 @@ func Run(opts RunOptions) error {
 	summaryPath := opts.Output + "/summary.json"
 	data, err := os.ReadFile(summaryPath)
 	if err == nil {
-		var pretty interface{}
+		var pretty any
 		if json.Unmarshal(data, &pretty) == nil {
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
 			enc.Encode(pretty)
+		}
+
+		// Print human-readable summary to stderr
+		if !opts.Quiet {
+			var summary engine.PipelineSummary
+			if json.Unmarshal(data, &summary) == nil {
+				fmt.Fprintf(os.Stderr, "\nPipeline complete: %d targets — %d success, %d failed, %d skipped (%s)\n",
+					summary.Stats.Total, summary.Stats.Success, summary.Stats.Failed, summary.Stats.Skipped, summary.Stats.Duration)
+			}
 		}
 	}
 

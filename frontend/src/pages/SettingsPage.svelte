@@ -18,7 +18,8 @@
 
   onMount(async () => {
     try {
-      config = await ConfigService.Get() || {};
+      const raw = await ConfigService.Get();
+      config = raw ? { ...raw } : {};
     } catch (e) {
       console.error('Get config failed:', e);
     } finally {

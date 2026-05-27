@@ -30,8 +30,6 @@ type PipelineEvent struct {
 	Progress       *recipe.StepProgress `json:"Progress,omitempty"`
 	Done           bool                `json:"Done"`
 	Error          error               `json:"Error,omitempty"`
-	FilesTotal     int                 `json:"FilesTotal"`
-	FilesProcessed int                 `json:"FilesProcessed"`
 	// Enriched fields for frontend
 	ReconKind   string   `json:"ReconKind,omitempty"`
 	Compiler    string   `json:"Compiler,omitempty"`

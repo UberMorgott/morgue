@@ -181,7 +181,11 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 		exitCode = result.ExitCode
 	}
 	if runErr != nil || exitCode != 0 {
-		execErr := fmt.Errorf("ilspycmd failed: exit %d", exitCode)
+		stderr := ""
+		if result != nil && result.Stderr != "" {
+			stderr = result.Stderr
+		}
+		execErr := fmt.Errorf("ilspycmd failed (exit %d): %s", exitCode, stderr)
 		report(8, Failed, time.Since(start), execErr)
 		return execErr
 	}

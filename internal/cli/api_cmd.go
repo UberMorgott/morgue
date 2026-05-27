@@ -71,9 +71,62 @@ func APIStatus() error {
 	return apiGet("/status")
 }
 
-// APIRun sends a decompilation run request to the GUI.
+// APIRun sends a decompilation run request to the GUI (direct execution).
 func APIRun(path, output string) error {
 	return apiPost("/run", map[string]string{"path": path, "output": output})
+}
+
+// APIRunWait starts a decompilation run and polls /api/run/status until it completes.
+func APIRunWait(path, output string) error {
+	// Start the run with direct execution so we can poll status
+	if err := apiPost("/run?direct=true", map[string]string{"path": path, "output": output}); err != nil {
+		return err
+	}
+
+	// Poll status until pipeline finishes
+	type status struct {
+		Running        bool   `json:"running"`
+		Phase          string `json:"phase"`
+		StepName       string `json:"stepName"`
+		StepIndex      int    `json:"stepIndex"`
+		StepTotal      int    `json:"stepTotal"`
+		FilesProcessed int    `json:"filesProcessed"`
+		FilesTotal     int    `json:"filesTotal"`
+	}
+
+	lastPhase := ""
+	for {
+		time.Sleep(1 * time.Second)
+
+		resp, err := http.Get(apiBase + "/run/status")
+		if err != nil {
+			return errNotRunning
+		}
+		var st status
+		if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+			resp.Body.Close()
+			return fmt.Errorf("decode status: %w", err)
+		}
+		resp.Body.Close()
+
+		if !st.Running {
+			fmt.Println("Pipeline complete.")
+			return nil
+		}
+
+		// Print progress when phase or step changes
+		desc := st.Phase
+		if st.StepName != "" {
+			desc = fmt.Sprintf("%s — %s (%d/%d)", st.Phase, st.StepName, st.StepIndex, st.StepTotal)
+		}
+		if st.FilesTotal > 0 {
+			desc += fmt.Sprintf(" [%d/%d files]", st.FilesProcessed, st.FilesTotal)
+		}
+		if desc != lastPhase {
+			fmt.Printf("[%s] %s\n", time.Now().Format("15:04:05"), desc)
+			lastPhase = desc
+		}
+	}
 }
 
 // APITools lists available tools from the running GUI.

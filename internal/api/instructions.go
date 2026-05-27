@@ -6,65 +6,92 @@ import "net/http"
 // that control Morgue via the CLI/API.
 const AIInstructions = `# Morgue — AI Control Instructions
 
-You are controlling Morgue, a binary decompilation tool.
+You are controlling Morgue, a universal binary decompilation tool.
 The GUI is running and the user can see your actions in real-time.
 
-## Available Commands (run in terminal)
+## CLI Commands (terminal)
 
-Check status:     morgue api status
-Decompile:        morgue api run <file_path>
-Decompile (out):  morgue api run <file_path> -o <output_dir>
-List tools:       morgue api tools
-List tools (wait): morgue api tools --wait
-Install all:      morgue api tools install
-Install one:      morgue api tools install <name>
-Delete tool:      morgue api tools delete <name>
-Get settings:     morgue api settings
-Change setting:   morgue api settings set <Key> <Value>
+### Quick Inspect (no decompile)
+  morgue info <file>                    — binary classification (kind, compiler, obfuscator, recipe)
+  morgue info <file> --format text      — human-readable format
 
-## Tool Status API
+### Decompile
+  morgue run <target>                   — decompile file or directory
+  morgue run <target> -o <dir>          — custom output directory
+  morgue run <target> -q                — quiet mode (JSON only, no stderr)
+  morgue run <target> --watch           — TUI progress display
+  morgue run <target> --recipe <name>   — force specific recipe
+  morgue run <target> --no-skip         — process all files (skip nothing)
+  morgue run <target> --exclude a,b     — additional exclude patterns
 
-GET /api/tools returns enriched tool status:
+### Tools Management
+  morgue tools check                    — list all tools with status
+  morgue tools install                  — install all missing tools
+  morgue tools install <name>           — install specific tool
 
-  {
-    "tools": [
-      {"Name": "diec", "Installed": true, "Version": "3.09"},
-      {"Name": "nofuserex", "Installed": false, "installing": true,
-       "progress": 45, "lastActivity": "2026-05-27T09:30:00Z"}
-    ],
-    "busy": true
-  }
+### Control Running GUI (API mode)
+  morgue api status                     — check if GUI is running
+  morgue api run <file>                 — decompile (visible in GUI window)
+  morgue api run <file> -o <dir>        — with custom output
+  morgue api run <file> --wait          — decompile and wait for completion
+  morgue api tools                      — list tools via GUI
+  morgue api tools --wait               — wait for tool operations
+  morgue api tools install              — install all missing tools via GUI
+  morgue api tools install <name>       — install specific tool via GUI
+  morgue api tools delete <name>        — remove tool via GUI
+  morgue api settings                   — get all settings
+  morgue api settings set <Key> <Value> — change a setting
 
-Fields:
-- installing: true if a download/install is in progress for this tool
-- progress: download progress percentage (0-100)
-- lastActivity: timestamp of last progress update
-- busy: true if any tool operation is in progress
+## HTTP API (localhost:19876)
 
-### Long-poll with ?wait=N
+  GET  /api/status              — {"port":"19876","running":true}
+  GET  /api/info?path=<file>    — binary classification JSON
+  POST /api/run                 — queue decompilation (GUI shows progress)
+  POST /api/run?direct=true     — start decompilation directly
+  GET  /api/run/status          — pipeline progress (phase, step, files)
+  GET  /api/tools               — tool list with install status
+  GET  /api/tools?wait=30       — long-poll until tool state changes (max 120s)
+  POST /api/tools/install       — install tool {"name":"..."} or all {"name":""}
+  POST /api/tools/delete        — remove tool {"name":"..."}
+  GET  /api/settings            — all settings JSON
+  PUT  /api/settings            — update settings {"key":"...","value":"..."}
+  GET  /api/events              — SSE event stream (real-time progress)
+  GET  /api/instructions        — this text
 
-GET /api/tools?wait=30 blocks up to 30 seconds until tool state changes.
-Response includes "changed": true if state changed, false on timeout.
-Max wait: 120 seconds. Use for efficient polling during installs.
+### Tool Status Response
 
-### Hang detection
+GET /api/tools returns enriched status:
+  {"tools":[{"Name":"diec","Installed":true,"Version":"3.09"},
+            {"Name":"nofuserex","Installed":false,"installing":true,
+             "progress":45,"lastActivity":"..."}],
+   "busy":true}
 
-If a tool shows installing=true but lastActivity is older than 2 minutes,
-the operation is likely hung. Consider retrying.
+Fields: installing (bool), progress (0-100), lastActivity (timestamp), busy (any op running).
+If installing=true but lastActivity > 2 min ago, the operation is likely hung.
 
-## Workflow Example
+## Supported Recipes
+  dotnet-generic      — .NET managed assemblies (ilspycmd)
+  dotnet-confuserex   — ConfuserEx obfuscated .NET (de4dot + ilspycmd)
+  unity-mono          — Unity Mono game DLLs (ilspycmd)
+  unity-il2cpp        — Unity IL2CPP builds (not yet implemented)
+  native              — native binaries (Ghidra headless)
+  delphi              — Delphi binaries (IDR + Ghidra)
+  ue5                 — Unreal Engine 5 (PAK extraction)
 
-1. morgue api status              — verify GUI is running
-2. morgue api tools               — check which tools are installed
-3. morgue api tools install       — install missing tools
-4. morgue api tools --wait        — wait until all installs finish
-5. morgue api run C:\game\game.exe — start decompilation
+## Recommended AI Workflow
+  1. morgue api status              — verify GUI is running
+  2. morgue info <file>             — inspect target (determine kind/recipe)
+  3. morgue api run <file>          — start decompilation (user sees progress in GUI)
+     OR morgue run <file> -q        — headless mode (JSON output)
+  4. Read summary.json from output dir for results
+  5. Read decompiled source from <output>/<name>/src/
 
 ## Notes
-- The user sees all changes in the GUI window in real-time
-- Decompilation runs async — use 'morgue api status' to check progress
-- Default output: ./decompiled (relative to morgue.exe location)
-- Use --wait flag or ?wait=N to efficiently monitor tool installations
+- All tools auto-download on first use (ilspycmd, Ghidra, strings, etc.)
+- Runtimes (.NET, Java) auto-install when needed
+- Default output: ./decompiled/
+- GUI must be running for 'morgue api' commands
+- 'morgue run' works standalone (no GUI needed)
 `
 
 func (s *Server) handleInstructions(w http.ResponseWriter, r *http.Request) {
