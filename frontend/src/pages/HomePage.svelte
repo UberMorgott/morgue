@@ -532,6 +532,15 @@
                 </div>
               </div>
 
+              <!-- Output stats -->
+              {#if $pipelineState.outputStats.length > 0}
+                <div class="output-stats">
+                  {#each $pipelineState.outputStats as line}
+                    <div class="output-stat-line">{line}</div>
+                  {/each}
+                </div>
+              {/if}
+
               <!-- Output path -->
               {#if $pipelineState.outputPath}
                 <div class="summary-output">
@@ -1222,6 +1231,25 @@
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+  }
+
+  .output-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 14px;
+    background: var(--bg-card);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .output-stat-line:first-child {
+    color: var(--text-primary);
+    font-weight: 600;
+    margin-bottom: 2px;
   }
 
   .summary-output {

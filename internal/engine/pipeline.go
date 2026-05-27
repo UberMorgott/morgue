@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/recipe"
@@ -260,6 +262,18 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				emitErr("execute", filePath, execErr)
 			} else {
 				emit("execute", filePath, "Complete")
+				// Post-execution: scan output and report stats
+				stats := scanOutputDir(targetOutput)
+				for _, line := range stats {
+					emit("log", filePath, line)
+				}
+				if events != nil {
+					events <- PipelineEvent{
+						Phase: "stats", Target: filePath,
+						OutputStats: stats,
+						FilesTotal: filesTotal, FilesProcessed: filesProcessed,
+					}
+				}
 			}
 		}
 	}
@@ -314,4 +328,50 @@ func sanitizeName(name string) string {
 	ext := filepath.Ext(name)
 	base := name[:len(name)-len(ext)]
 	return base
+}
+
+func scanOutputDir(dir string) []string {
+	var lines []string
+	extCounts := map[string]int{}
+	totalFiles := 0
+	totalDirs := 0
+	var totalSize int64
+
+	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			totalDirs++
+			return nil
+		}
+		totalFiles++
+		totalSize += info.Size()
+		ext := strings.ToLower(filepath.Ext(path))
+		if ext == "" {
+			ext = "(no ext)"
+		}
+		extCounts[ext]++
+		return nil
+	})
+
+	lines = append(lines, fmt.Sprintf("Output: %d files in %d directories (%.1f MB)", totalFiles, totalDirs, float64(totalSize)/1024/1024))
+
+	type extCount struct {
+		ext   string
+		count int
+	}
+	var sorted []extCount
+	for ext, count := range extCounts {
+		sorted = append(sorted, extCount{ext, count})
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].count > sorted[j].count
+	})
+
+	for _, ec := range sorted {
+		lines = append(lines, fmt.Sprintf("  %s: %d files", ec.ext, ec.count))
+	}
+
+	return lines
 }
