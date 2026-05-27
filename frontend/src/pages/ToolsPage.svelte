@@ -24,6 +24,15 @@
   let cleanups: Array<() => void> = [];
 
   onMount(async () => {
+    // Create progress operation when install starts (covers API-triggered installs)
+    cleanups.push(onEvent('tool:download:start', (data: any) => {
+      const d = data.data || data;
+      const toolName = d.tool || d.Tool;
+      if (!toolName) return;
+      const opId = `install-${toolName}`;
+      addOperation({ id: opId, type: 'download', label: `${t(lang, 'status.downloading')} ${toolName}`, status: 'running', progress: 0 });
+    }));
+
     cleanups.push(onEvent('tool:download:progress', (data: any) => {
       const d = data.data || data;
       const toolName = d.tool || d.Tool;
@@ -43,6 +52,10 @@
         updateOperation(`install-${toolName}`, { status: 'failed', error: String(error) });
         updateOperation(`download-${toolName}`, { status: 'failed', error: String(error) });
         updateOperation(`update-${toolName}`, { status: 'failed', error: String(error) });
+      } else {
+        updateOperation(`install-${toolName}`, { status: 'success', progress: 100 });
+        updateOperation(`download-${toolName}`, { status: 'success', progress: 100 });
+        updateOperation(`update-${toolName}`, { status: 'success', progress: 100 });
       }
     }));
 

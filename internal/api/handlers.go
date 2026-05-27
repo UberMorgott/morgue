@@ -71,10 +71,15 @@ func (s *Server) handleInstallTool(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		s.events.Broadcast("tool:install:start", marshalJSON(map[string]string{"tool": req.Name}))
+		s.EmitToGUI("tool:download:start", map[string]string{"tool": req.Name})
+
 		if err := s.tools.Install(req.Name); err != nil {
 			s.events.Broadcast("tool:install:error", marshalJSON(map[string]string{"tool": req.Name, "error": err.Error()}))
+			s.EmitToGUI("tool:download:complete", map[string]interface{}{"tool": req.Name, "error": err.Error()})
 		} else {
 			s.events.Broadcast("tool:install:complete", marshalJSON(map[string]string{"tool": req.Name}))
+			s.EmitToGUI("tool:download:complete", map[string]interface{}{"tool": req.Name, "version": "", "error": nil})
+			s.EmitToGUI("tool:installed", req.Name)
 		}
 	}()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "installing", "name": req.Name})

@@ -23,6 +23,7 @@ type Server struct {
 	recon    *services.ReconService
 	events   *EventBroadcaster
 	http     *http.Server
+	app      *application.App
 }
 
 // NewServer creates a Server wired to the given services.
@@ -85,6 +86,7 @@ func (s *Server) Stop() error {
 
 // HookEvents subscribes to Wails application events and rebroadcasts them via SSE.
 func (s *Server) HookEvents(app *application.App) {
+	s.app = app
 	events := []string{
 		"pipeline:progress",
 		"tool:download:start",
@@ -99,6 +101,14 @@ func (s *Server) HookEvents(app *application.App) {
 			data, _ := json.Marshal(e.Data)
 			s.events.Broadcast(eventName, data)
 		})
+	}
+}
+
+// EmitToGUI emits a Wails event so the frontend receives it directly.
+// Safe to call when app is nil (headless / CLI mode).
+func (s *Server) EmitToGUI(event string, data ...any) {
+	if s.app != nil {
+		s.app.Event.Emit(event, data...)
 	}
 }
 
