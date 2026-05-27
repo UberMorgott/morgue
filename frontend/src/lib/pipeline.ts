@@ -1,4 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
+import { updateOperation } from './operations';
 
 export type PipelinePhase = 'idle' | 'scan' | 'recon' | 'tools' | 'execute' | 'done' | 'error' | 'cancelled';
 
@@ -179,6 +180,7 @@ export function updateFromEvent(data: any) {
       next.phase = 'done';
       next.progress = 100;
       next.outputPath = d.Output || d.output || s.outputPath;
+      updateOperation('pipeline', { status: 'success', progress: 100 });
     }
 
     // Error
@@ -186,6 +188,7 @@ export function updateFromEvent(data: any) {
       const err = d.Error || d.error;
       next.error = typeof err === 'string' ? err : err.message || JSON.stringify(err);
       next.phase = 'error';
+      updateOperation('pipeline', { status: 'failed', error: next.error });
     }
 
     return next;
