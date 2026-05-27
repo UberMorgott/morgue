@@ -52,6 +52,9 @@ func NewServer(pipeline *services.PipelineService, tools *services.ToolsService,
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
 	mux.HandleFunc("PUT /api/settings", s.handleUpdateSettings)
 
+	// Instructions
+	mux.HandleFunc("GET /api/instructions", s.handleInstructions)
+
 	s.http = &http.Server{
 		Addr:    listenAddr,
 		Handler: mux,

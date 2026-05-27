@@ -3,6 +3,7 @@
   import { Browser } from '@wailsio/runtime';
   import { ConfigService, ReconService } from '../lib/api';
   import { t, type Lang } from '../lib/i18n';
+  import CopyInstructions from '../components/CopyInstructions.svelte';
   import { currentLang } from '../lib/stores';
 
   export let lang: Lang = 'en';
@@ -188,6 +189,21 @@
             </div>
           </div>
         </section>
+
+        <!-- Section 5: AI Integration -->
+        <section class="settings-card glass">
+          <h3 class="card-title">AI Integration</h3>
+          <div class="card-rows">
+            <div class="setting-row">
+              <span class="setting-label">Copy instructions for AI assistant</span>
+              <CopyInstructions />
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">API Status</span>
+              <span class="setting-value-mono">localhost:19876</span>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
 
@@ -316,6 +332,13 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+  }
+
+  .setting-value-mono {
+    font-size: clamp(11px, 0.85vw, 13px);
+    font-family: ui-monospace, monospace;
+    color: var(--text-primary);
+    flex-shrink: 0;
   }
 
   .setting-hint {
