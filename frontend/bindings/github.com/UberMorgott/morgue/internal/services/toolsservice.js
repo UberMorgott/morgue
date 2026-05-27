@@ -37,12 +37,13 @@ export function CheckAllWithUpdates() {
 
 /**
  * CheckLatestVersion checks the latest version for a single tool.
+ * Returns a map with latestVersion and updateAvailable.
  * @param {string} name
- * @returns {$CancellablePromise<{ [_: string]: any }>}
+ * @returns {$CancellablePromise<{ [_ in string]?: any }>}
  */
 export function CheckLatestVersion(name) {
     return $Call.ByID(3576085684, name).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType4($result);
+        return $$createType2($result);
     }));
 }
 
@@ -52,7 +53,7 @@ export function CheckLatestVersion(name) {
  */
 export function CheckRuntimes() {
     return $Call.ByID(1295144346).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType3($result);
+        return $$createType4($result);
     }));
 }
 
@@ -92,35 +93,34 @@ export function InstallRuntime(kind) {
 }
 
 /**
- * ShouldCheckUpdates returns true if enough time has passed since the last update check.
- * @returns {$CancellablePromise<boolean>}
- */
-export function ShouldCheckUpdates() {
-    return $Call.ByID(3678164978);
-}
-
-/**
  * MarkUpdateChecked saves the current time as the last update check timestamp.
  * @returns {$CancellablePromise<void>}
  */
 export function MarkUpdateChecked() {
-    return $Call.ByID(1125193968);
+    return $Call.ByID(715762590);
+}
+
+/**
+ * ShouldCheckUpdates returns true if enough time has passed since the last update check.
+ * @returns {$CancellablePromise<boolean>}
+ */
+export function ShouldCheckUpdates() {
+    return $Call.ByID(413730812);
 }
 
 /**
  * StartupAutoUpdate runs background update checks and auto-applies if configured.
- * Called once from the frontend on mount. Returns a summary for the caller.
- * @returns {$CancellablePromise<{ [_: string]: any }>}
+ * @returns {$CancellablePromise<{ [_ in string]?: any }>}
  */
 export function StartupAutoUpdate() {
     return $Call.ByID(629421424).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType4($result);
+        return $$createType2($result);
     }));
 }
 
 // Private type creation functions
 const $$createType0 = tools$0.ToolStatus.createFrom;
 const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = tools$0.RuntimeStatus.createFrom;
-const $$createType3 = $Create.Array($$createType2);
-const $$createType4 = $Create.Map($Create.Any, $Create.Any);
+const $$createType2 = $Create.Map($Create.Any, $Create.Any);
+const $$createType3 = tools$0.RuntimeStatus.createFrom;
+const $$createType4 = $Create.Array($$createType3);

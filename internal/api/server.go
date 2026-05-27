@@ -38,6 +38,19 @@ func NewServer(pipeline *services.PipelineService, tools *services.ToolsService,
 	mux.HandleFunc("GET /api/status", s.handleStatus)
 	mux.HandleFunc("GET /api/events", s.events.HandleSSE)
 
+	// Pipeline
+	mux.HandleFunc("POST /api/run", s.handleRun)
+	mux.HandleFunc("GET /api/run/status", s.handleGetPipelineStatus)
+
+	// Tools
+	mux.HandleFunc("GET /api/tools", s.handleGetTools)
+	mux.HandleFunc("POST /api/tools/install", s.handleInstallTool)
+	mux.HandleFunc("POST /api/tools/delete", s.handleDeleteTool)
+
+	// Settings
+	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
+	mux.HandleFunc("PUT /api/settings", s.handleUpdateSettings)
+
 	s.http = &http.Server{
 		Addr:    listenAddr,
 		Handler: mux,

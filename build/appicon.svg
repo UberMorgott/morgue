@@ -1,0 +1,187 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="45%" r="52%">
+      <stop offset="0%" stop-color="#161620"/>
+      <stop offset="100%" stop-color="#08080c"/>
+    </radialGradient>
+    <linearGradient id="bone" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#d8d0c0"/>
+      <stop offset="60%" stop-color="#b8ac94"/>
+      <stop offset="100%" stop-color="#8a7e66"/>
+    </linearGradient>
+    <linearGradient id="darkBone" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#9a9080"/>
+      <stop offset="100%" stop-color="#6a6050"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#606870"/>
+      <stop offset="50%" stop-color="#3e444a"/>
+      <stop offset="100%" stop-color="#22262a"/>
+    </linearGradient>
+    <radialGradient id="eyeGlow" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#ff4400"/>
+      <stop offset="50%" stop-color="#cc1100"/>
+      <stop offset="100%" stop-color="#660000"/>
+    </radialGradient>
+    <filter id="redGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000" flood-opacity="0.8"/>
+    </filter>
+  </defs>
+
+  <!-- Dark background -->
+  <rect width="512" height="512" rx="56" fill="url(#bg)"/>
+
+  <!-- SKULL - angular, mechanical, fills frame -->
+  <g filter="url(#shadow)">
+
+    <!-- Cranium - angular, wide -->
+    <path d="
+      M 256 48
+      C 138 48, 64 130, 64 228
+      C 64 310, 96 358, 130 388
+      L 124 410
+      L 388 410
+      L 382 388
+      C 416 358, 448 310, 448 228
+      C 448 130, 374 48, 256 48
+      Z
+    " fill="url(#bone)" stroke="#5a5040" stroke-width="4"/>
+
+    <!-- METAL PLATE - large, covers top of cranium -->
+    <path d="
+      M 175 62
+      C 200 48, 312 48, 337 62
+      L 350 100
+      L 356 175
+      L 340 195
+      L 172 195
+      L 156 175
+      L 162 100
+      Z
+    " fill="url(#metal)" stroke="#4a4e54" stroke-width="3"/>
+
+    <!-- Plate rivets - big, visible -->
+    <circle cx="185" cy="100" r="9" fill="#555d64" stroke="#3a3e44" stroke-width="2.5"/>
+    <circle cx="185" cy="100" r="4" fill="#2a2e34"/>
+    <circle cx="327" cy="100" r="9" fill="#555d64" stroke="#3a3e44" stroke-width="2.5"/>
+    <circle cx="327" cy="100" r="4" fill="#2a2e34"/>
+    <circle cx="256" cy="80" r="9" fill="#555d64" stroke="#3a3e44" stroke-width="2.5"/>
+    <circle cx="256" cy="80" r="4" fill="#2a2e34"/>
+    <circle cx="195" cy="160" r="8" fill="#555d64" stroke="#3a3e44" stroke-width="2"/>
+    <circle cx="195" cy="160" r="3.5" fill="#2a2e34"/>
+    <circle cx="317" cy="160" r="8" fill="#555d64" stroke="#3a3e44" stroke-width="2"/>
+    <circle cx="317" cy="160" r="3.5" fill="#2a2e34"/>
+
+    <!-- LEFT EYE - THE MECHANICAL LENS (huge, dominant) -->
+    <!-- Socket -->
+    <path d="
+      M 118 215
+      L 178 190
+      L 240 220
+      L 234 290
+      L 172 310
+      L 112 278
+      Z
+    " fill="#0c0c10" stroke="#5a5040" stroke-width="3"/>
+
+    <!-- Lens housing - thick metal ring -->
+    <circle cx="176" cy="252" r="48" fill="url(#metal)" stroke="#3a3e44" stroke-width="4"/>
+    <circle cx="176" cy="252" r="40" fill="#0e0e14" stroke="#4a4e54" stroke-width="3"/>
+
+    <!-- RED LENS - the glow -->
+    <circle cx="176" cy="252" r="36" fill="#880000" opacity="0.4" filter="url(#redGlow)"/>
+    <circle cx="176" cy="252" r="30" fill="url(#eyeGlow)"/>
+    <circle cx="176" cy="252" r="18" fill="#ee2200" opacity="0.95"/>
+    <circle cx="170" cy="244" r="8" fill="#ff6644" opacity="0.9"/>
+    <circle cx="166" cy="240" r="3.5" fill="#ffccaa"/>
+
+    <!-- Lens ring grooves -->
+    <circle cx="176" cy="252" r="44" fill="none" stroke="#555" stroke-width="2"/>
+    <circle cx="176" cy="252" r="35" fill="none" stroke="#444" stroke-width="1.5"/>
+
+    <!-- RIGHT EYE - empty dark socket -->
+    <path d="
+      M 394 215
+      L 334 190
+      L 272 220
+      L 278 290
+      L 340 310
+      L 400 278
+      Z
+    " fill="#0c0c10" stroke="#5a5040" stroke-width="3"/>
+    <!-- Dim glow deep inside -->
+    <circle cx="336" cy="252" r="16" fill="#660000" opacity="0.35" filter="url(#redGlow)"/>
+    <circle cx="336" cy="252" r="7" fill="#881100" opacity="0.4"/>
+
+    <!-- NOSE - big angular hole -->
+    <path d="
+      M 236 300
+      L 276 300
+      L 282 342
+      L 256 358
+      L 230 342
+      Z
+    " fill="#0c0c10" stroke="#5a5040" stroke-width="3"/>
+
+    <!-- LOWER JAW - metal reinforced -->
+    <path d="
+      M 130 388
+      L 124 412
+      L 388 412
+      L 382 388
+      C 358 400, 306 406, 256 406
+      C 206 406, 154 400, 130 388
+      Z
+    " fill="url(#metal)" stroke="#4a4e54" stroke-width="2.5"/>
+
+    <!-- TEETH - big, chunky, high contrast -->
+    <g fill="url(#bone)" stroke="#5a5040" stroke-width="3">
+      <rect x="140" y="408" width="36" height="42" rx="5"/>
+      <rect x="182" y="408" width="32" height="46" rx="4"/>
+      <rect x="220" y="408" width="30" height="48" rx="4"/>
+      <rect x="262" y="408" width="30" height="48" rx="4"/>
+      <rect x="298" y="408" width="32" height="46" rx="4"/>
+      <rect x="336" y="408" width="36" height="42" rx="5"/>
+    </g>
+    <!-- Teeth gaps - thick dark -->
+    <g stroke="#08080c" stroke-width="6">
+      <line x1="180" y1="410" x2="180" y2="450"/>
+      <line x1="218" y1="410" x2="218" y2="454"/>
+      <line x1="252" y1="410" x2="252" y2="456"/>
+      <line x1="260" y1="410" x2="260" y2="456"/>
+      <line x1="296" y1="410" x2="296" y2="454"/>
+      <line x1="334" y1="410" x2="334" y2="450"/>
+    </g>
+
+    <!-- CABLES from jaw - thick, hanging -->
+    <g fill="none" stroke-linecap="round">
+      <path d="M 185 456 Q 178 475, 168 496" stroke="#3e444a" stroke-width="7"/>
+      <path d="M 185 456 Q 178 475, 168 496" stroke="#555d64" stroke-width="4"/>
+      <path d="M 240 458 Q 232 480, 226 504" stroke="#3e444a" stroke-width="7"/>
+      <path d="M 240 458 Q 232 480, 226 504" stroke="#555d64" stroke-width="4"/>
+      <path d="M 272 458 Q 280 480, 286 504" stroke="#3e444a" stroke-width="7"/>
+      <path d="M 272 458 Q 280 480, 286 504" stroke="#555d64" stroke-width="4"/>
+      <path d="M 327 456 Q 334 475, 344 496" stroke="#3e444a" stroke-width="7"/>
+      <path d="M 327 456 Q 334 475, 344 496" stroke="#555d64" stroke-width="4"/>
+    </g>
+
+    <!-- Small side plate right temple -->
+    <path d="
+      M 400 200
+      L 428 230
+      L 432 280
+      L 415 295
+      L 398 262
+      L 395 218
+      Z
+    " fill="url(#metal)" stroke="#4a4e54" stroke-width="2.5"/>
+    <circle cx="415" cy="248" r="6" fill="#555d64" stroke="#3a3e44" stroke-width="2"/>
+    <circle cx="415" cy="248" r="2.5" fill="#2a2e34"/>
+    <circle cx="415" cy="272" r="6" fill="#555d64" stroke="#3a3e44" stroke-width="2"/>
+    <circle cx="415" cy="272" r="2.5" fill="#2a2e34"/>
+  </g>
+</svg>

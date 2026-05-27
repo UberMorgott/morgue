@@ -159,6 +159,13 @@ export class ToolStatus {
              */
             this["Optional"] = false;
         }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {RuntimeKind[] | undefined}
+             */
+            this["RuntimeDeps"] = undefined;
+        }
 
         Object.assign(this, $$source);
     }
@@ -169,7 +176,14 @@ export class ToolStatus {
      * @returns {ToolStatus}
      */
     static createFrom($$source = {}) {
+        const $$createField9_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("RuntimeDeps" in $$parsedSource) {
+            $$parsedSource["RuntimeDeps"] = $$createField9_0($$parsedSource["RuntimeDeps"]);
+        }
         return new ToolStatus(/** @type {Partial<ToolStatus>} */($$parsedSource));
     }
 }
+
+// Private type creation functions
+const $$createType0 = $Create.Array($Create.Any);
