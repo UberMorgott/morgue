@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/UberMorgott/morgue/internal/services"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 const listenAddr = "127.0.0.1:19876"
@@ -77,6 +78,25 @@ func (s *Server) Stop() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return s.http.Shutdown(ctx)
+}
+
+// HookEvents subscribes to Wails application events and rebroadcasts them via SSE.
+func (s *Server) HookEvents(app *application.App) {
+	events := []string{
+		"pipeline:progress",
+		"tool:download:start",
+		"tool:download:progress",
+		"tool:download:complete",
+		"tool:installed",
+		"startup:progress",
+	}
+	for _, name := range events {
+		eventName := name
+		app.Event.On(eventName, func(e *application.CustomEvent) {
+			data, _ := json.Marshal(e.Data)
+			s.events.Broadcast(eventName, data)
+		})
+	}
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {

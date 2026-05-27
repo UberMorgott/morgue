@@ -10,6 +10,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	morgue "github.com/UberMorgott/morgue"
+	"github.com/UberMorgott/morgue/internal/api"
 	"github.com/UberMorgott/morgue/internal/cli"
 	"github.com/UberMorgott/morgue/internal/selfupdate"
 	"github.com/UberMorgott/morgue/internal/services"
@@ -35,20 +36,33 @@ func main() {
 }
 
 func runGUI() {
+	// Create services once — shared between Wails and HTTP API
+	toolsSvc := services.NewToolsService(Version)
+	pipelineSvc := services.NewPipelineService()
+	configSvc := &services.ConfigService{}
+	reconSvc := &services.ReconService{}
+	updateSvc := &services.UpdateService{Version: Version}
+
 	app := application.New(application.Options{
 		Name:        "Morgue",
 		Description: "Binary decompiler orchestrator",
 		Services: []application.Service{
-			application.NewService(&services.ReconService{}),
-			application.NewService(services.NewPipelineService()),
-			application.NewService(services.NewToolsService(Version)),
-			application.NewService(&services.ConfigService{}),
-			application.NewService(&services.UpdateService{Version: Version}),
+			application.NewService(reconSvc),
+			application.NewService(pipelineSvc),
+			application.NewService(toolsSvc),
+			application.NewService(configSvc),
+			application.NewService(updateSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(morgue.Assets),
 		},
 	})
+
+	// HTTP API for hybrid mode
+	apiSrv := api.NewServer(pipelineSvc, toolsSvc, configSvc, reconSvc)
+	apiSrv.HookEvents(app)
+	go apiSrv.Start()
+	defer apiSrv.Stop()
 
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Morgue",
