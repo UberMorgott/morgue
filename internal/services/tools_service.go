@@ -11,10 +11,17 @@ import (
 	"github.com/UberMorgott/morgue/internal/util"
 )
 
+// APICommand represents a command pushed by the HTTP API for the frontend to execute.
+type APICommand struct {
+	Action string `json:"action"` // "install", "install-all", "delete"
+	Tool   string `json:"tool"`
+}
+
 // ToolsService exposes tool management to the frontend.
 type ToolsService struct {
 	manager    *tools.Manager
 	appVersion string
+	apiQueue   chan APICommand
 }
 
 // NewToolsService creates a ToolsService.
@@ -30,7 +37,26 @@ func NewToolsService(appVersion string) *ToolsService {
 			})
 		}
 	}
-	return &ToolsService{manager: mgr, appVersion: appVersion}
+	return &ToolsService{manager: mgr, appVersion: appVersion, apiQueue: make(chan APICommand, 32)}
+}
+
+// PushAPICommand enqueues a command from the HTTP API for the frontend to pick up.
+func (s *ToolsService) PushAPICommand(cmd APICommand) {
+	select {
+	case s.apiQueue <- cmd:
+	default: // drop if queue is full
+	}
+}
+
+// PollAPICommand returns the next pending API command, or nil if the queue is empty.
+// The frontend calls this on a timer to receive commands from the HTTP API.
+func (s *ToolsService) PollAPICommand() *APICommand {
+	select {
+	case cmd := <-s.apiQueue:
+		return &cmd
+	default:
+		return nil
+	}
 }
 
 // CheckAll returns the installation status of all registered tools.
