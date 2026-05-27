@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { ReconService, PipelineService, ToolsService } from '../lib/api';
+  import { PipelineService } from '../lib/api';
   import { onEvent } from '../lib/events';
   import { addOperation, updateOperation } from '../lib/operations';
   import ProgressBar from '../components/ProgressBar.svelte';
@@ -13,11 +13,6 @@
   type PipelineStep = 'scan' | 'recon' | 'tools' | 'execute' | 'done' | 'error';
 
   let currentStep: PipelineStep = 'scan';
-  let scanResults: Array<{ path: string; group: string }> = [];
-  let reconResults: Array<{ path: string; group: string; kind: string; obfuscator: string; recipe: string }> = [];
-  let toolsNeeded: Array<{ name: string; installed: boolean; category: string }> = [];
-  let missingTools: string[] = [];
-  let installingMissing = false;
 
   let pipelineProgress = 0;
   let pipelineStepLabel = '';
@@ -78,90 +73,13 @@
   });
 
   async function runPipeline() {
-    currentStep = 'scan';
-    pipelineOpAdded = false;
-    addOperation({ id: 'pipeline', type: 'pipeline', label: t(lang, 'pipeline.scanning'), status: 'running', progress: 0 });
-    pipelineOpAdded = true;
-    try {
-      const targets = await ReconService.ScanDirectory(inputPath);
-      scanResults = (targets || []).map((t: any) => ({
-        path: t.path || t.Path,
-        group: t.group || t.Group || '',
-      }));
-    } catch (e: any) {
-      errorMessage = e.message || String(e);
-      currentStep = 'error';
-      updateOperation('pipeline', { status: 'failed', error: errorMessage });
-      return;
-    }
-
-    if (scanResults.length === 0) {
-      errorMessage = 'No binaries found';
-      currentStep = 'error';
-      updateOperation('pipeline', { status: 'failed', error: errorMessage });
-      return;
-    }
-
-    currentStep = 'recon';
-    updateOperation('pipeline', { label: t(lang, 'pipeline.recon') });
-    reconResults = [];
-    for (const target of scanResults) {
-      try {
-        const result = await ReconService.ClassifyFile(target.path);
-        reconResults = [...reconResults, {
-          path: target.path,
-          group: target.group,
-          kind: result?.Kind || result?.kind || '',
-          obfuscator: result?.Obfuscator || result?.obfuscator || '',
-          recipe: result?.Recipe || result?.recipe || '',
-        }];
-      } catch (e) {
-        reconResults = [...reconResults, {
-          path: target.path,
-          group: target.group,
-          kind: '?', obfuscator: '', recipe: '',
-        }];
-      }
-    }
-
-    currentStep = 'tools';
-    updateOperation('pipeline', { label: t(lang, 'pipeline.checkingTools') });
-    try {
-      const statuses = await ToolsService.CheckAll();
-      toolsNeeded = (statuses || []).map((s: any) => ({
-        name: s.Name || s.name,
-        installed: s.Installed || s.installed || false,
-        category: s.Category || s.category || '',
-      }));
-      missingTools = toolsNeeded.filter(t => !t.installed).map(t => t.name);
-    } catch (e) {
-      missingTools = [];
-    }
-
-    if (missingTools.length === 0) {
-      await startExecution();
-    }
-  }
-
-  async function installMissingAndContinue() {
-    installingMissing = true;
-    updateOperation('pipeline', { label: t(lang, 'status.installing') });
-    try {
-      await ToolsService.InstallAll();
-      missingTools = [];
-      installingMissing = false;
-      await startExecution();
-    } catch (e: any) {
-      errorMessage = e.message || String(e);
-      installingMissing = false;
-    }
-  }
-
-  async function startExecution() {
     currentStep = 'execute';
-    updateOperation('pipeline', { label: t(lang, 'pipeline.executing'), progress: 0 });
+    pipelineOpAdded = false;
+    addOperation({ id: 'pipeline', type: 'pipeline', label: t(lang, 'pipeline.executing'), status: 'running', progress: 0 });
+    pipelineOpAdded = true;
     logEntries = [];
     try {
+      // Engine handles scan→recon→match→install→execute with proper events
       await PipelineService.Run(inputPath, '');
     } catch (e: any) {
       if (!errorMessage) {
@@ -174,81 +92,7 @@
 </script>
 
 <div class="pipeline-page">
-  <!-- Step 1: Scan -->
-  <section class="pipeline-step" class:collapsed={currentStep !== 'scan' && scanResults.length > 0}>
-    <h3 class="step-title">
-      <span class="step-num">1</span>
-      {t(lang, 'scan.title')}
-      {#if scanResults.length > 0}
-        <span class="step-badge">{scanResults.length} {t(lang, 'pipeline.foundBinaries')}</span>
-      {/if}
-    </h3>
-    {#if currentStep === 'scan'}
-      <div class="step-loading"><span class="spinner"></span> {t(lang, 'pipeline.scanning')}</div>
-    {/if}
-  </section>
-
-  <!-- Step 2: Recon -->
-  {#if currentStep !== 'scan' || scanResults.length > 0}
-    <section class="pipeline-step" class:collapsed={currentStep !== 'recon' && reconResults.length > 0}>
-      <h3 class="step-title">
-        <span class="step-num">2</span>
-        {t(lang, 'pipeline.recon')}
-      </h3>
-      {#if currentStep === 'recon'}
-        <div class="step-content">
-          {#each reconResults as r}
-            <div class="recon-row">
-              <span class="recon-path">{r.path.split(/[/\\]/).pop()}</span>
-              <span class="recon-tag">{r.kind}</span>
-              {#if r.obfuscator}<span class="recon-tag tag-obf">{r.obfuscator}</span>{/if}
-            </div>
-          {/each}
-          {#if reconResults.length < scanResults.length}
-            <div class="step-loading"><span class="spinner"></span> {t(lang, 'pipeline.recon')}</div>
-          {/if}
-        </div>
-      {:else if reconResults.length > 0}
-        <div class="step-summary">
-          {#each reconResults as r}
-            <span class="recon-tag-sm">{r.kind}{r.obfuscator ? ` / ${r.obfuscator}` : ''}</span>
-          {/each}
-        </div>
-      {/if}
-    </section>
-  {/if}
-
-  <!-- Step 3: Tools -->
-  {#if currentStep === 'tools' || currentStep === 'execute' || currentStep === 'done'}
-    <section class="pipeline-step" class:collapsed={currentStep !== 'tools'}>
-      <h3 class="step-title">
-        <span class="step-num">3</span>
-        {t(lang, 'pipeline.checkingTools')}
-        {#if missingTools.length === 0 && currentStep !== 'tools'}
-          <span class="step-badge ok">✓ {t(lang, 'pipeline.allToolsReady')}</span>
-        {:else if missingTools.length > 0}
-          <span class="step-badge warn">⚠ {missingTools.length} {t(lang, 'pipeline.missingTools')}</span>
-        {/if}
-      </h3>
-      {#if currentStep === 'tools' && missingTools.length > 0}
-        <div class="step-content">
-          <div class="tools-list-mini">
-            {#each toolsNeeded as tool}
-              <div class="tool-mini" class:tool-ok={tool.installed} class:tool-missing={!tool.installed}>
-                <span>{tool.installed ? '✅' : '❌'}</span>
-                <span>{tool.name}</span>
-              </div>
-            {/each}
-          </div>
-          <button class="install-btn" on:click={installMissingAndContinue} disabled={installingMissing}>
-            {installingMissing ? t(lang, 'tools.installing') : t(lang, 'pipeline.installMissing')}
-          </button>
-        </div>
-      {/if}
-    </section>
-  {/if}
-
-  <!-- Step 4: Execute -->
+  <!-- Execute -->
   {#if currentStep === 'execute' || currentStep === 'done'}
     <section class="pipeline-step" class:collapsed={currentStep === 'done'}>
       <h3 class="step-title">
@@ -365,68 +209,6 @@
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
   }
-  .step-summary {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    margin-top: 6px;
-  }
-  .recon-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 0;
-    font-size: 12px;
-  }
-  .recon-path {
-    color: var(--text-secondary);
-    font-family: ui-monospace, monospace;
-  }
-  .recon-tag {
-    font-size: 10px;
-    padding: 2px 6px;
-    border-radius: 3px;
-    background: var(--accent-dim);
-    color: var(--accent);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .recon-tag-sm {
-    font-size: 10px;
-    padding: 1px 5px;
-    border-radius: 3px;
-    background: var(--accent-dim);
-    color: var(--accent);
-  }
-  .tag-obf { background: rgba(191, 95, 255, 0.15); color: #bf5fff; }
-  .tools-list-mini {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 12px;
-  }
-  .tool-mini {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 12px;
-    padding: 4px 8px;
-    border-radius: 4px;
-  }
-  .tool-ok { color: var(--text-secondary); }
-  .tool-missing { color: var(--error); background: rgba(255, 51, 102, 0.08); }
-  .install-btn {
-    all: unset;
-    font-size: 12px;
-    padding: 8px 16px;
-    border-radius: 6px;
-    background: var(--accent);
-    color: var(--bg-page);
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .install-btn:hover { box-shadow: 0 0 12px var(--accent-dim); }
-  .install-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .pipeline-log { height: 180px; margin-top: 8px; }
   .done-step { border-color: var(--success, #22c55e); }
   .done-content {

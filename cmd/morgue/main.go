@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -14,6 +15,7 @@ import (
 	"github.com/UberMorgott/morgue/internal/cli"
 	"github.com/UberMorgott/morgue/internal/selfupdate"
 	"github.com/UberMorgott/morgue/internal/services"
+	"github.com/UberMorgott/morgue/internal/util"
 )
 
 //go:embed appicon.png
@@ -43,6 +45,9 @@ func runGUI() {
 	reconSvc := &services.ReconService{}
 	updateSvc := &services.UpdateService{Version: Version}
 
+	// Declare apiSrv early so OnShutdown closure can capture it
+	var apiSrv *api.Server
+
 	app := application.New(application.Options{
 		Name:        "Morgue",
 		Description: "Binary decompiler orchestrator",
@@ -56,13 +61,21 @@ func runGUI() {
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(morgue.Assets),
 		},
+		Windows: application.WindowsOptions{
+			WebviewUserDataPath: filepath.Join(util.BaseDir(), ".webview2"),
+		},
+		OnShutdown: func() {
+			pipelineSvc.Stop()
+			if apiSrv != nil {
+				apiSrv.Stop()
+			}
+		},
 	})
 
 	// HTTP API for hybrid mode
-	apiSrv := api.NewServer(pipelineSvc, toolsSvc, configSvc, reconSvc)
+	apiSrv = api.NewServer(pipelineSvc, toolsSvc, configSvc, reconSvc)
 	apiSrv.HookEvents(app)
 	go apiSrv.Start()
-	defer apiSrv.Stop()
 
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Morgue",

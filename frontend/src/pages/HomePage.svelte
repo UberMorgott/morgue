@@ -3,7 +3,7 @@
   import { onMount, onDestroy } from 'svelte';
   import DropZone from '../components/DropZone.svelte';
   import { t, type Lang } from '../lib/i18n';
-  import { ReconService, PipelineService, ToolsService } from '../lib/api';
+  import { PipelineService, ToolsService } from '../lib/api';
   import { addOperation, updateOperation } from '../lib/operations';
   import {
     pipelineState,
@@ -25,9 +25,6 @@
 
   const stageIds: StageId[] = ['scan', 'recon', 'tools', 'execute', 'done'];
 
-  // Local state for preflight (before engine events)
-  let preflight = false;
-  let reconInfo = '';
   let lastProcessedPath = '';
   let pipelineOpAdded = false;
   let logEl: HTMLDivElement | null = null;
@@ -43,7 +40,7 @@
   }
 
   // Compute stage statuses from pipeline phase
-  $: stages = computeStages(phase, preflight);
+  $: stages = computeStages(phase);
 
   // Elapsed time ticker
   let elapsedTimer: ReturnType<typeof setInterval> | null = null;
@@ -80,11 +77,11 @@
     if (elapsedTimer) clearInterval(elapsedTimer);
   });
 
-  function computeStages(ph: PipelinePhase, pf: boolean): Record<StageId, StageStatus> {
+  function computeStages(ph: PipelinePhase): Record<StageId, StageStatus> {
     const order: StageId[] = ['scan', 'recon', 'tools', 'execute', 'done'];
     const result: Record<string, StageStatus> = {};
 
-    if (pf || ph === 'idle') {
+    if (ph === 'idle') {
       for (const s of order) result[s] = 'pending';
       return result as Record<StageId, StageStatus>;
     }
@@ -99,7 +96,7 @@
       // We'll track this via a derived approach: mark based on progress
       let errorIdx = order.length - 2; // default to execute
       if ($pipelineState.step === 0 && $pipelineState.stepTotal === 0) {
-        // Likely failed during preflight or early stage
+        // Likely failed during early stage
         errorIdx = 0;
       }
       for (let i = 0; i < order.length; i++) {
@@ -135,8 +132,6 @@
 
   function handleClear() {
     resetPipeline();
-    preflight = false;
-    reconInfo = '';
     pipelineOpAdded = false;
     lastProcessedPath = '';
     if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
@@ -197,17 +192,15 @@
 
   async function runPipeline() {
     if (running) return;
-    preflight = true;
-    reconInfo = '';
     pipelineOpAdded = false;
 
     storeStartPipeline(inputPath);
 
-    addOperation({ id: 'pipeline', type: 'pipeline', label: t(lang, 'home.preparing'), status: 'running', progress: 0 });
+    addOperation({ id: 'pipeline', type: 'pipeline', label: t(lang, 'home.decompiling'), status: 'running', progress: 0 });
     pipelineOpAdded = true;
 
     try {
-      // Preflight: check runtimes
+      // Preflight: check runtimes (quick local check, no tool install)
       try {
         const rtStatuses = await ToolsService.CheckRuntimes();
         const missingRequired = (rtStatuses || []).filter((s: any) =>
@@ -216,63 +209,19 @@
         if (missingRequired.length > 0) {
           pipelineState.update(s => ({ ...s, phase: 'error', error: t(lang, 'runtimes.missingForPipeline') }));
           updateOperation('pipeline', { status: 'failed', error: t(lang, 'runtimes.missingForPipeline') });
-          preflight = false;
           return;
         }
       } catch {
         // Continue — pipeline will handle errors
       }
 
-      // Classify file
-      try {
-        const result = await ReconService.ClassifyFile(inputPath);
-        if (result) {
-          const kind = result.Kind || result.kind || '';
-          const obf = result.Obfuscator || result.obfuscator || '';
-          reconInfo = kind + (obf ? ` / ${obf}` : '');
-        }
-      } catch {}
-
-      // Check tools and install missing
-      updateOperation('pipeline', { label: t(lang, 'home.preparingTools') });
-      try {
-        const statuses = await ToolsService.CheckAll();
-        const missing = (statuses || []).filter((s: any) => !(s.Installed || s.installed));
-        if (missing.length > 0) {
-          await ToolsService.InstallAll();
-        }
-      } catch {}
-
-      // Preflight done — engine will emit events from here
-      preflight = false;
-      updateOperation('pipeline', { label: t(lang, 'home.decompiling'), progress: 0 });
-
+      // Engine handles scan→recon→match→install→execute with proper events
       await PipelineService.Run(inputPath, '');
 
-      // Give Wails events time to propagate
-      await new Promise(r => setTimeout(r, 500));
-
-      // Add history entry
-      const finalPhase = $pipelineState.phase;
-      addHistoryEntry({
-        path: inputPath,
-        kind: reconInfo,
-        output: $pipelineState.outputPath || inputPath,
-        timestamp: Date.now(),
-        success: finalPhase === 'done' || finalPhase === 'execute',
-        error: finalPhase === 'error' ? $pipelineState.error : undefined,
-      });
-
-      // If events set 'done' or Run() returned without error during execute, mark done
-      if (finalPhase === 'done' || finalPhase === 'execute') {
-        pipelineState.update(s => ({ ...s, phase: 'done', progress: 100 }));
-        updateOperation('pipeline', { status: 'success', progress: 100, label: t(lang, 'pipeline.done') });
-      }
     } catch (e: any) {
-      preflight = false;
       const currentPhase = $pipelineState.phase;
       if (currentPhase === 'done' || currentPhase === 'cancelled') {
-        // Already handled
+        // Already handled by events
       } else {
         const msg = e.message || String(e);
         const isCancelled = msg.includes('context canceled') || msg.includes('context cancelled');
@@ -283,15 +232,6 @@
           pipelineState.update(s => ({ ...s, phase: 'error', error: msg }));
           updateOperation('pipeline', { status: 'failed', error: msg });
         }
-
-        addHistoryEntry({
-          path: inputPath,
-          kind: reconInfo,
-          output: '',
-          timestamp: Date.now(),
-          success: false,
-          error: isCancelled ? 'Cancelled' : msg,
-        });
       }
     }
   }
@@ -336,15 +276,10 @@
       <!-- File info bar -->
       <div class="file-info glass">
         <span class="file-path selectable">{inputPath}</span>
-        {#if reconInfo && reconInfo !== 'Unknown'}
-          <span class="tag tag-accent">{reconInfo}</span>
+        {#if $pipelineState.reconResults.length > 0 && $pipelineState.reconResults[0].kind && $pipelineState.reconResults[0].kind !== 'Unknown'}
+          <span class="tag tag-accent">{$pipelineState.reconResults[0].kind}</span>
         {/if}
       </div>
-
-      <!-- Preparing label -->
-      {#if preflight}
-        <div class="preparing-label neon-text">{t(lang, 'home.preparing')}</div>
-      {/if}
 
       <!-- Stage stepper -->
       <div class="stepper">
@@ -374,16 +309,10 @@
       </div>
 
       <!-- Progress details (phase-specific) -->
-      {#if running || preflight}
+      {#if running}
         <div class="progress-card glass">
           <!-- Phase-specific details -->
-          {#if preflight}
-            <div class="fallback-row">
-              <span class="spinner"></span>
-              <span class="fallback-text">{t(lang, 'home.preparing')}</span>
-            </div>
-
-          {:else if phase === 'scan'}
+          {#if phase === 'scan'}
             <div class="phase-detail">
               <span class="spinner"></span>
               <span class="phase-text">{$pipelineState.scanInfo || t(lang, 'home.scanning')}</span>
@@ -680,12 +609,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     flex: 1;
-  }
-
-  .preparing-label {
-    font-size: 0.9rem;
-    font-weight: 600;
-    animation: pulse-neon 2s ease-in-out infinite;
   }
 
   /* ── Stage stepper ── */
