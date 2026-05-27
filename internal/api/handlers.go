@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/UberMorgott/morgue/internal/services"
 )
 
 // --- Pipeline handlers ---
@@ -56,32 +58,18 @@ func (s *Server) handleInstallTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Push command to the queue for the frontend to pick up and execute through
+	// Wails bindings. This ensures progress events are emitted in the Wails
+	// context and reliably reach the webview.
 	if req.Name == "" {
-		go func() {
-			s.events.Broadcast("tool:install:start", marshalJSON(map[string]string{"tool": "all"}))
-			if err := s.tools.InstallAll(); err != nil {
-				s.events.Broadcast("tool:install:error", marshalJSON(map[string]string{"tool": "all", "error": err.Error()}))
-			} else {
-				s.events.Broadcast("tool:install:complete", marshalJSON(map[string]string{"tool": "all"}))
-			}
-		}()
+		s.tools.PushAPICommand(services.APICommand{Action: "install-all"})
+		s.events.Broadcast("tool:install:start", marshalJSON(map[string]string{"tool": "all"}))
 		writeJSON(w, http.StatusOK, map[string]string{"status": "installing all"})
 		return
 	}
 
-	go func() {
-		s.events.Broadcast("tool:install:start", marshalJSON(map[string]string{"tool": req.Name}))
-		s.EmitToGUI("tool:download:start", map[string]string{"tool": req.Name})
-
-		if err := s.tools.Install(req.Name); err != nil {
-			s.events.Broadcast("tool:install:error", marshalJSON(map[string]string{"tool": req.Name, "error": err.Error()}))
-			s.EmitToGUI("tool:download:complete", map[string]interface{}{"tool": req.Name, "error": err.Error()})
-		} else {
-			s.events.Broadcast("tool:install:complete", marshalJSON(map[string]string{"tool": req.Name}))
-			s.EmitToGUI("tool:download:complete", map[string]interface{}{"tool": req.Name, "version": "", "error": nil})
-			s.EmitToGUI("tool:installed", req.Name)
-		}
-	}()
+	s.tools.PushAPICommand(services.APICommand{Action: "install", Tool: req.Name})
+	s.events.Broadcast("tool:install:start", marshalJSON(map[string]string{"tool": req.Name}))
 	writeJSON(w, http.StatusOK, map[string]string{"status": "installing", "name": req.Name})
 }
 
@@ -96,11 +84,10 @@ func (s *Server) handleDeleteTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.tools.Delete(req.Name); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted", "name": req.Name})
+	// Push command to the queue for the frontend to pick up and execute through
+	// Wails bindings, keeping it consistent with the install path.
+	s.tools.PushAPICommand(services.APICommand{Action: "delete", Tool: req.Name})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleting", "name": req.Name})
 }
 
 // --- Settings handlers ---

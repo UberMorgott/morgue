@@ -16,6 +16,7 @@ export {
 };
 
 export {
+    APICommand,
     PipelineStatus,
     ScanTarget,
     UpdateStatus

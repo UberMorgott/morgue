@@ -7,6 +7,45 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * APICommand represents a command pushed by the HTTP API for the frontend to execute.
+ */
+export class APICommand {
+    /**
+     * Creates a new APICommand instance.
+     * @param {Partial<APICommand>} [$$source = {}] - The source object to create the APICommand.
+     */
+    constructor($$source = {}) {
+        if (!("action" in $$source)) {
+            /**
+             * "install", "install-all", "delete"
+             * @member
+             * @type {string}
+             */
+            this["action"] = "";
+        }
+        if (!("tool" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["tool"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new APICommand instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {APICommand}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new APICommand(/** @type {Partial<APICommand>} */($$parsedSource));
+    }
+}
+
+/**
  * PipelineStatus describes the current state of the pipeline.
  */
 export class PipelineStatus {
