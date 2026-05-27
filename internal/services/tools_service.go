@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -85,8 +86,29 @@ func (s *ToolsService) Delete(name string) error {
 	return s.manager.Delete(name)
 }
 
+// ensureRuntimeDeps checks and installs any missing runtime dependencies for a tool.
+func (s *ToolsService) ensureRuntimeDeps(name string) error {
+	tool, ok := tools.FindByName(name)
+	if !ok || len(tool.RuntimeDeps) == 0 {
+		return nil
+	}
+	for _, rk := range tool.RuntimeDeps {
+		if _, err := s.manager.RuntimePath(rk); err == nil {
+			continue // runtime already available
+		}
+		log.Printf("auto-installing runtime %s required by %s", rk, name)
+		if err := s.InstallRuntime(string(rk)); err != nil {
+			return fmt.Errorf("install runtime %s for %s: %w", rk, name, err)
+		}
+	}
+	return nil
+}
+
 // Install downloads and installs a single tool by name.
 func (s *ToolsService) Install(name string) error {
+	if err := s.ensureRuntimeDeps(name); err != nil {
+		return err
+	}
 	if app := application.Get(); app != nil {
 		app.Event.Emit("tool:download:start", map[string]string{"tool": name})
 	}
@@ -105,6 +127,27 @@ func (s *ToolsService) Install(name string) error {
 // InstallAll installs every tool that is not yet present.
 func (s *ToolsService) InstallAll() error {
 	statuses := s.manager.CheckAll()
+
+	// Collect all runtimes needed by tools that aren't installed yet.
+	needed := map[tools.RuntimeKind]bool{}
+	for _, st := range statuses {
+		if !st.Installed {
+			for _, rk := range st.RuntimeDeps {
+				needed[rk] = true
+			}
+		}
+	}
+	// Install missing runtimes first.
+	for rk := range needed {
+		if _, err := s.manager.RuntimePath(rk); err == nil {
+			continue
+		}
+		log.Printf("auto-installing runtime %s required by pending tools", rk)
+		if err := s.InstallRuntime(string(rk)); err != nil {
+			return fmt.Errorf("install runtime %s: %w", rk, err)
+		}
+	}
+
 	for _, st := range statuses {
 		if !st.Installed {
 			if _, err := s.manager.Install(st.Name); err != nil {
