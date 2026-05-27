@@ -79,6 +79,8 @@
   // Poll tool status periodically to catch API-triggered changes.
   // SSE EventSource doesn't work inside the Wails webview (cross-origin blocked
   // by the wails:// protocol), so we poll CheckAll() as a lightweight fallback.
+  // When state changes are detected, we generate operation log entries so the
+  // progress bar / operation log at the bottom reflects API-triggered installs.
   function startPolling() {
     if (pollTimer) return;
     pollTimer = setInterval(async () => {
@@ -90,10 +92,24 @@
           const name = s.Name ?? s.name ?? '';
           const installed = s.Installed ?? s.installed ?? false;
           const version = s.Version ?? s.version ?? '';
-          const path = s.Path ?? s.path ?? '';
           const existing = tools.find(t => t.name === name);
-          if (existing && (existing.installed !== installed || existing.version !== version)) {
+          if (!existing) continue;
+          if (existing.installed !== installed || existing.version !== version) {
             changed = true;
+            // Generate operation log entries for state changes
+            if (!existing.installed && installed) {
+              // Tool was installed externally (via API)
+              const opId = `api-install-${name}`;
+              addOperation({ id: opId, type: 'download', label: `${name} ${t(lang, 'tools.installedViaApi')}`, status: 'success', progress: 100 });
+            } else if (existing.installed && !installed) {
+              // Tool was removed externally (via API)
+              const opId = `api-remove-${name}`;
+              addOperation({ id: opId, type: 'delete', label: `${name} ${t(lang, 'tools.removedViaApi')}`, status: 'success', progress: 100 });
+            } else if (existing.installed && installed && existing.version !== version) {
+              // Tool was updated externally (via API)
+              const opId = `api-update-${name}`;
+              addOperation({ id: opId, type: 'update', label: `${name} ${t(lang, 'tools.updatedViaApi')} → ${version}`, status: 'success', progress: 100 });
+            }
           }
         }
         if (changed) {

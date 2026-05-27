@@ -184,6 +184,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'runtimes.optional': { en: 'Optional', ru: 'Опциональный' },
   'runtimes.version': { en: 'Version', ru: 'Версия' },
   'runtimes.missingForPipeline': { en: 'Required runtimes are missing. Go to Tools to install.', ru: 'Необходимые рантаймы отсутствуют. Перейдите в Инструменты для установки.' },
+
+  // API-triggered operations (poll-detected)
+  'tools.installedViaApi': { en: 'installed', ru: 'установлен' },
+  'tools.removedViaApi': { en: 'removed', ru: 'удалён' },
+  'tools.updatedViaApi': { en: 'updated', ru: 'обновлён' },
 };
 
 export function t(lang: Lang, key: string): string {
