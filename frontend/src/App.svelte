@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import Header from './components/Header.svelte';
   import Sidebar from './components/Sidebar.svelte';
   import OperationsFooter from './components/OperationsFooter.svelte';
@@ -18,7 +18,91 @@
   let lang: Lang;
   currentLang.subscribe(v => lang = v);
 
+  // --- API command poll: runs at App level so commands are received on any tab ---
+  let apiPollTimer: ReturnType<typeof setInterval> | null = null;
+  let processingApiCommand = false;
+
+  function startApiPoll() {
+    if (apiPollTimer) return;
+    apiPollTimer = setInterval(async () => {
+      if (processingApiCommand) return;
+      try {
+        const cmd = await ToolsService.PollAPICommand();
+        if (!cmd || !cmd.action) return;
+        processingApiCommand = true;
+        try {
+          switch (cmd.action) {
+            case 'install': {
+              const name = cmd.tool || '';
+              if (!name) break;
+              const opId = `install-${name}`;
+              addOperation({ id: opId, type: 'download', label: `Installing ${name}...`, status: 'running', progress: 0 });
+              try {
+                await ToolsService.Install(name);
+                updateOperation(opId, { status: 'success', progress: 100 });
+              } catch (err: any) {
+                updateOperation(opId, { status: 'failed', error: err.message || String(err) });
+              }
+              break;
+            }
+            case 'install-all': {
+              const opId = 'install-all-api';
+              addOperation({ id: opId, type: 'download', label: 'Installing all tools...', status: 'running', progress: 0 });
+              try {
+                const statuses = await ToolsService.CheckAll();
+                const missing = (statuses || []).filter((s: any) => !(s.Installed ?? s.installed));
+                for (const s of missing) {
+                  const name = s.Name ?? s.name ?? '';
+                  if (!name) continue;
+                  const toolOpId = `download-${name}`;
+                  addOperation({ id: toolOpId, type: 'download', label: `Installing ${name}...`, status: 'running', progress: 0 });
+                  try {
+                    await ToolsService.Install(name);
+                    updateOperation(toolOpId, { status: 'success', progress: 100 });
+                  } catch (e: any) {
+                    updateOperation(toolOpId, { status: 'failed', error: e.message || String(e) });
+                  }
+                }
+                updateOperation(opId, { status: 'success', progress: 100 });
+              } catch (err: any) {
+                updateOperation(opId, { status: 'failed', error: err.message || String(err) });
+              }
+              break;
+            }
+            case 'delete': {
+              const name = cmd.tool || '';
+              if (!name) break;
+              const opId = `delete-${name}`;
+              addOperation({ id: opId, type: 'delete', label: `Deleting ${name}...`, status: 'running', progress: 0 });
+              try {
+                await ToolsService.Delete(name);
+                updateOperation(opId, { status: 'success', progress: 100 });
+              } catch (err: any) {
+                updateOperation(opId, { status: 'failed', error: err.message || String(err) });
+              }
+              break;
+            }
+          }
+        } finally {
+          processingApiCommand = false;
+        }
+      } catch { /* ignore poll errors */ }
+    }, 500);
+  }
+
+  function stopApiPoll() {
+    if (apiPollTimer) {
+      clearInterval(apiPollTimer);
+      apiPollTimer = null;
+    }
+  }
+
+  onDestroy(() => {
+    stopApiPoll();
+  });
+
   onMount(async () => {
+    startApiPoll();
     const opId = 'startup-check';
     addOperation({ id: opId, type: 'update', label: 'Checking for updates...', status: 'running', progress: 0 });
 

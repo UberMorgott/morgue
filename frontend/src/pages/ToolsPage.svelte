@@ -76,117 +76,6 @@
     } catch (e) { console.error('Refresh after tool:installed failed:', e); }
   }
 
-  // --- API command queue: poll for commands pushed by the HTTP API ---
-  // The HTTP API pushes commands (install/delete) to a Go channel instead of
-  // calling the service directly. The frontend polls via Wails binding and
-  // executes through the normal path, so progress events work natively.
-
-  let apiPollTimer: ReturnType<typeof setInterval> | null = null;
-  let apiCommandQueue: Array<{ action: string; tool: string }> = [];
-  let processingApiQueue = false;
-
-  function startApiPoll() {
-    if (apiPollTimer) return;
-    apiPollTimer = setInterval(async () => {
-      try {
-        const cmd = await ToolsService.PollAPICommand();
-        if (cmd && cmd.action) {
-          apiCommandQueue.push({ action: cmd.action, tool: cmd.tool || '' });
-          processApiQueue();
-        }
-      } catch { /* ignore poll errors */ }
-    }, 500);
-  }
-
-  function stopApiPoll() {
-    if (apiPollTimer) {
-      clearInterval(apiPollTimer);
-      apiPollTimer = null;
-    }
-  }
-
-  async function processApiQueue() {
-    if (processingApiQueue) return;
-    processingApiQueue = true;
-    while (apiCommandQueue.length > 0) {
-      const cmd = apiCommandQueue.shift()!;
-      switch (cmd.action) {
-        case 'install':
-          await handleApiInstallTool(cmd.tool);
-          break;
-        case 'install-all':
-          await handleApiInstallAll();
-          break;
-        case 'delete':
-          await handleApiDeleteTool(cmd.tool);
-          break;
-      }
-    }
-    processingApiQueue = false;
-  }
-
-  async function handleApiInstallTool(name: string) {
-    if (!name) return;
-    busy = true;
-    const opId = `install-${name}`;
-    addOperation({ id: opId, type: 'download', label: `${t(lang, 'status.downloading')} ${name}`, status: 'running', progress: 0 });
-    try {
-      await ToolsService.Install(name);
-      updateOperation(opId, { status: 'success', progress: 100 });
-      const st = await ToolsService.CheckAll();
-      const updated = (st || []).find((s: any) => (s.Name ?? s.name) === name);
-      if (updated) {
-        tools = tools.map(t => t.name === name ? {
-          ...t,
-          installed: updated.Installed ?? updated.installed ?? false,
-          version: updated.Version ?? updated.version ?? '',
-          path: updated.Path ?? updated.path ?? '',
-          checking: true,
-        } : t);
-        checkLatestVersion(name);
-      }
-    } catch (err: any) {
-      console.error('API install failed:', err);
-      updateOperation(opId, { status: 'failed', error: err.message || String(err) });
-    } finally { busy = false; }
-  }
-
-  async function handleApiInstallAll() {
-    busy = true;
-    const missing = tools.filter(t => !t.installed);
-    for (let i = 0; i < missing.length; i++) {
-      const name = missing[i].name;
-      const opId = `download-${name}`;
-      const label = `${t(lang, 'status.downloading')} ${name} (${i + 1}/${missing.length})`;
-      addOperation({ id: opId, type: 'download', label, status: 'running', progress: 0 });
-      try {
-        await ToolsService.Install(name);
-        updateOperation(opId, { status: 'success', progress: 100 });
-        tools = tools.map(t => t.name === name ? { ...t, installed: true, checking: true } : t);
-        checkLatestVersion(name);
-      } catch (e: any) {
-        console.error('API install-all failed:', name, e);
-        updateOperation(opId, { status: 'failed', error: e.message || String(e) });
-      }
-    }
-    busy = false;
-  }
-
-  async function handleApiDeleteTool(name: string) {
-    if (!name) return;
-    busy = true;
-    const opId = `delete-${name}`;
-    addOperation({ id: opId, type: 'delete', label: `${t(lang, 'tools.delete')} ${name}`, status: 'running', progress: 0 });
-    try {
-      await ToolsService.Delete(name);
-      updateOperation(opId, { status: 'success', progress: 100 });
-      tools = tools.map(t => t.name === name ? { ...t, installed: false, version: '', path: '' } : t);
-    } catch (err: any) {
-      console.error('API delete failed:', err);
-      updateOperation(opId, { status: 'failed', error: err.message || String(err) });
-    } finally { busy = false; }
-  }
-
   // Poll tool status periodically to catch API-triggered changes.
   // SSE EventSource doesn't work inside the Wails webview (cross-origin blocked
   // by the wails:// protocol), so we poll CheckAll() as a lightweight fallback.
@@ -257,13 +146,11 @@
 
     // Start polling AFTER tools are loaded, so diff has baseline
     startPolling();
-    startApiPoll();
   });
 
   onDestroy(() => {
     cleanups.forEach(fn => fn());
     stopPolling();
-    stopApiPoll();
   });
 
   async function loadRuntimes() {
