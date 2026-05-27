@@ -97,7 +97,7 @@
 
   <!-- Stage stepper -->
   <div class="stepper">
-    {#each stageIds as id, i}
+    {#each stageIds as id, i (id)}
       {@const status = stages[id]}
       <div class="stage" class:stage-done={status === 'done'} class:stage-active={status === 'active'} class:stage-error={status === 'error'} class:stage-pending={status === 'pending'}>
         <div class="stage-circle">
@@ -138,7 +138,7 @@
           </div>
 
           {#if $pipelineState.reconKind}
-            {#each $pipelineState.reconResults as r}
+            {#each $pipelineState.reconResults as r, i (i)}
               <div class="acc-detail-row">
                 <span class="acc-detail-mono">{r.file}</span>
                 {#if $pipelineState.reconKind}
@@ -156,7 +156,7 @@
             ].filter(Boolean)}
             {#if metaItems.length > 0}
               <div class="acc-detail-row detect-meta">
-                {#each metaItems as item, i}
+                {#each metaItems as item, i (i)}
                   {#if i > 0}
                     <span class="detect-meta-sep">|</span>
                   {/if}
@@ -174,7 +174,7 @@
               </div>
             {/if}
           {:else}
-            {#each $pipelineState.reconResults as r}
+            {#each $pipelineState.reconResults as r, i (i)}
               <div class="acc-detail-row">
                 <span class="acc-detail-mono">{r.file}</span>
                 {#if r.kind}
@@ -207,7 +207,7 @@
 
           {#if $pipelineState.toolsNeeded.length > 0}
             <div class="tools-list">
-              {#each $pipelineState.toolsNeeded as tool}
+              {#each $pipelineState.toolsNeeded as tool (tool)}
                 {@const isInstalled = $pipelineState.toolsInstalled.includes(tool)}
                 {@const isInstalling = !isInstalled && $pipelineState.toolsInfo.includes(tool)}
                 <div class="tool-row">

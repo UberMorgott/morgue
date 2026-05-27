@@ -71,7 +71,7 @@
             };
           });
         }
-      } catch { /* ignore polling errors */ }
+      } catch (e) { console.error('tools polling failed:', e); }
     }, 3000);
   }
 
@@ -167,7 +167,8 @@
           ? { ...t, latestVersion: result.latestVersion || '', updateAvailable: result.updateAvailable || false, checking: false }
           : t
       );
-    } catch {
+    } catch (e) {
+      console.error('version check failed:', e);
       tools = tools.map(t => t.name === name ? { ...t, checking: false } : t);
     }
   }
@@ -270,7 +271,7 @@
     <div class="tools-loading">{t(lang, 'tools.checking')}</div>
   {:else}
     <div class="tools-list">
-      {#each tools as tool}
+      {#each tools as tool (tool.name)}
         <ToolRow {lang} name={tool.name} installed={tool.installed} version={tool.version}
           latestVersion={tool.latestVersion} updateAvailable={tool.updateAvailable}
           category={tool.category} description={tool.description} {busy}
