@@ -138,7 +138,7 @@ export function updateFromEvent(data: any) {
       // Map engine phases to our phases
       if (phase === 'scan') next.phase = 'scan';
       else if (phase === 'recon' || phase === 'match') next.phase = 'recon';
-      else if (phase === 'install') next.phase = 'tools';
+      else if (phase === 'tools' || phase === 'install') next.phase = 'tools';
       else if (phase === 'execute' || phase === 'log') next.phase = 'execute';
       else if (phase === 'done') next.phase = 'done';
       else if (phase === 'skip') { /* keep current phase */ }
@@ -206,11 +206,12 @@ export function updateFromEvent(data: any) {
       }
     }
 
+    // Capture tools needed list from either 'tools' or 'install' phase
+    if ((phase === 'tools' || phase === 'install') && d.ToolsNeeded && Array.isArray(d.ToolsNeeded)) {
+      next.toolsNeeded = d.ToolsNeeded;
+    }
+
     if (phase === 'install' && message) {
-      // Capture tools needed list
-      if (d.ToolsNeeded && Array.isArray(d.ToolsNeeded)) {
-        next.toolsNeeded = d.ToolsNeeded;
-      }
       // When a new "Installing Y..." arrives, mark the previous tool as installed
       const installMatch = message.match(/^Installing\s+(\S+)/);
       if (installMatch) {
@@ -229,6 +230,12 @@ export function updateFromEvent(data: any) {
         next.toolsInstalled = [...next.toolsNeeded];
       }
       next.toolsInfo = message;
+    }
+
+    // When execute starts, mark any un-installed tools as ready (they were already present)
+    if (phase === 'execute' && next.toolsNeeded.length > 0 && next.toolsInstalled.length < next.toolsNeeded.length) {
+      next.toolsInstalled = [...next.toolsNeeded];
+      next.downloadingTool = '';
     }
 
     // Only log actual tool output, not status messages from other phases

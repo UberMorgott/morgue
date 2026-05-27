@@ -4,6 +4,7 @@
   import DropZone from '../components/DropZone.svelte';
   import { t, type Lang } from '../lib/i18n';
   import { PipelineService, ToolsService } from '../lib/api';
+  import { apiRunSeq } from '../lib/stores';
 
   import {
     pipelineState,
@@ -35,7 +36,7 @@
   let showSummary = false;
 
   $: if (['scan', 'recon'].includes($pipelineState.phase)) showDetection = true;
-  $: if ($pipelineState.phase === 'tools') showTools = true;
+  $: if ($pipelineState.phase === 'tools' || $pipelineState.toolsNeeded.length > 0) showTools = true;
   $: if ($pipelineState.phase === 'execute') showExecution = true;
   $: if ($pipelineState.phase === 'done') showSummary = true;
 
@@ -51,10 +52,26 @@
   $: paused = $pipelineState.paused;
   $: running = phase !== 'idle' && phase !== 'done' && phase !== 'error' && phase !== 'cancelled';
 
-  // Auto-start pipeline when inputPath changes
+  // Clear guard when inputPath is reset (e.g. API command resets before re-run)
+  $: if (!inputPath) lastProcessedPath = '';
+
+  // Auto-start pipeline when inputPath changes (user drag-drop / history click)
   $: if (inputPath && inputPath !== lastProcessedPath && !running && !startupBusy && phase === 'idle') {
     lastProcessedPath = inputPath;
     runPipeline();
+  }
+
+  // API run signal: App.svelte bumps apiRunSeq when an API "run" command
+  // arrives. This bypasses the reactive guards above so the pipeline starts
+  // reliably regardless of previous state or timing.
+  let prevApiRunSeq = 0;
+  $: if ($apiRunSeq > prevApiRunSeq) {
+    prevApiRunSeq = $apiRunSeq;
+    if (inputPath) {
+      resetSections();
+      lastProcessedPath = inputPath;
+      runPipeline();
+    }
   }
 
   // Compute stage statuses from pipeline phase
@@ -344,6 +361,9 @@
                 {#each $pipelineState.reconResults as r}
                   <div class="acc-detail-row">
                     <span class="acc-detail-mono">{r.file}</span>
+                    {#if $pipelineState.reconKind}
+                      <span class="tag tag-kind">{$pipelineState.reconKind}</span>
+                    {/if}
                     {#if r.kind}
                       <span class="tag {r.kind === 'Skipped' ? 'tag-muted' : r.kind === 'Unknown' ? 'tag-muted' : 'tag-accent'}">{r.kind}</span>
                     {/if}
@@ -459,7 +479,7 @@
             <div class="acc-section">
               <div class="acc-section-header">
                 <svg class="acc-icon acc-icon-bolt" width="16" height="16" viewBox="0 0 16 16"><path d="M8.5 1L3 9h4.5L6.5 15 13 7H8.5L9.5 1z" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linejoin="round"/></svg>
-                <span class="acc-section-title">{phase === 'done' ? t(lang, 'home.stage.done') : t(lang, 'home.stage.execute')}</span>
+                <span class="acc-section-title">{t(lang, 'home.stage.execute')}</span>
                 {#if phase === 'execute'}
                   <span class="spinner-sm"></span>
                 {/if}
@@ -733,7 +753,7 @@
     grid-template-columns: auto 1fr auto 1fr auto 1fr auto 1fr auto;
     align-items: start;
     width: 100%;
-    padding: 8px 0;
+    padding: 8px 16px;
   }
 
   .stage {
@@ -931,6 +951,12 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     flex: 1;
+  }
+
+  .tag-kind {
+    background: var(--accent-dim);
+    color: var(--accent);
+    border-color: var(--accent);
   }
 
   /* Detection meta row */
