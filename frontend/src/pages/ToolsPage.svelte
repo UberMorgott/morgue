@@ -22,66 +22,130 @@
   let runtimeBusy: Record<string, boolean> = {};
 
   let cleanups: Array<() => void> = [];
+  let eventSource: EventSource | null = null;
+
+  // Shared event handlers — used by both Wails events and SSE
+  function handleDownloadStart(data: any) {
+    const d = data.data || data;
+    const toolName = d.tool || d.Tool;
+    if (!toolName) return;
+    const opId = `install-${toolName}`;
+    addOperation({ id: opId, type: 'download', label: `${t(lang, 'status.downloading')} ${toolName}`, status: 'running', progress: 0 });
+  }
+
+  function handleDownloadProgress(data: any) {
+    const d = data.data || data;
+    const toolName = d.tool || d.Tool;
+    const bytes = d.bytes || d.Bytes || 0;
+    const total = d.total || d.Total || 1;
+    const pct = Math.round((bytes / total) * 100);
+    updateOperation(`install-${toolName}`, { progress: pct });
+    updateOperation(`download-${toolName}`, { progress: pct });
+    updateOperation(`update-${toolName}`, { progress: pct });
+  }
+
+  function handleDownloadComplete(data: any) {
+    const d = data.data || data;
+    const toolName = d.tool || d.Tool;
+    const error = d.error || d.Error;
+    if (error) {
+      updateOperation(`install-${toolName}`, { status: 'failed', error: String(error) });
+      updateOperation(`download-${toolName}`, { status: 'failed', error: String(error) });
+      updateOperation(`update-${toolName}`, { status: 'failed', error: String(error) });
+    } else {
+      updateOperation(`install-${toolName}`, { status: 'success', progress: 100 });
+      updateOperation(`download-${toolName}`, { status: 'success', progress: 100 });
+      updateOperation(`update-${toolName}`, { status: 'success', progress: 100 });
+    }
+  }
+
+  async function handleToolInstalled(data: any) {
+    const toolName = typeof data === 'string' ? data : (data?.data || data?.tool || data?.Tool || '');
+    if (!toolName) return;
+    try {
+      const st = await ToolsService.CheckAll();
+      const updated = (st || []).find((s: any) => (s.Name ?? s.name) === toolName);
+      if (updated) {
+        tools = tools.map(t => t.name === toolName ? {
+          ...t,
+          installed: updated.Installed ?? updated.installed ?? false,
+          version: updated.Version ?? updated.version ?? '',
+          path: updated.Path ?? updated.path ?? '',
+        } : t);
+      }
+    } catch (e) { console.error('Refresh after tool:installed failed:', e); }
+  }
+
+  function handleInstallError(data: any) {
+    const d = data.data || data;
+    const toolName = d.tool || d.Tool;
+    if (!toolName) return;
+    updateOperation(`install-${toolName}`, { status: 'failed', error: d.error || d.Error || 'Unknown error' });
+  }
+
+  // Connect to the local SSE endpoint for API-triggered events
+  function connectSSE() {
+    try {
+      eventSource = new EventSource('http://127.0.0.1:19876/api/events');
+
+      eventSource.addEventListener('tool:download:start', (e) => {
+        handleDownloadStart(JSON.parse(e.data));
+      });
+      eventSource.addEventListener('tool:download:progress', (e) => {
+        handleDownloadProgress(JSON.parse(e.data));
+      });
+      eventSource.addEventListener('tool:download:complete', (e) => {
+        handleDownloadComplete(JSON.parse(e.data));
+      });
+      eventSource.addEventListener('tool:installed', (e) => {
+        handleToolInstalled(JSON.parse(e.data));
+      });
+      eventSource.addEventListener('tool:install:start', (e) => {
+        const d = JSON.parse(e.data);
+        const toolName = d.tool || d.Tool;
+        if (!toolName) return;
+        addOperation({ id: `install-${toolName}`, type: 'download', label: `${t(lang, 'status.installing')} ${toolName}`, status: 'running', progress: 0 });
+      });
+      eventSource.addEventListener('tool:install:complete', (e) => {
+        const d = JSON.parse(e.data);
+        const toolName = d.tool || d.Tool;
+        if (toolName) {
+          updateOperation(`install-${toolName}`, { status: 'success', progress: 100 });
+          handleToolInstalled(d);
+        }
+      });
+      eventSource.addEventListener('tool:install:error', (e) => {
+        handleInstallError(JSON.parse(e.data));
+      });
+
+      eventSource.onerror = () => {
+        // Silently handle — API server might not be running yet.
+        // EventSource will auto-reconnect per spec.
+      };
+    } catch {
+      // SSE not available — GUI-only mode, Wails events still work.
+    }
+  }
 
   onMount(async () => {
-    // Create progress operation when install starts (covers API-triggered installs)
-    cleanups.push(onEvent('tool:download:start', (data: any) => {
-      const d = data.data || data;
-      const toolName = d.tool || d.Tool;
-      if (!toolName) return;
-      const opId = `install-${toolName}`;
-      addOperation({ id: opId, type: 'download', label: `${t(lang, 'status.downloading')} ${toolName}`, status: 'running', progress: 0 });
-    }));
+    // Wails event listeners (for GUI-initiated operations)
+    cleanups.push(onEvent('tool:download:start', handleDownloadStart));
+    cleanups.push(onEvent('tool:download:progress', handleDownloadProgress));
+    cleanups.push(onEvent('tool:download:complete', handleDownloadComplete));
+    cleanups.push(onEvent('tool:installed', handleToolInstalled));
 
-    cleanups.push(onEvent('tool:download:progress', (data: any) => {
-      const d = data.data || data;
-      const toolName = d.tool || d.Tool;
-      const bytes = d.bytes || d.Bytes || 0;
-      const total = d.total || d.Total || 1;
-      const pct = Math.round((bytes / total) * 100);
-      updateOperation(`install-${toolName}`, { progress: pct });
-      updateOperation(`download-${toolName}`, { progress: pct });
-      updateOperation(`update-${toolName}`, { progress: pct });
-    }));
-
-    cleanups.push(onEvent('tool:download:complete', (data: any) => {
-      const d = data.data || data;
-      const toolName = d.tool || d.Tool;
-      const error = d.error || d.Error;
-      if (error) {
-        updateOperation(`install-${toolName}`, { status: 'failed', error: String(error) });
-        updateOperation(`download-${toolName}`, { status: 'failed', error: String(error) });
-        updateOperation(`update-${toolName}`, { status: 'failed', error: String(error) });
-      } else {
-        updateOperation(`install-${toolName}`, { status: 'success', progress: 100 });
-        updateOperation(`download-${toolName}`, { status: 'success', progress: 100 });
-        updateOperation(`update-${toolName}`, { status: 'success', progress: 100 });
-      }
-    }));
-
-    cleanups.push(onEvent('tool:installed', async (data: any) => {
-      const toolName = typeof data === 'string' ? data : (data?.data || data?.tool || data?.Tool || '');
-      if (!toolName) return;
-      // Refresh status for the installed tool
-      try {
-        const st = await ToolsService.CheckAll();
-        const updated = (st || []).find((s: any) => (s.Name ?? s.name) === toolName);
-        if (updated) {
-          tools = tools.map(t => t.name === toolName ? {
-            ...t,
-            installed: updated.Installed ?? updated.installed ?? false,
-            version: updated.Version ?? updated.version ?? '',
-            path: updated.Path ?? updated.path ?? '',
-          } : t);
-        }
-      } catch (e) { console.error('Refresh after tool:installed failed:', e); }
-    }));
+    // SSE listeners (for API-triggered operations)
+    connectSSE();
 
     await Promise.all([loadTools(), loadRuntimes()]);
   });
 
   onDestroy(() => {
     cleanups.forEach(fn => fn());
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
   });
 
   async function loadRuntimes() {
