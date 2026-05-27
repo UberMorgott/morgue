@@ -257,14 +257,14 @@
 
         <!-- Section 5: AI Integration -->
         <section class="settings-card glass">
-          <h3 class="card-title">AI Integration</h3>
+          <h3 class="card-title">{t(lang, 'settings.aiIntegration')}</h3>
           <div class="card-rows">
             <div class="setting-row">
-              <span class="setting-label">Copy instructions for AI assistant</span>
-              <CopyInstructions />
+              <span class="setting-label">{t(lang, 'settings.copyInstructions')}</span>
+              <CopyInstructions {lang} />
             </div>
             <div class="setting-row">
-              <span class="setting-label">API Status</span>
+              <span class="setting-label">{t(lang, 'settings.apiStatus')}</span>
               <span class="setting-value-mono">localhost:19876</span>
             </div>
           </div>

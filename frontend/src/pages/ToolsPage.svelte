@@ -71,7 +71,7 @@
             };
           });
         }
-      } catch { /* ignore polling errors */ }
+      } catch (e) { console.error('tools polling failed:', e); }
     }, 3000);
   }
 
@@ -167,7 +167,8 @@
           ? { ...t, latestVersion: result.latestVersion || '', updateAvailable: result.updateAvailable || false, checking: false }
           : t
       );
-    } catch {
+    } catch (e) {
+      console.error('version check failed:', e);
       tools = tools.map(t => t.name === name ? { ...t, checking: false } : t);
     }
   }
@@ -268,9 +269,11 @@
   </div>
   {#if loading}
     <div class="tools-loading">{t(lang, 'tools.checking')}</div>
+  {:else if tools.length === 0}
+    <div class="tools-empty">{t(lang, 'tools.empty')}</div>
   {:else}
     <div class="tools-list">
-      {#each tools as tool}
+      {#each tools as tool (tool.name)}
         <ToolRow {lang} name={tool.name} installed={tool.installed} version={tool.version}
           latestVersion={tool.latestVersion} updateAvailable={tool.updateAvailable}
           category={tool.category} description={tool.description} {busy}
@@ -295,5 +298,6 @@
   .header-btn-accent:hover:not(:disabled) { box-shadow: 0 0 12px var(--accent-dim); }
   .tools-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
   .tools-loading { color: var(--text-muted); padding: 24px; text-align: center; }
+  .tools-empty { color: var(--text-muted); padding: 24px; text-align: center; }
 
 </style>

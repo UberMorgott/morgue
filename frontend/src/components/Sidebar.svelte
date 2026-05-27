@@ -21,7 +21,7 @@
 
 <nav class="sidebar" class:collapsed>
   <div class="nav-items">
-    {#each items as item}
+    {#each items as item (item.id)}
       <button
         class="nav-item"
         class:active={currentPage === item.id}
@@ -76,6 +76,10 @@
     transition: all 0.15s;
     white-space: nowrap;
   }
+  .nav-item:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
   .nav-item:hover {
     background: rgba(255, 140, 40, 0.06);
     color: var(--text-primary);
@@ -107,6 +111,10 @@
     color: var(--text-muted);
     font-size: 14px;
     transition: all 0.15s;
+  }
+  .collapse-btn:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
   }
   .collapse-btn:hover {
     background: var(--accent-dim);

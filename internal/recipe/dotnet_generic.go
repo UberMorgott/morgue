@@ -1,7 +1,6 @@
 package recipe
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -128,9 +127,4 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return nil
-}
-
-// runTool is a helper to run a tool and return combined output for logging.
-func runTool(ctx context.Context, toolPath string, args []string, dir string) (*util.CmdResult, error) {
-	return util.RunCmd(ctx, toolPath, args, dir)
 }

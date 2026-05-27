@@ -1,5 +1,10 @@
 <script lang="ts">
   import { Clipboard } from '@wailsio/runtime';
+  import { t, type Lang } from '../lib/i18n';
+
+  let { lang = 'en' as Lang }: { lang?: Lang } = $props();
+
+  const API_BASE = 'http://127.0.0.1:19876';
 
   let copied = $state(false);
 
@@ -32,7 +37,7 @@
   async function copyInstructions() {
     let text: string;
     try {
-      const res = await fetch('http://127.0.0.1:19876/api/instructions');
+      const res = await fetch(`${API_BASE}/api/instructions`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       text = await res.text();
     } catch (e) {
@@ -47,7 +52,7 @@
 </script>
 
 <button class="copy-btn" onclick={copyInstructions}>
-  {copied ? 'Copied!' : 'Copy AI Instructions'}
+  {copied ? t(lang, 'settings.copied') : t(lang, 'settings.copyButton')}
 </button>
 
 <style>

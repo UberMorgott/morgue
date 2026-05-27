@@ -1,6 +1,7 @@
 package recon
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,8 +25,28 @@ func parsePE(path string) (*peparser.File, error) {
 	return f, nil
 }
 
+// extractStrings pulls printable ASCII strings of minimum length from raw data.
+func extractStrings(data []byte, minLen int) []string {
+	var result []string
+	var current []byte
+	for _, b := range data {
+		if b >= 0x20 && b < 0x7f {
+			current = append(current, b)
+		} else {
+			if len(current) >= minLen {
+				result = append(result, string(current))
+			}
+			current = current[:0]
+		}
+	}
+	if len(current) >= minLen {
+		result = append(result, string(current))
+	}
+	return result
+}
+
 // Classify performs reconnaissance on a binary file and returns a Result.
-func Classify(path string) (Result, error) {
+func Classify(ctx context.Context, path string) (Result, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return Result{Path: path, Kind: Unknown, Fallback: true}, nil
@@ -66,7 +87,7 @@ func Classify(path string) (Result, error) {
 	// Run DiE if available (best-effort)
 	diecPath := util.ToolPath("diec", "diec.exe")
 	if _, statErr := os.Stat(diecPath); statErr == nil {
-		RunDiE(&r, diecPath, path)
+		RunDiE(ctx, &r, diecPath, path)
 	}
 
 	// Read capped file data for embedded signal detection (max 10MB to avoid OOM)
@@ -79,8 +100,11 @@ func Classify(path string) (Result, error) {
 		_ = hf.Close()
 	}
 
+	// Extract printable strings for heuristic analysis
+	strs := extractStrings(fileData, 6)
+
 	// Enrich with heuristics
-	EnrichWithHeuristics(&r, sectionNames, importNames, nil, fileData)
+	EnrichWithHeuristics(&r, sectionNames, importNames, strs, fileData)
 
 	return r, nil
 }
@@ -89,7 +113,7 @@ func Classify(path string) (Result, error) {
 func classifyByExtension(ext string) Kind {
 	switch strings.ToLower(ext) {
 	case ".dll":
-		return Managed // optimistic — most DLLs we care about are .NET
+		return Unknown
 	case ".so", ".dylib":
 		return Native
 	default:
@@ -110,7 +134,7 @@ func classifyNativeCompiler(f *peparser.File) string {
 	}
 	for _, sec := range f.Sections {
 		name := strings.TrimRight(string(sec.Header.Name[:]), "\x00")
-		if name == "CODE" || name == ".idata" {
+		if name == "CODE" {
 			return "Delphi"
 		}
 	}

@@ -136,21 +136,21 @@
   async function handleCancel() {
     try {
       await PipelineService.Stop();
-    } catch {}
+    } catch (e) { console.error('pipeline stop failed:', e); }
     pipelineState.update(s => ({ ...s, phase: 'cancelled', paused: false }));
   }
 
   async function handlePause() {
     try {
       await PipelineService.Pause();
-    } catch {}
+    } catch (e) { console.error('pipeline pause failed:', e); }
     pipelineState.update(s => ({ ...s, paused: true }));
   }
 
   async function handleResume() {
     try {
       await PipelineService.Resume();
-    } catch {}
+    } catch (e) { console.error('pipeline resume failed:', e); }
     pipelineState.update(s => ({ ...s, paused: false }));
   }
 
@@ -161,7 +161,7 @@
         if (status && status.running) {
           lastProcessedPath = inputPath;
         }
-      } catch {}
+      } catch (e) { console.error('pipeline status check failed:', e); }
     }
   });
 

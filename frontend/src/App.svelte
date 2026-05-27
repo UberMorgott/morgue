@@ -21,78 +21,89 @@
   const unsubLang = currentLang.subscribe(v => lang = v);
 
   // --- API command poll: runs at App level so commands are received on any tab ---
-  let apiPollTimer: ReturnType<typeof setInterval> | null = null;
+  let apiPollTimer: ReturnType<typeof setTimeout> | null = null;
+  let pollDelay = 500;
   let processingApiCommand = false;
+
+  function schedulePoll() {
+    apiPollTimer = setTimeout(async () => {
+      if (processingApiCommand) { schedulePoll(); return; }
+      try {
+        const cmd = await ToolsService.PollAPICommand();
+        pollDelay = 500;
+        if (cmd && cmd.action) {
+          processingApiCommand = true;
+          try {
+            switch (cmd.action) {
+              case 'install': {
+                const name = cmd.tool || '';
+                if (!name) break;
+                try {
+                  await ToolsService.Install(name);
+                } catch (err: any) {
+                  console.error(`API install ${name} failed:`, err);
+                }
+                break;
+              }
+              case 'install-all': {
+                try {
+                  const statuses = await ToolsService.CheckAll();
+                  const missing = (statuses || []).filter((s: any) => !s.Installed);
+                  for (const s of missing) {
+                    const name = s.Name ?? '';
+                    if (!name) continue;
+                    try {
+                      await ToolsService.Install(name);
+                    } catch (e: any) {
+                      console.error(`API install ${name} failed:`, e);
+                    }
+                  }
+                } catch (err: any) {
+                  console.error('API install-all failed:', err);
+                }
+                break;
+              }
+              case 'delete': {
+                const name = cmd.tool || '';
+                if (!name) break;
+                try {
+                  await ToolsService.Delete(name);
+                } catch (err: any) {
+                  console.error(`API delete ${name} failed:`, err);
+                }
+                break;
+              }
+              case 'run': {
+                const path = cmd.path || '';
+                if (!path) break;
+                resetPipeline();
+                pipelineInputPath = path;
+                currentPage = 'home';
+                await tick();
+                apiRunSeq.update(n => n + 1);
+                break;
+              }
+            }
+          } finally {
+            processingApiCommand = false;
+          }
+        }
+      } catch (e) {
+        pollDelay = Math.min(pollDelay * 2, 30000);
+        console.error('API poll failed:', e);
+      }
+      schedulePoll();
+    }, pollDelay);
+  }
 
   function startApiPoll() {
     if (apiPollTimer) return;
-    apiPollTimer = setInterval(async () => {
-      if (processingApiCommand) return;
-      try {
-        const cmd = await ToolsService.PollAPICommand();
-        if (!cmd || !cmd.action) return;
-        processingApiCommand = true;
-        try {
-          switch (cmd.action) {
-            case 'install': {
-              const name = cmd.tool || '';
-              if (!name) break;
-              try {
-                await ToolsService.Install(name);
-              } catch (err: any) {
-                console.error(`API install ${name} failed:`, err);
-              }
-              break;
-            }
-            case 'install-all': {
-              try {
-                const statuses = await ToolsService.CheckAll();
-                const missing = (statuses || []).filter((s: any) => !s.Installed);
-                for (const s of missing) {
-                  const name = s.Name ?? '';
-                  if (!name) continue;
-                  try {
-                    await ToolsService.Install(name);
-                  } catch (e: any) {
-                    console.error(`API install ${name} failed:`, e);
-                  }
-                }
-              } catch (err: any) {
-                console.error('API install-all failed:', err);
-              }
-              break;
-            }
-            case 'delete': {
-              const name = cmd.tool || '';
-              if (!name) break;
-              try {
-                await ToolsService.Delete(name);
-              } catch (err: any) {
-                console.error(`API delete ${name} failed:`, err);
-              }
-              break;
-            }
-            case 'run': {
-              const path = cmd.path || '';
-              if (!path) break;
-              resetPipeline();
-              pipelineInputPath = path;
-              currentPage = 'home';
-              await tick();
-              apiRunSeq.update(n => n + 1);
-              break;
-            }
-          }
-        } finally {
-          processingApiCommand = false;
-        }
-      } catch { /* ignore poll errors */ }
-    }, 500);
+    schedulePoll();
   }
 
   function stopApiPoll() {
     if (apiPollTimer) {
-      clearInterval(apiPollTimer);
+      clearTimeout(apiPollTimer);
       apiPollTimer = null;
     }
   }
@@ -106,6 +117,10 @@
   });
 
   onMount(async () => {
+    window.addEventListener('unhandledrejection', (e) => {
+      console.error('Unhandled promise rejection:', e.reason);
+    });
+
     startApiPoll();
 
     cleanupPipelineProgress = onEvent('pipeline:progress', (data: any) => {
