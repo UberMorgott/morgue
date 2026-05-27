@@ -97,7 +97,7 @@
 
   <!-- Stage stepper -->
   <div class="stepper">
-    {#each stageIds as id, i}
+    {#each stageIds as id, i (id)}
       {@const status = stages[id]}
       <div class="stage" class:stage-done={status === 'done'} class:stage-active={status === 'active'} class:stage-error={status === 'error'} class:stage-pending={status === 'pending'}>
         <div class="stage-circle">
@@ -138,7 +138,7 @@
           </div>
 
           {#if $pipelineState.reconKind}
-            {#each $pipelineState.reconResults as r}
+            {#each $pipelineState.reconResults as r, i (i)}
               <div class="acc-detail-row">
                 <span class="acc-detail-mono">{r.file}</span>
                 {#if $pipelineState.reconKind}
@@ -150,13 +150,13 @@
               </div>
             {/each}
             {@const metaItems = [
-              $pipelineState.compiler ? `Compiler: ${$pipelineState.compiler}` : '',
-              $pipelineState.obfuscator ? `Obfuscator: ${$pipelineState.obfuscator}` : '',
-              $pipelineState.fileSize ? `Size: ${formatFileSize($pipelineState.fileSize)}` : '',
+              $pipelineState.compiler ? `${t(lang, 'pipeline.compiler')} ${$pipelineState.compiler}` : '',
+              $pipelineState.obfuscator ? `${t(lang, 'pipeline.obfuscator')} ${$pipelineState.obfuscator}` : '',
+              $pipelineState.fileSize ? `${t(lang, 'pipeline.size')} ${formatFileSize($pipelineState.fileSize)}` : '',
             ].filter(Boolean)}
             {#if metaItems.length > 0}
               <div class="acc-detail-row detect-meta">
-                {#each metaItems as item, i}
+                {#each metaItems as item, i (i)}
                   {#if i > 0}
                     <span class="detect-meta-sep">|</span>
                   {/if}
@@ -166,7 +166,7 @@
             {/if}
             {#if $pipelineState.recipeName}
               <div class="acc-detail-row">
-                <span class="acc-detail-label">Recipe</span>
+                <span class="acc-detail-label">{t(lang, 'pipeline.recipe')}</span>
                 <span class="acc-detail-mono">{$pipelineState.recipeName}</span>
                 {#if $pipelineState.recipeDesc}
                   <span class="acc-detail-value muted">&mdash; {$pipelineState.recipeDesc}</span>
@@ -174,7 +174,7 @@
               </div>
             {/if}
           {:else}
-            {#each $pipelineState.reconResults as r}
+            {#each $pipelineState.reconResults as r, i (i)}
               <div class="acc-detail-row">
                 <span class="acc-detail-mono">{r.file}</span>
                 {#if r.kind}
@@ -207,7 +207,7 @@
 
           {#if $pipelineState.toolsNeeded.length > 0}
             <div class="tools-list">
-              {#each $pipelineState.toolsNeeded as tool}
+              {#each $pipelineState.toolsNeeded as tool (tool)}
                 {@const isInstalled = $pipelineState.toolsInstalled.includes(tool)}
                 {@const isInstalling = !isInstalled && $pipelineState.toolsInfo.includes(tool)}
                 <div class="tool-row">
@@ -222,7 +222,7 @@
                   </span>
                   <span class="tool-name">{tool}</span>
                   <span class="tool-status" class:tool-status-ready={isInstalled} class:tool-status-installing={isInstalling}>
-                    {isInstalled ? 'ready' : isInstalling ? 'installing...' : 'pending'}
+                    {isInstalled ? t(lang, 'pipeline.toolReady') : isInstalling ? t(lang, 'pipeline.toolInstalling') : t(lang, 'pipeline.toolPending')}
                   </span>
                 </div>
               {/each}
@@ -245,7 +245,7 @@
                 </div>
                 <span class="dl-pct">{$pipelineState.downloadProgress}%</span>
               {:else}
-                <span class="dl-extracting">extracting...</span>
+                <span class="dl-extracting">{t(lang, 'pipeline.extracting')}</span>
               {/if}
             </div>
           {/if}
@@ -265,7 +265,7 @@
 
           {#if $pipelineState.currentTarget}
             <div class="acc-detail-row">
-              <span class="acc-detail-label">Target</span>
+              <span class="acc-detail-label">{t(lang, 'pipeline.target')}</span>
               <span class="acc-detail-mono">{basename($pipelineState.currentTarget)}</span>
             </div>
           {/if}

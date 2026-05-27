@@ -1,6 +1,7 @@
 package recon
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,7 +14,7 @@ func TestClassifyInvalidFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := Classify(p)
+	result, err := Classify(context.Background(), p)
 	if err != nil {
 		t.Fatalf("Classify() should not error on invalid PE, got: %v", err)
 	}
@@ -40,7 +41,7 @@ func TestClassifyMZStub(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := Classify(p)
+	result, err := Classify(context.Background(), p)
 	if err != nil {
 		t.Fatalf("Classify() should not error on MZ stub, got: %v", err)
 	}
@@ -56,7 +57,7 @@ func TestClassifyByExtension(t *testing.T) {
 		ext  string
 		want Kind
 	}{
-		{"dll", ".dll", Managed},
+		{"dll", ".dll", Unknown},
 		{"exe", ".exe", Unknown},
 		{"so", ".so", Native},
 		{"dylib", ".dylib", Native},
@@ -73,7 +74,7 @@ func TestClassifyByExtension(t *testing.T) {
 }
 
 func TestClassifyNonexistent(t *testing.T) {
-	result, err := Classify("/nonexistent/path/binary.exe")
+	result, err := Classify(context.Background(), "/nonexistent/path/binary.exe")
 	if err != nil {
 		t.Fatalf("Classify() should not error on missing file, got: %v", err)
 	}

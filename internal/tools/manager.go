@@ -271,7 +271,8 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 				}
 			}
 		case t.Method == MethodDirectURL && t.URL != "":
-			resp, err := http.Head(t.URL)
+			client := &http.Client{Timeout: 15 * time.Second}
+			resp, err := client.Head(t.URL)
 			if err == nil {
 				resp.Body.Close()
 				if lm := resp.Header.Get("Last-Modified"); lm != "" {
@@ -318,7 +319,8 @@ func (m *Manager) CheckLatestVersionSingle(name string) (latestVersion string, u
 			latestVersion = ver
 		}
 	case tool.Method == MethodDirectURL && tool.URL != "":
-		resp, err := http.Head(tool.URL)
+		client := &http.Client{Timeout: 15 * time.Second}
+		resp, err := client.Head(tool.URL)
 		if err == nil {
 			resp.Body.Close()
 			if lm := resp.Header.Get("Last-Modified"); lm != "" {

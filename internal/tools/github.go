@@ -76,7 +76,7 @@ func fetchLatestCommit(repo string) (string, error) {
 			continue
 		}
 
-		body, err := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
 		resp.Body.Close()
 		if err != nil {
 			continue

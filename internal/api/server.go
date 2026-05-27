@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/UberMorgott/morgue/internal/services"
@@ -58,8 +59,11 @@ func NewServer(pipeline *services.PipelineService, tools *services.ToolsService,
 	mux.HandleFunc("GET /api/instructions", s.handleInstructions)
 
 	s.http = &http.Server{
-		Addr:    listenAddr,
-		Handler: corsMiddleware(maxBodyMiddleware(mux)),
+		Addr:              listenAddr,
+		Handler:           corsMiddleware(maxBodyMiddleware(mux)),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      120 * time.Second,
 	}
 
 	return s
@@ -111,21 +115,17 @@ func (s *Server) HookEvents(app *application.App) {
 	}
 }
 
-// EmitToGUI emits a Wails event so the frontend receives it directly.
-// Safe to call when app is nil (headless / CLI mode).
-func (s *Server) EmitToGUI(event string, data ...any) {
-	if s.app != nil {
-		s.app.Event.Emit(event, data...)
-	}
-}
-
-// corsMiddleware adds permissive CORS headers so the Wails webview
-// (which runs on a different origin) can call the local API.
+// corsMiddleware adds CORS headers restricted to localhost and Wails origins.
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		if origin == "" || strings.HasPrefix(origin, "http://localhost") || strings.HasPrefix(origin, "http://127.0.0.1") || strings.HasPrefix(origin, "wails://") {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

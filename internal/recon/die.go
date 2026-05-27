@@ -23,8 +23,8 @@ type dieOutput struct {
 }
 
 // RunDiE runs Detect It Easy on a target binary and enriches the Result (best-effort).
-func RunDiE(r *Result, diePath, targetPath string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+func RunDiE(parent context.Context, r *Result, diePath, targetPath string) {
+	ctx, cancel := context.WithTimeout(parent, 60*time.Second)
 	defer cancel()
 
 	cmdResult, err := util.RunCmd(ctx, diePath, []string{"-j", targetPath}, "")
