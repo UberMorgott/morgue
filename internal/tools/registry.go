@@ -8,7 +8,7 @@ var Registry = []ToolDef{
 		Category:    CategoryDetector,
 		Method:      MethodGitHubRelease,
 		Repo:        "horsicq/DIE-engine",
-		AssetGlob:   "die_*_win64_portable*",
+		AssetGlob:   "die_win64_portable_*",
 		Binary:      "diec.exe",
 	},
 	{
