@@ -38,7 +38,8 @@ type PipelineEvent struct {
 	RecipeName string   // matched recipe name
 	RecipeDesc string   // matched recipe description
 	ToolsNeeded []string // all tools required for this recipe
-	OutputPath string   // output directory (on done)
+	OutputPath  string   // output directory (on done)
+	OutputStats []string // post-execution file statistics
 }
 
 // PauseGate allows pausing/resuming the pipeline between steps.

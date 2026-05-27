@@ -31,6 +31,7 @@ export interface PipelineState {
   reconResults: Array<{ file: string; kind: string }>;  // classification results
   toolsInfo: string;         // "All tools ready" or "Installing ilspycmd..."
   logs: string[];            // last N log messages (keep max 20)
+  outputStats: string[];     // post-execution file statistics
   // Enriched fields from backend events
   reconKind: string;         // "Managed", "Native", "UnrealEngine"
   compiler: string;          // "Delphi", "Go", ""
@@ -104,6 +105,7 @@ export function startPipeline(inputPath: string) {
     reconResults: [],
     toolsInfo: '',
     logs: [],
+    outputStats: [],
     reconKind: '',
     compiler: '',
     obfuscator: '',
@@ -208,8 +210,16 @@ export function updateFromEvent(data: any) {
       next.toolsInfo = message;
     }
 
-    if ((phase === 'log' || message) && message) {
-      next.logs = [...s.logs.slice(-19), message];
+    // Only log actual tool output, not status messages from other phases
+    if (phase === 'execute' || phase === 'log') {
+      if (message) {
+        next.logs = [...s.logs.slice(-19), message];
+      }
+    }
+
+    // Capture output stats
+    if (phase === 'stats' && d.OutputStats) {
+      next.outputStats = d.OutputStats;
     }
 
     // File counts
