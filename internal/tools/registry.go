@@ -12,13 +12,14 @@ var Registry = []ToolDef{
 		Binary:      "diec.exe",
 	},
 	{
-		Name:        "ilspycmd",
-		Description: "ILSpy command-line decompiler",
-		Category:    CategoryDecompiler,
-		Method:      MethodDotnetTool,
-		DotnetID:    "ilspycmd",
-		Binary:      "ilspycmd.exe",
-		RuntimeDeps: []RuntimeKind{RuntimeDotnet},
+		Name:          "ilspycmd",
+		Description:   "ILSpy command-line decompiler",
+		Category:      CategoryDecompiler,
+		Method:        MethodDotnetTool,
+		DotnetID:      "ilspycmd",
+		DotnetVersion: "8.2.0.7535", // 9.x+ has broken NuGet packaging (missing DotnetToolSettings.xml)
+		Binary:        "ilspycmd.exe",
+		RuntimeDeps:   []RuntimeKind{RuntimeDotnet},
 	},
 	{
 		Name:        "strings",

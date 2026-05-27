@@ -58,7 +58,8 @@ type ToolDef struct {
 	Method      Method
 	Repo        string // GitHub owner/repo
 	URL         string // Direct download URL (for MethodDirectURL)
-	DotnetID    string // dotnet tool ID (for MethodDotnetTool)
+	DotnetID      string // dotnet tool ID (for MethodDotnetTool)
+	DotnetVersion string // pinned version for dotnet tool install (optional)
 	AssetGlob   string // Glob pattern for matching GitHub release assets
 	Binary      string        // Expected executable name after install
 	Optional    bool

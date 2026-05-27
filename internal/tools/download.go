@@ -47,11 +47,16 @@ func downloadFile(url, destPath string, onProgress func(bytesDown, bytesTotal in
 }
 
 // extractArchive extracts an archive file into destDir.
+// Standalone executables (.exe) are kept as-is (no extraction needed).
 func extractArchive(archivePath, destDir string) error {
-	ext := filepath.Ext(archivePath)
+	ext := strings.ToLower(filepath.Ext(archivePath))
 	switch ext {
 	case ".zip":
 		return extractZip(archivePath, destDir)
+	case ".exe":
+		// Standalone executable — no extraction needed.
+		// The caller downloaded it into destDir already; nothing to do.
+		return nil
 	default:
 		return fmt.Errorf("unsupported archive format: %s", ext)
 	}
@@ -110,8 +115,13 @@ func installFromURL(tool ToolDef, destDir string, onProgress func(bytesDown, byt
 	if err := downloadFile(tool.URL, destPath, onProgress); err != nil {
 		return err
 	}
-	defer os.Remove(destPath)
-	return extractArchive(destPath, destDir)
+	if err := extractArchive(destPath, destDir); err != nil {
+		return err
+	}
+	if strings.ToLower(filepath.Ext(destPath)) != ".exe" {
+		os.Remove(destPath)
+	}
+	return nil
 }
 
 // installDotnetTool installs a .NET global tool.
@@ -125,9 +135,11 @@ func installDotnetTool(tool ToolDef, destDir string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	_, err = util.RunCmd(ctx, dotnetBin, []string{
-		"tool", "install", tool.DotnetID, "--tool-path", destDir,
-	}, "")
+	args := []string{"tool", "install", tool.DotnetID, "--tool-path", destDir}
+	if tool.DotnetVersion != "" {
+		args = append(args, "--version", tool.DotnetVersion)
+	}
+	_, err = util.RunCmd(ctx, dotnetBin, args, "")
 	return err
 }
 
