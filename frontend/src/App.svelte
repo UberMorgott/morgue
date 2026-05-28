@@ -6,6 +6,7 @@
   import HomePage from './pages/HomePage.svelte';
   import ToolsPage from './pages/ToolsPage.svelte';
   import SettingsPage from './pages/SettingsPage.svelte';
+  import AboutPage from './pages/AboutPage.svelte';
   import { ReconService, UpdateService, ToolsService } from './lib/api';
   import { currentLang, startupBusy, apiRunSeq } from './lib/stores';
 
@@ -181,6 +182,8 @@
         />
       {:else if currentPage === 'settings'}
         <SettingsPage {lang} />
+      {:else if currentPage === 'about'}
+        <AboutPage {lang} />
       {/if}
     </div>
   </div>

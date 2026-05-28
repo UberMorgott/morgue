@@ -34,6 +34,14 @@ export function Check() {
 }
 
 /**
+ * GetCommit returns the current build commit hash.
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetCommit() {
+    return $Call.ByID(3621456322);
+}
+
+/**
  * GetVersion returns the current application version.
  * @returns {$CancellablePromise<string>}
  */
