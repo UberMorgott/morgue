@@ -12,7 +12,7 @@
   }
 </script>
 
-<div class="composition-panel glass neon-border animate-in">
+<div class="glass neon-border pipeline-panel animate-in">
   <h3 class="panel-title">&#x2B21; {t(lang, 'composition.title')}</h3>
 
   <!-- Groups section -->
@@ -68,24 +68,6 @@
 </div>
 
 <style>
-  .composition-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    padding: 18px 20px;
-    border-radius: var(--radius);
-  }
-
-  .panel-title {
-    font-family: 'Orbitron', 'Play', sans-serif;
-    font-size: 0.88rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: var(--text-heading);
-    margin: 0;
-  }
-
   /* Groups */
   .groups {
     display: flex;

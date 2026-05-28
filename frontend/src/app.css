@@ -245,6 +245,26 @@ html::after {
               0 0 48px rgba(255, 100, 0, 0.1);
 }
 
+/* Pipeline panel — standard glass container for pipeline UI sections */
+.pipeline-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+}
+
+/* Panel title — Orbitron uppercase heading used inside pipeline panels */
+.panel-title {
+  font-family: 'Orbitron', 'Play', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--accent);
+  text-shadow: 0 0 6px rgba(255, 138, 32, 0.4);
+  margin: 0;
+}
+
 /* ══════════════════════════════════════
    BUTTONS
    ══════════════════════════════════════ */

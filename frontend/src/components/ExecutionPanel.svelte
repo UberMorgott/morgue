@@ -56,7 +56,7 @@
   }
 </script>
 
-<div class="exec-panel glass neon-border animate-in" style="animation-delay: 0.8s;">
+<div class="glass neon-border pipeline-panel animate-in" style="animation-delay: 0.8s;">
   <h3 class="panel-title">&#x25B6; {t(lang, 'execution.title')}</h3>
 
   <!-- Per-tool rows -->
@@ -115,25 +115,6 @@
 </div>
 
 <style>
-  .exec-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    padding: 18px 20px;
-    border-radius: var(--radius);
-    animation-fill-mode: backwards;
-  }
-
-  .panel-title {
-    font-family: 'Orbitron', 'Play', sans-serif;
-    font-size: 0.88rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: var(--text-heading);
-    margin: 0;
-  }
-
   /* Tool grid */
   .tool-grid {
     display: flex;
