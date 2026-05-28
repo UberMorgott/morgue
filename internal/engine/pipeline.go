@@ -182,13 +182,14 @@ func (e *Engine) classifyTarget(
 
 	// Emit enriched recon event
 	em.send(PipelineEvent{
-		Phase:      "recon",
-		Target:     filePath,
-		Message:    reconResult.Kind.String(),
-		ReconKind:  reconResult.Kind.String(),
-		Compiler:   reconResult.Compiler,
-		Obfuscator: reconResult.Obfuscator,
-		FileSize:   reconResult.Size,
+		Phase:        "recon",
+		Target:       filePath,
+		Message:      reconResult.Kind.String(),
+		ReconKind:    reconResult.Kind.String(),
+		Compiler:     reconResult.Compiler,
+		Obfuscator:   reconResult.Obfuscator,
+		Deobfuscator: resolveDeobfuscator(reconResult.Obfuscator),
+		FileSize:     reconResult.Size,
 	})
 
 	return reconResult, nil
@@ -463,6 +464,21 @@ func buildSummary(results []TargetResult, elapsed time.Duration) PipelineSummary
 	return PipelineSummary{
 		Stats:   stats,
 		Results: entries,
+	}
+}
+
+// resolveDeobfuscator maps a detected obfuscator name to its deobfuscator tool.
+// Returns empty string when no automated deobfuscator is available.
+func resolveDeobfuscator(obfuscator string) string {
+	if obfuscator == "" {
+		return ""
+	}
+	lower := strings.ToLower(obfuscator)
+	switch {
+	case strings.Contains(lower, "confuserex"), strings.Contains(lower, "confuser"):
+		return "de4dot"
+	default:
+		return ""
 	}
 }
 
