@@ -105,6 +105,11 @@
   ));
   let statsObfuscationCount = $derived($pipelineState.obfuscations.length);
 
+  // Single visible panel in row-2col should span full width
+  let showComposition = $derived(showAnalysis && compositionGroups.length > 0);
+  let showToolsPanel = $derived(showTools && $pipelineState.toolsNeeded.length > 0);
+  let rowSingle = $derived(showComposition !== showToolsPanel);
+
   function formatFileSize(bytes: number): string {
     if (!bytes) return '0 B';
     if (bytes < 1024) return `${bytes} B`;
@@ -131,16 +136,16 @@
   {/if}
 
   <!-- Two-column row: Composition + Tools -->
-  {#if showAnalysis || showTools}
-    <div class="row-2col">
-      {#if showAnalysis && compositionGroups.length > 0}
+  {#if showComposition || showToolsPanel}
+    <div class="row-2col" class:row-single={rowSingle}>
+      {#if showComposition}
         <CompositionPanel
           {lang}
           groups={compositionGroups}
           obfuscations={$pipelineState.obfuscations}
         />
       {/if}
-      {#if showTools && $pipelineState.toolsNeeded.length > 0}
+      {#if showToolsPanel}
         <ToolsPanel
           {lang}
           toolsNeeded={$pipelineState.toolsNeeded}
@@ -239,9 +244,9 @@
     align-items: stretch;
   }
 
-  /* When only one child is present, let it span full width */
-  .row-2col > :only-child {
-    grid-column: 1 / -1;
+  /* When only one panel is visible, span full width */
+  .row-single {
+    grid-template-columns: 1fr;
   }
 
   .summary-wrap {

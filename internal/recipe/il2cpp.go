@@ -220,7 +220,11 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 				ec = res.ExitCode
 			}
 			if runErr != nil || ec != 0 {
-				log(fmt.Sprintf("  Failed to decompile %s (exit %d)", dllName, ec))
+				msg := fmt.Sprintf("  Failed to decompile %s (exit %d)", dllName, ec)
+				if res != nil && res.Stderr != "" {
+					msg += "\n" + strings.TrimSpace(res.Stderr)
+				}
+				log(msg)
 				failed++
 				continue
 			}
