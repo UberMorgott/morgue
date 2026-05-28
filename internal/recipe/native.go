@@ -268,6 +268,7 @@ func (n *Native) Execute(ctx *Context) error {
 		// Run Ghidra analyzeHeadless with streaming for real-time progress
 		logTool("ghidra", fmt.Sprintf("Running Ghidra analyzeHeadless on %s", filepath.Base(ctx.Target)))
 		ghidraFuncCount := 0
+		ghidraPhase := "analyzing"
 		lastLogTime := time.Now().Add(-2 * time.Second) // allow first log immediately
 		result, err := util.RunCmdStreaming(ctx.Ctx, analyzeHeadless, []string{
 			projDir, "MorgueProject",
@@ -282,7 +283,7 @@ func (n *Native) Execute(ctx *Context) error {
 				if len(parts) >= 4 {
 					fmt.Sscanf(parts[2], "%d", &ghidraFuncCount)
 					if time.Since(lastLogTime) >= time.Second {
-						logTool("ghidra", fmt.Sprintf("Ghidra: decompiled %d functions (%s)", ghidraFuncCount, parts[3]))
+						logTool("ghidra", fmt.Sprintf("Decompiled %d functions (%s)", ghidraFuncCount, parts[3]))
 						if ctx.Progress != nil {
 							ctx.Progress <- StepProgress{
 								Step: 2, Total: total, Name: steps[2].Name,
@@ -292,6 +293,27 @@ func (n *Native) Execute(ctx *Context) error {
 						}
 						lastLogTime = time.Now()
 					}
+				}
+			} else if ghidraFuncCount == 0 && len(strings.TrimSpace(line)) > 0 {
+				// During analysis phase — detect Ghidra sub-phases and show progress
+				lower := strings.ToLower(line)
+				if strings.Contains(lower, "importing") {
+					ghidraPhase = "importing"
+				} else if strings.Contains(lower, "analyz") {
+					ghidraPhase = "analyzing"
+				} else if strings.Contains(lower, "disassembl") {
+					ghidraPhase = "disassembling"
+				}
+				if time.Since(lastLogTime) >= time.Second {
+					logTool("ghidra", fmt.Sprintf("[%s] %s", ghidraPhase, strings.TrimSpace(line)))
+					if ctx.Progress != nil {
+						ctx.Progress <- StepProgress{
+							Step: 2, Total: total, Name: steps[2].Name,
+							Tool: "ghidra", Status: Running,
+							Count: 0, Unit: ghidraPhase,
+						}
+					}
+					lastLogTime = time.Now()
 				}
 			}
 		})

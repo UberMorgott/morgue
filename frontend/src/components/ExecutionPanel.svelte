@@ -142,6 +142,8 @@
           {#if counter && counter.count > 0}
             <span class="counter-value font-accent">{counter.count}</span>
             <span class="counter-unit">{counter.unit}</span>
+          {:else if counter && counter.unit && counter.count === 0}
+            <span class="counter-unit">{counter.unit}...</span>
           {/if}
         </span>
         <span class="tool-ring">
