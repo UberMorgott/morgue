@@ -97,52 +97,17 @@
     return Array.from(map.values());
   });
 
-  // Compute stats for StatsStrip — freeze values after analysis phase
-  // Use recipeName for platform badge (describes the decompilation approach);
-  // reconKind is a technical classifier shown in CompositionPanel instead.
-  // Frozen stats: capture once during analysis, don't let later events overwrite
-  let statsPlatform = $state('Unknown');
-  let statsTechStack = $state('');
-  let frozenFileCount = $state(0);
-  let frozenTotalSize = $state('');
-  let frozenObfuscationCount = $state(0);
-  let statsReady = $state(false);
-
-  $effect(() => {
-    const st = $pipelineState;
-    // Count all non-skipped files (kind may be empty during analysis, filled after match)
-    const nonSkipped = st.reconResults.filter(r => r.kind !== 'Skipped');
-    const count = nonSkipped.length;
-    // Use accumulated fileSize (sum of all recon events) — most reliable source
+  // Stats derived directly from store — reconResults only grows, so values stabilize naturally
+  let statsPlatform = '';
+  let statsTechStack = '';
+  let statsFileCount = $derived($pipelineState.reconResults.filter(r => r.kind !== 'Skipped').length);
+  let statsTotalSize = $derived.by(() => {
+    const nonSkipped = $pipelineState.reconResults.filter(r => r.kind !== 'Skipped');
     const sizeFromRecon = nonSkipped.reduce((sum, r) => sum + (r.size || 0), 0);
-    const sizeTotal = Math.max(sizeFromRecon, st.fileSize || 0);
-    const size = sizeTotal > 0 ? formatFileSize(sizeTotal) : '';
-    const obfCount = st.obfuscations.length;
-    const platform = '';
-    const techStack = '';
-
-    // Keep updating while in analysis phase
-    if (st.phase === 'analysis') {
-      frozenFileCount = count;
-      frozenTotalSize = size;
-      frozenObfuscationCount = obfCount;
-      statsPlatform = platform;
-      statsTechStack = techStack;
-      if (count > 0) statsReady = true;
-    } else if (!statsReady && count > 0) {
-      // First time we see data outside analysis (late arrival) — capture once
-      frozenFileCount = count;
-      frozenTotalSize = size;
-      frozenObfuscationCount = obfCount;
-      statsPlatform = platform;
-      statsTechStack = techStack;
-      statsReady = true;
-    }
+    const sizeTotal = Math.max(sizeFromRecon, $pipelineState.fileSize || 0);
+    return sizeTotal > 0 ? formatFileSize(sizeTotal) : '';
   });
-
-  let statsFileCount = $derived(frozenFileCount);
-  let statsTotalSize = $derived(frozenTotalSize);
-  let statsObfuscationCount = $derived(frozenObfuscationCount);
+  let statsObfuscationCount = $derived($pipelineState.obfuscations.length);
 
   // Single visible panel in row-2col should span full width
   let showComposition = $derived(showAnalysis && compositionGroups.length > 0);
