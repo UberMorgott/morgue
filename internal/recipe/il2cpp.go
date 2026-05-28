@@ -29,7 +29,7 @@ func (i *IL2CPP) Match(r *recon.Result) bool {
 
 func (i *IL2CPP) Steps() []StepInfo {
 	return []StepInfo{
-		{Name: "Copy originals", Required: true},
+		{Name: "Copy originals", Required: false},
 		{Name: "Extract metadata", Required: true},
 		{Name: "Decompile metadata assemblies", Required: true},
 		{Name: "Extract strings", Required: false},
@@ -81,24 +81,29 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		}
 	}
 
-	// Step 0: Copy originals
-	report(0, Running, 0, nil)
-	start := time.Now()
-	origDir := filepath.Join(ctx.Output, "original")
-	if err := os.MkdirAll(origDir, 0755); err != nil {
-		report(0, Failed, time.Since(start), err)
-		return err
+	// Step 0: Copy originals (only when keeping intermediates)
+	var start time.Time
+	if ctx.Config.KeepIntermediates {
+		report(0, Running, 0, nil)
+		start = time.Now()
+		origDir := filepath.Join(ctx.Output, "original")
+		if err := os.MkdirAll(origDir, 0755); err != nil {
+			report(0, Failed, time.Since(start), err)
+			return err
+		}
+		if err := copyFile(ctx.Target, filepath.Join(origDir, filepath.Base(ctx.Target))); err != nil {
+			report(0, Failed, time.Since(start), err)
+			return err
+		}
+		if err := copyFile(metadataPath, filepath.Join(origDir, filepath.Base(metadataPath))); err != nil {
+			report(0, Failed, time.Since(start), err)
+			return err
+		}
+		log(fmt.Sprintf("Copied GameAssembly.dll and %s", filepath.Base(metadataPath)))
+		report(0, Success, time.Since(start), nil)
+	} else {
+		report(0, Skipped, 0, nil)
 	}
-	if err := copyFile(ctx.Target, filepath.Join(origDir, filepath.Base(ctx.Target))); err != nil {
-		report(0, Failed, time.Since(start), err)
-		return err
-	}
-	if err := copyFile(metadataPath, filepath.Join(origDir, filepath.Base(metadataPath))); err != nil {
-		report(0, Failed, time.Since(start), err)
-		return err
-	}
-	log(fmt.Sprintf("Copied GameAssembly.dll and %s", filepath.Base(metadataPath)))
-	report(0, Success, time.Since(start), nil)
 
 	// Step 1: Extract metadata with Il2CppDumper
 	report(1, Running, 0, nil)
