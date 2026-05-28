@@ -51,11 +51,11 @@ func (d *DotnetConfuserEx) RequiredTools() []string {
 func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 	steps := d.Steps()
 	total := len(steps)
-	report := func(step int, status StepStatus, dur time.Duration, err error) {
+	report := func(step int, status StepStatus, dur time.Duration, err error, tool string) {
 		if ctx.Progress != nil {
 			ctx.Progress <- StepProgress{
 				Step: step, Total: total, Name: steps[step].Name,
-				Status: status, Duration: dur, Error: err,
+				Tool: tool, Status: status, Duration: dur, Error: err,
 			}
 		}
 	}
@@ -74,18 +74,18 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 	// Step 0: Copy original (only when keeping intermediates)
 	var start time.Time
 	if ctx.Config.KeepIntermediates {
-		report(0, Running, 0, nil)
+		report(0, Running, 0, nil, "")
 		start = time.Now()
 		origDir := filepath.Join(ctx.Output, "original")
 		os.MkdirAll(origDir, 0755)
 		origCopy := filepath.Join(origDir, filepath.Base(ctx.Target))
 		if err := copyFile(ctx.Target, origCopy); err != nil {
-			report(0, Failed, time.Since(start), err)
+			report(0, Failed, time.Since(start), err, "")
 			return err
 		}
-		report(0, Success, time.Since(start), nil)
+		report(0, Success, time.Since(start), nil, "")
 	} else {
-		report(0, Skipped, 0, nil)
+		report(0, Skipped, 0, nil, "")
 	}
 
 	// Step 1: NoFuserEx fast-path (anti-tamper removal)
@@ -149,12 +149,12 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 	}, report, log)
 
 	// Step 6: Extract strings
-	report(6, Running, 0, nil)
+	report(6, Running, 0, nil, "strings")
 	start = time.Now()
 	stringsPath, err := ctx.Tools.Resolve("strings")
 	if err != nil {
 		log(fmt.Sprintf("strings tool not available: %v", err))
-		report(6, Skipped, time.Since(start), nil)
+		report(6, Skipped, time.Since(start), nil, "strings")
 	} else {
 		stringsOut := filepath.Join(ctx.Output, "strings.txt")
 		r, _ := util.RunCmd(ctx.Ctx, stringsPath, []string{"-nobanner", "-accepteula", current}, "")
@@ -163,21 +163,21 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 		}
 		// Analyze and structure strings
 		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
-		report(6, Success, time.Since(start), nil)
+		report(6, Success, time.Since(start), nil, "strings")
 	}
 
 	// Step 7: Extract embedded (best-effort, scan for costura etc.)
-	report(7, Running, 0, nil)
+	report(7, Running, 0, nil, "")
 	start = time.Now()
 	log("Embedded extraction: scanning for Costura.Fody resources")
-	report(7, Skipped, time.Since(start), nil) // placeholder — needs specialized logic
+	report(7, Skipped, time.Since(start), nil, "") // placeholder — needs specialized logic
 
 	// Step 8: Decompile
-	report(8, Running, 0, nil)
+	report(8, Running, 0, nil, "ilspycmd")
 	start = time.Now()
 	ilspyPath, err := ctx.Tools.Resolve("ilspycmd")
 	if err != nil {
-		report(8, Failed, time.Since(start), err)
+		report(8, Failed, time.Since(start), err, "ilspycmd")
 		return fmt.Errorf("ilspycmd not available: %w", err)
 	}
 	srcDir := filepath.Join(ctx.Output, "src")
@@ -193,16 +193,16 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 			stderr = result.Stderr
 		}
 		execErr := fmt.Errorf("ilspycmd failed (exit %d): %s", exitCode, stderr)
-		report(8, Failed, time.Since(start), execErr)
+		report(8, Failed, time.Since(start), execErr, "ilspycmd")
 		return execErr
 	}
-	report(8, Success, time.Since(start), nil)
+	report(8, Success, time.Since(start), nil, "ilspycmd")
 
 	// Step 9: Build indexes
-	report(9, Running, 0, nil)
+	report(9, Running, 0, nil, "")
 	start = time.Now()
 	log("Building indexes for decompiled output")
-	report(9, Skipped, time.Since(start), nil) // placeholder
+	report(9, Skipped, time.Since(start), nil, "") // placeholder
 
 	return nil
 }
@@ -211,33 +211,33 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 func (d *DotnetConfuserEx) runToolStep(
 	ctx *Context, stepIdx int, current, interDir, toolName string,
 	run func(toolPath, input, output string) error,
-	report func(int, StepStatus, time.Duration, error),
+	report func(int, StepStatus, time.Duration, error, string),
 	log func(string),
 ) string {
-	report(stepIdx, Running, 0, nil)
+	report(stepIdx, Running, 0, nil, toolName)
 	start := time.Now()
 
 	toolPath, err := ctx.Tools.Resolve(toolName)
 	if err != nil {
 		log(fmt.Sprintf("%s not available: %v", toolName, err))
-		report(stepIdx, Skipped, time.Since(start), nil)
+		report(stepIdx, Skipped, time.Since(start), nil, toolName)
 		return current
 	}
 
 	output := filepath.Join(interDir, fmt.Sprintf("step%d_%s%s", stepIdx, toolName, filepath.Ext(current)))
 	if err := run(toolPath, current, output); err != nil {
 		log(fmt.Sprintf("%s failed: %v — using previous stage", toolName, err))
-		report(stepIdx, Failed, time.Since(start), err)
+		report(stepIdx, Failed, time.Since(start), err, toolName)
 		return current // fallback: keep using previous stage
 	}
 
 	// Verify output exists
 	if _, err := os.Stat(output); err != nil {
 		log(fmt.Sprintf("%s produced no output — using previous stage", toolName))
-		report(stepIdx, Failed, time.Since(start), err)
+		report(stepIdx, Failed, time.Since(start), err, toolName)
 		return current
 	}
 
-	report(stepIdx, Success, time.Since(start), nil)
+	report(stepIdx, Success, time.Since(start), nil, toolName)
 	return output
 }

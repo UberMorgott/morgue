@@ -45,6 +45,7 @@ export interface PipelineState {
   downloadBytes: number;       // bytes downloaded so far
   downloadTotalBytes: number;  // total bytes to download
   execCounters: Record<string, { count: number; unit: string }>;  // per-tool Processing/Decompiling message counts
+  currentTool: string;  // tool currently executing
 }
 
 const initial: PipelineState = {
@@ -80,6 +81,7 @@ const initial: PipelineState = {
   downloadBytes: 0,
   downloadTotalBytes: 0,
   execCounters: {},
+  currentTool: '',
 };
 
 export const pipelineState = writable<PipelineState>({ ...initial });
@@ -127,6 +129,7 @@ export function startPipeline(inputPath: string) {
     downloadBytes: 0,
     downloadTotalBytes: 0,
     execCounters: {},
+    currentTool: '',
   }));
 }
 
@@ -295,6 +298,11 @@ export function updateFromEvent(data: any) {
       next.outputStats = d.OutputStats;
     }
 
+    // Track current tool from events
+    if (d.Tool) {
+      next.currentTool = d.Tool;
+    }
+
     // Step progress
     if (d.Progress) {
       const p = d.Progress;
@@ -304,6 +312,15 @@ export function updateFromEvent(data: any) {
       next.progress = next.stepTotal > 0
         ? Math.round(((next.step + 1) / next.stepTotal) * 100)
         : 0;
+
+      // Mark tool as done when step completes
+      const stepTool = p.Tool || d.Tool || '';
+      if (stepTool && (p.Status === 'Success' || p.Status === 'Skipped' || p.Status === 'Failed')) {
+        if (!(stepTool in next.execCounters)) {
+          next.execCounters = { ...s.execCounters, [stepTool]: { count: 0, unit: '' } };
+        }
+        next.currentTool = '';
+      }
     }
 
     // Done

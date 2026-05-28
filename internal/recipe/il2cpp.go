@@ -67,11 +67,11 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 
 	steps := i.Steps()
 	total := len(steps)
-	report := func(step int, status StepStatus, dur time.Duration, err error) {
+	report := func(step int, status StepStatus, dur time.Duration, err error, tool string) {
 		if ctx.Progress != nil {
 			ctx.Progress <- StepProgress{
 				Step: step, Total: total, Name: steps[step].Name,
-				Status: status, Duration: dur, Error: err,
+				Tool: tool, Status: status, Duration: dur, Error: err,
 			}
 		}
 	}
@@ -84,40 +84,40 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 	// Step 0: Copy originals (only when keeping intermediates)
 	var start time.Time
 	if ctx.Config.KeepIntermediates {
-		report(0, Running, 0, nil)
+		report(0, Running, 0, nil, "")
 		start = time.Now()
 		origDir := filepath.Join(ctx.Output, "original")
 		if err := os.MkdirAll(origDir, 0755); err != nil {
-			report(0, Failed, time.Since(start), err)
+			report(0, Failed, time.Since(start), err, "")
 			return err
 		}
 		if err := copyFile(ctx.Target, filepath.Join(origDir, filepath.Base(ctx.Target))); err != nil {
-			report(0, Failed, time.Since(start), err)
+			report(0, Failed, time.Since(start), err, "")
 			return err
 		}
 		if err := copyFile(metadataPath, filepath.Join(origDir, filepath.Base(metadataPath))); err != nil {
-			report(0, Failed, time.Since(start), err)
+			report(0, Failed, time.Since(start), err, "")
 			return err
 		}
 		log(fmt.Sprintf("Copied GameAssembly.dll and %s", filepath.Base(metadataPath)))
-		report(0, Success, time.Since(start), nil)
+		report(0, Success, time.Since(start), nil, "")
 	} else {
-		report(0, Skipped, 0, nil)
+		report(0, Skipped, 0, nil, "")
 	}
 
 	// Step 1: Extract metadata with Il2CppDumper
-	report(1, Running, 0, nil)
+	report(1, Running, 0, nil, "il2cppdumper")
 	start = time.Now()
 
 	dumperPath, err := ctx.Tools.Resolve("il2cppdumper")
 	if err != nil {
-		report(1, Failed, time.Since(start), err)
+		report(1, Failed, time.Since(start), err, "il2cppdumper")
 		return fmt.Errorf("il2cppdumper not available: %w", err)
 	}
 
 	metaDir := filepath.Join(ctx.Output, "metadata")
 	if err := os.MkdirAll(metaDir, 0755); err != nil {
-		report(1, Failed, time.Since(start), err)
+		report(1, Failed, time.Since(start), err, "il2cppdumper")
 		return err
 	}
 
@@ -144,28 +144,28 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 			stderr = result.Stderr
 		}
 		errMsg := fmt.Errorf("Il2CppDumper failed (exit %d): %s", exitCode, stderr)
-		report(1, Failed, time.Since(start), errMsg)
+		report(1, Failed, time.Since(start), errMsg, "il2cppdumper")
 		return errMsg
 	}
 
 	// Count outputs for logging
 	dummyDlls := countFiles(dummyDllDir, ".dll")
 	log(fmt.Sprintf("Il2CppDumper produced %d dummy assemblies", dummyDlls))
-	report(1, Success, time.Since(start), nil)
+	report(1, Success, time.Since(start), nil, "il2cppdumper")
 
 	// Step 2: Decompile metadata assemblies with ilspycmd
-	report(2, Running, 0, nil)
+	report(2, Running, 0, nil, "ilspycmd")
 	start = time.Now()
 
 	ilspyPath, err := ctx.Tools.Resolve("ilspycmd")
 	if err != nil {
-		report(2, Failed, time.Since(start), err)
+		report(2, Failed, time.Since(start), err, "ilspycmd")
 		return fmt.Errorf("ilspycmd not available: %w", err)
 	}
 
 	srcDir := filepath.Join(ctx.Output, "src")
 	if err := os.MkdirAll(srcDir, 0755); err != nil {
-		report(2, Failed, time.Since(start), err)
+		report(2, Failed, time.Since(start), err, "ilspycmd")
 		return err
 	}
 
@@ -173,7 +173,7 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 	dlls, err := filepath.Glob(filepath.Join(dummyDllDir, "*.dll"))
 	if err != nil || len(dlls) == 0 {
 		errMsg := fmt.Errorf("no DLLs found in DummyDll/")
-		report(2, Failed, time.Since(start), errMsg)
+		report(2, Failed, time.Since(start), errMsg, "ilspycmd")
 		return errMsg
 	}
 
@@ -236,18 +236,18 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 
 	if succeeded == 0 && failed > 0 {
 		errMsg := fmt.Errorf("all %d assembly decompilations failed", failed)
-		report(2, Failed, time.Since(start), errMsg)
+		report(2, Failed, time.Since(start), errMsg, "ilspycmd")
 		return errMsg
 	}
-	report(2, Success, time.Since(start), nil)
+	report(2, Success, time.Since(start), nil, "ilspycmd")
 
 	// Step 3: Extract strings from GameAssembly.dll
-	report(3, Running, 0, nil)
+	report(3, Running, 0, nil, "strings")
 	start = time.Now()
 	stringsPath, err := ctx.Tools.Resolve("strings")
 	if err != nil {
 		log(fmt.Sprintf("strings tool not available: %v", err))
-		report(3, Skipped, time.Since(start), nil)
+		report(3, Skipped, time.Since(start), nil, "strings")
 	} else {
 		stringsOut := filepath.Join(ctx.Output, "strings.txt")
 		res, _ := util.RunCmd(ctx.Ctx, stringsPath, []string{"-nobanner", "-accepteula", ctx.Target}, "")
@@ -258,7 +258,7 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		}
 		// Analyze and structure strings
 		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
-		report(3, Success, time.Since(start), nil)
+		report(3, Success, time.Since(start), nil, "strings")
 	}
 
 	return nil
