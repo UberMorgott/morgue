@@ -64,6 +64,15 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 			ctx.Log <- msg
 		}
 	}
+	reportCount := func(step int, dur time.Duration, tool string, count int, unit string) {
+		if ctx.Progress != nil {
+			ctx.Progress <- StepProgress{
+				Step: step, Total: total, Name: steps[step].Name,
+				Tool: tool, Status: Success, Duration: dur,
+				Count: count, Unit: unit,
+			}
+		}
+	}
 
 	interDir := filepath.Join(ctx.Output, "intermediate")
 	os.MkdirAll(interDir, 0755)
@@ -163,7 +172,8 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 		}
 		// Analyze and structure strings
 		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
-		report(6, Success, time.Since(start), nil, "strings")
+		strCount := countLines(stringsOut)
+		reportCount(6, time.Since(start), "strings", strCount, "strings")
 	}
 
 	// Step 7: Extract embedded (best-effort, scan for costura etc.)
@@ -196,7 +206,8 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 		report(8, Failed, time.Since(start), execErr, "ilspycmd")
 		return execErr
 	}
-	report(8, Success, time.Since(start), nil, "ilspycmd")
+	csCount := countFilesWithExt(srcDir, ".cs")
+	reportCount(8, time.Since(start), "ilspycmd", csCount, "types")
 
 	// Step 9: Build indexes
 	report(9, Running, 0, nil, "")

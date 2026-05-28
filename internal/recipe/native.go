@@ -126,6 +126,15 @@ func (n *Native) Execute(ctx *Context) error {
 			ctx.Log <- msg
 		}
 	}
+	reportCount := func(step int, dur time.Duration, tool string, count int, unit string) {
+		if ctx.Progress != nil {
+			ctx.Progress <- StepProgress{
+				Step: step, Total: total, Name: steps[step].Name,
+				Tool: tool, Status: Success, Duration: dur,
+				Count: count, Unit: unit,
+			}
+		}
+	}
 
 	// Step 0: Copy original (only when keeping intermediates)
 	var start time.Time
@@ -161,7 +170,8 @@ func (n *Native) Execute(ctx *Context) error {
 		}
 		// Analyze and structure strings
 		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
-		report(1, Success, time.Since(start), nil, "strings")
+		strCount := countLines(stringsOut)
+		reportCount(1, time.Since(start), "strings", strCount, "strings")
 	}
 
 	// Step 2: Decompile with Ghidra
@@ -256,7 +266,17 @@ func (n *Native) Execute(ctx *Context) error {
 	}
 
 	log(fmt.Sprintf("Ghidra decompiled to %s (%d bytes)", outputFile, info.Size()))
-	report(2, Success, time.Since(start), nil, "ghidra")
+
+	// Parse function count from Ghidra script output
+	funcCount := 0
+	if result != nil {
+		for _, line := range strings.Split(result.Stdout, "\n") {
+			if n, err := fmt.Sscanf(line, "Morgue: Decompiled %d functions", &funcCount); n == 1 && err == nil {
+				break
+			}
+		}
+	}
+	reportCount(2, time.Since(start), "ghidra", funcCount, "functions")
 
 	return nil
 }

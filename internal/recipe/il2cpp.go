@@ -80,6 +80,15 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 			ctx.Log <- msg
 		}
 	}
+	reportCount := func(step int, dur time.Duration, tool string, count int, unit string) {
+		if ctx.Progress != nil {
+			ctx.Progress <- StepProgress{
+				Step: step, Total: total, Name: steps[step].Name,
+				Tool: tool, Status: Success, Duration: dur,
+				Count: count, Unit: unit,
+			}
+		}
+	}
 
 	// Step 0: Copy originals (only when keeping intermediates)
 	var start time.Time
@@ -151,7 +160,7 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 	// Count outputs for logging
 	dummyDlls := countFiles(dummyDllDir, ".dll")
 	log(fmt.Sprintf("Il2CppDumper produced %d dummy assemblies", dummyDlls))
-	report(1, Success, time.Since(start), nil, "il2cppdumper")
+	reportCount(1, time.Since(start), "il2cppdumper", dummyDlls, "assemblies")
 
 	// Step 2: Decompile metadata assemblies with ilspycmd
 	report(2, Running, 0, nil, "ilspycmd")
@@ -239,7 +248,7 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		report(2, Failed, time.Since(start), errMsg, "ilspycmd")
 		return errMsg
 	}
-	report(2, Success, time.Since(start), nil, "ilspycmd")
+	reportCount(2, time.Since(start), "ilspycmd", succeeded, "assemblies")
 
 	// Step 3: Extract strings from GameAssembly.dll
 	report(3, Running, 0, nil, "strings")
@@ -258,7 +267,8 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		}
 		// Analyze and structure strings
 		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
-		report(3, Success, time.Since(start), nil, "strings")
+		strCount := countLines(stringsOut)
+		reportCount(3, time.Since(start), "strings", strCount, "strings")
 	}
 
 	return nil
