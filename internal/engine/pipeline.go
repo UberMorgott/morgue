@@ -148,6 +148,10 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 	}
 
 	// Pass 2 (execution): install tools + run recipes.
+	// Native recipe tasks are batched: all strings first, then all ghidra,
+	// so the user sees a clean phase progression instead of interleaving.
+	var nativeTasks []fileTask
+
 	for _, t := range tasks {
 		select {
 		case <-ctx.Done():
@@ -185,7 +189,57 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			}
 		}
 
-		// Execute recipe
+		// Batch native recipe tasks for phased execution
+		if t.recipe.Name() == "native" {
+			nativeTasks = append(nativeTasks, t)
+			continue
+		}
+
+		// Execute non-native recipes immediately
+		tr := e.executeRecipe(ctx, t.filePath, &opts, t.recipe, t.recon, t.group, em)
+		results = append(results, tr)
+	}
+
+	// Execute native tasks in two phases: strings first, then ghidra.
+	// This prevents confusing interleaving (strings→ghidra→strings→ghidra)
+	// and shows a clean progression: all strings done, then all ghidra.
+	if len(nativeTasks) > 1 {
+		// Phase 1: strings for all native files
+		for _, t := range nativeTasks {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+			if opts.Pause != nil {
+				if err := opts.Pause.WaitIfPaused(ctx); err != nil {
+					return err
+				}
+			}
+			tr := e.executeRecipeWithFilter(ctx, t.filePath, &opts, t.recipe, t.recon, t.group, em, "strings")
+			if tr.Error != nil {
+				// Strings failure is non-fatal; still attempt ghidra later
+				em.emitErr("execute", t.filePath, tr.Error)
+			}
+		}
+		// Phase 2: ghidra for all native files
+		for _, t := range nativeTasks {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+			if opts.Pause != nil {
+				if err := opts.Pause.WaitIfPaused(ctx); err != nil {
+					return err
+				}
+			}
+			tr := e.executeRecipeWithFilter(ctx, t.filePath, &opts, t.recipe, t.recon, t.group, em, "ghidra")
+			results = append(results, tr)
+		}
+	} else if len(nativeTasks) == 1 {
+		// Single native file — no batching needed, run all steps
+		t := nativeTasks[0]
 		tr := e.executeRecipe(ctx, t.filePath, &opts, t.recipe, t.recon, t.group, em)
 		results = append(results, tr)
 	}
@@ -463,6 +517,126 @@ func (e *Engine) executeRecipe(
 			Phase: "stats", Target: filePath,
 			OutputStats: stats,
 		})
+	}
+
+	return tr
+}
+
+// executeRecipeWithFilter runs a recipe with a StepFilter for batch/phased execution.
+// Used by native recipe batching to run strings-only or ghidra-only passes.
+func (e *Engine) executeRecipeWithFilter(
+	ctx context.Context,
+	filePath string,
+	opts *Options,
+	rec recipe.Recipe,
+	reconResult recon.Result,
+	group scanner.TargetGroup,
+	em emitter,
+	stepFilter string,
+) TargetResult {
+	targetOutput := filepath.Join(opts.Output, sanitizeName(filepath.Base(filePath)))
+	if err := os.MkdirAll(targetOutput, 0755); err != nil {
+		em.emitErr("execute", filePath, fmt.Errorf("create output dir: %w", err))
+		return TargetResult{
+			Group: group, Recon: reconResult, Recipe: rec, Error: err,
+		}
+	}
+
+	progressCh := make(chan recipe.StepProgress, 20)
+	logCh := make(chan string, 50)
+
+	// Forward progress events
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("progress forwarder panic: %v", r)
+			}
+		}()
+		var currentTool string
+		progressOpen := true
+		logOpen := true
+		for progressOpen || logOpen {
+			select {
+			case p, ok := <-progressCh:
+				if !ok {
+					progressOpen = false
+					continue
+				}
+				if p.Tool != "" {
+					currentTool = p.Tool
+				}
+				em.send(PipelineEvent{
+					Phase: "execute", Target: filePath, Tool: p.Tool, Progress: &p,
+				})
+			case msg, ok := <-logCh:
+				if !ok {
+					logOpen = false
+					continue
+				}
+				tool := currentTool
+				logMsg := msg
+				if strings.HasPrefix(msg, "[") {
+					if idx := strings.Index(msg, "] "); idx > 0 {
+						tool = msg[1:idx]
+						logMsg = msg[idx+2:]
+					}
+				}
+				em.send(PipelineEvent{
+					Phase: "log", Target: filePath, Tool: tool, Message: logMsg,
+				})
+			}
+		}
+	}()
+
+	rctx := &recipe.Context{
+		Target:     filePath,
+		Output:     targetOutput,
+		Progress:   progressCh,
+		Log:        logCh,
+		Tools:      e.tools,
+		Ctx:        ctx,
+		Config:     &e.cfg,
+		Pause:      pauseChecker(opts.Pause),
+		StepFilter: stepFilter,
+	}
+
+	execErr := rec.Execute(rctx)
+	close(progressCh)
+	close(logCh)
+	<-done
+
+	tr := TargetResult{
+		Group:  group,
+		Recon:  reconResult,
+		Recipe: rec,
+		Output: targetOutput,
+		Error:  execErr,
+	}
+
+	// For the final phase (ghidra), emit completion events and save recon
+	if stepFilter == "ghidra" {
+		reconJSON, _ := json.MarshalIndent(reconResult, "", "  ")
+		os.WriteFile(filepath.Join(targetOutput, "recon.json"), reconJSON, 0644)
+
+		if execErr == nil && !e.cfg.KeepIntermediates {
+			os.RemoveAll(filepath.Join(targetOutput, "original"))
+			os.Remove(filepath.Join(targetOutput, "strings.txt"))
+		}
+
+		if execErr != nil {
+			em.emitErr("execute", filePath, execErr)
+		} else {
+			em.send(PipelineEvent{
+				Phase: "execute", Target: filePath, Message: "Complete",
+			})
+			stats := scanOutputDir(targetOutput)
+			em.send(PipelineEvent{
+				Phase: "stats", Target: filePath,
+				OutputStats: stats,
+			})
+		}
 	}
 
 	return tr

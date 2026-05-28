@@ -149,7 +149,7 @@ html, body, #app {
   background: var(--bg-page);
   color: var(--text-secondary);
   font-family: "Play", "Segoe UI", system-ui, sans-serif;
-  font-size: clamp(14px, 1.8vw, 28px);
+  font-size: clamp(12px, 1.4vw, 16px);
   font-weight: 400;
   line-height: 1.5;
   user-select: none;

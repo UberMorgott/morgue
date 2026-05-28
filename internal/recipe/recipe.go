@@ -76,6 +76,11 @@ type Context struct {
 	Ctx      context.Context
 	Config   *config.Config
 	Pause    PauseChecker
+	// StepFilter limits which steps a recipe executes in batch mode.
+	// Empty string means run all steps. Recipes that support batching
+	// check this field and skip steps that don't match.
+	// Values: "strings", "ghidra", "" (all).
+	StepFilter string
 }
 
 // Recipe is the interface that all decompilation recipes must implement.
