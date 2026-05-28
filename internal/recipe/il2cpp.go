@@ -260,7 +260,7 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		succeeded++
 		if ctx.Progress != nil {
 			ctx.Progress <- StepProgress{
-				Step: 2, Total: total, Name: steps[2].Name,
+				Step: 2, Total: total, Name: dllName,
 				Tool: "ilspycmd", Status: Running,
 				Count: succeeded, CountTotal: totalUserDlls, Unit: "assemblies",
 			}
