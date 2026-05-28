@@ -4,6 +4,7 @@
   import { ConfigService, ReconService } from '../lib/api';
   import { t, type Lang } from '../lib/i18n';
   import CopyInstructions from '../components/CopyInstructions.svelte';
+  import SettingsToggle from '../components/SettingsToggle.svelte';
   import { currentLang } from '../lib/stores';
 
   let { lang = 'en' as Lang }: { lang?: Lang } = $props();
@@ -48,13 +49,6 @@
     onConfigChange();
   }
 
-  function handleToggleKey(e: KeyboardEvent, field: string) {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      toggleField(field);
-    }
-  }
-
   async function pickOutputDir() {
     try {
       const dir = await ReconService.PickDirectory();
@@ -89,18 +83,9 @@
         <section class="settings-card glass">
           <h3 class="card-title">{t(lang, 'settings.updates')}</h3>
           <div class="card-rows">
-            <div class="setting-row">
-              <span class="setting-label">{t(lang, 'settings.autoUpdateCheck')}</span>
-              <div class="toggle" class:active={config.AutoUpdateCheck} onclick={() => toggleField('AutoUpdateCheck')} onkeydown={(e) => handleToggleKey(e, 'AutoUpdateCheck')} role="switch" tabindex="0" aria-checked={config.AutoUpdateCheck}></div>
-            </div>
-            <div class="setting-row">
-              <span class="setting-label">{t(lang, 'settings.autoUpdateApp')}</span>
-              <div class="toggle" class:active={config.AutoUpdateApp} onclick={() => toggleField('AutoUpdateApp')} onkeydown={(e) => handleToggleKey(e, 'AutoUpdateApp')} role="switch" tabindex="0" aria-checked={config.AutoUpdateApp}></div>
-            </div>
-            <div class="setting-row">
-              <span class="setting-label">{t(lang, 'settings.autoUpdateTools')}</span>
-              <div class="toggle" class:active={config.AutoUpdateTools} onclick={() => toggleField('AutoUpdateTools')} onkeydown={(e) => handleToggleKey(e, 'AutoUpdateTools')} role="switch" tabindex="0" aria-checked={config.AutoUpdateTools}></div>
-            </div>
+            <SettingsToggle label={t(lang, 'settings.autoUpdateCheck')} active={config.AutoUpdateCheck} onToggle={() => toggleField('AutoUpdateCheck')} />
+            <SettingsToggle label={t(lang, 'settings.autoUpdateApp')} active={config.AutoUpdateApp} onToggle={() => toggleField('AutoUpdateApp')} />
+            <SettingsToggle label={t(lang, 'settings.autoUpdateTools')} active={config.AutoUpdateTools} onToggle={() => toggleField('AutoUpdateTools')} />
           </div>
         </section>
 
@@ -108,14 +93,8 @@
         <section class="settings-card glass">
           <h3 class="card-title">{t(lang, 'settings.decompilation')}</h3>
           <div class="card-rows">
-            <div class="setting-row">
-              <span class="setting-label">{t(lang, 'settings.decompileProject')}</span>
-              <div class="toggle" class:active={config.DecompileProjectMode} onclick={() => toggleField('DecompileProjectMode')} onkeydown={(e) => handleToggleKey(e, 'DecompileProjectMode')} role="switch" tabindex="0" aria-checked={config.DecompileProjectMode}></div>
-            </div>
-            <div class="setting-row">
-              <span class="setting-label">{t(lang, 'settings.generatePdb')}</span>
-              <div class="toggle" class:active={config.GeneratePDB} onclick={() => toggleField('GeneratePDB')} onkeydown={(e) => handleToggleKey(e, 'GeneratePDB')} role="switch" tabindex="0" aria-checked={config.GeneratePDB}></div>
-            </div>
+            <SettingsToggle label={t(lang, 'settings.decompileProject')} active={config.DecompileProjectMode} onToggle={() => toggleField('DecompileProjectMode')} />
+            <SettingsToggle label={t(lang, 'settings.generatePdb')} active={config.GeneratePDB} onToggle={() => toggleField('GeneratePDB')} />
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.csharpVersion')}</span>
               <select class="setting-select" bind:value={config.CSharpLanguageVersion} onchange={onConfigChange}>
@@ -125,18 +104,9 @@
                 <option value="9">9</option>
               </select>
             </div>
-            <div class="setting-row">
-              <span class="setting-label">{t(lang, 'settings.keepIntermediates')}</span>
-              <div class="toggle" class:active={config.KeepIntermediates} onclick={() => toggleField('KeepIntermediates')} onkeydown={(e) => handleToggleKey(e, 'KeepIntermediates')} role="switch" tabindex="0" aria-checked={config.KeepIntermediates}></div>
-            </div>
-            <div class="setting-row">
-              <span class="setting-label">{t(lang, 'settings.skipSystemLibs')}</span>
-              <div class="toggle" class:active={config.SkipSystemLibs} onclick={() => toggleField('SkipSystemLibs')} onkeydown={(e) => handleToggleKey(e, 'SkipSystemLibs')} role="switch" tabindex="0" aria-checked={config.SkipSystemLibs}></div>
-            </div>
-            <div class="setting-row">
-              <span class="setting-label">{t(lang, 'settings.stopOnFirstError')}</span>
-              <div class="toggle" class:active={config.StopOnFirstError} onclick={() => toggleField('StopOnFirstError')} onkeydown={(e) => handleToggleKey(e, 'StopOnFirstError')} role="switch" tabindex="0" aria-checked={config.StopOnFirstError}></div>
-            </div>
+            <SettingsToggle label={t(lang, 'settings.keepIntermediates')} active={config.KeepIntermediates} onToggle={() => toggleField('KeepIntermediates')} />
+            <SettingsToggle label={t(lang, 'settings.skipSystemLibs')} active={config.SkipSystemLibs} onToggle={() => toggleField('SkipSystemLibs')} />
+            <SettingsToggle label={t(lang, 'settings.stopOnFirstError')} active={config.StopOnFirstError} onToggle={() => toggleField('StopOnFirstError')} />
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.maxFileSize')}</span>
               <input class="setting-input setting-input-num" type="number" bind:value={config.MaxFileSizeMB} oninput={onConfigChange} min="0" />
@@ -169,14 +139,8 @@
         <section class="settings-card glass">
           <h3 class="card-title">{t(lang, 'settings.security')}</h3>
           <div class="card-rows">
-            <div class="setting-row">
-              <span class="setting-label">{t(lang, 'settings.allowDynamicExecution')}</span>
-              <div class="toggle" class:active={config.AllowDynamicExecution} onclick={() => toggleField('AllowDynamicExecution')} onkeydown={(e) => handleToggleKey(e, 'AllowDynamicExecution')} role="switch" tabindex="0" aria-checked={config.AllowDynamicExecution}></div>
-            </div>
-            <div class="setting-row">
-              <span class="setting-label">{t(lang, 'settings.sandboxWarning')}</span>
-              <div class="toggle" class:active={config.SandboxWarning} onclick={() => toggleField('SandboxWarning')} onkeydown={(e) => handleToggleKey(e, 'SandboxWarning')} role="switch" tabindex="0" aria-checked={config.SandboxWarning}></div>
-            </div>
+            <SettingsToggle label={t(lang, 'settings.allowDynamicExecution')} active={config.AllowDynamicExecution} onToggle={() => toggleField('AllowDynamicExecution')} />
+            <SettingsToggle label={t(lang, 'settings.sandboxWarning')} active={config.SandboxWarning} onToggle={() => toggleField('SandboxWarning')} />
           </div>
         </section>
 
@@ -184,55 +148,13 @@
         <section class="settings-card glass">
           <h3 class="card-title">{t(lang, 'settings.unrealEngine')}</h3>
           <div class="card-rows">
-            <div class="setting-row">
-              <div class="setting-label-with-hint">
-                <span class="setting-label">{t(lang, 'settings.ue5.extractPak')}</span>
-                <span class="setting-hint-icon" title={t(lang, 'settings.ue5.extractPakHint')}>?</span>
-              </div>
-              <div class="toggle" class:active={config.UE5ExtractPAK} onclick={() => toggleField('UE5ExtractPAK')} onkeydown={(e) => handleToggleKey(e, 'UE5ExtractPAK')} role="switch" tabindex="0" aria-checked={config.UE5ExtractPAK}></div>
-            </div>
-            <div class="setting-row">
-              <div class="setting-label-with-hint">
-                <span class="setting-label">{t(lang, 'settings.ue5.sdkDump')}</span>
-                <span class="setting-hint-icon" title={t(lang, 'settings.ue5.sdkDumpHint')}>?</span>
-              </div>
-              <div class="toggle" class:active={config.UE5SDKDump} onclick={() => toggleField('UE5SDKDump')} onkeydown={(e) => handleToggleKey(e, 'UE5SDKDump')} role="switch" tabindex="0" aria-checked={config.UE5SDKDump}></div>
-            </div>
-            <div class="setting-row">
-              <div class="setting-label-with-hint">
-                <span class="setting-label">{t(lang, 'settings.ue5.extractStrings')}</span>
-                <span class="setting-hint-icon" title={t(lang, 'settings.ue5.extractStringsHint')}>?</span>
-              </div>
-              <div class="toggle" class:active={config.UE5ExtractStrings} onclick={() => toggleField('UE5ExtractStrings')} onkeydown={(e) => handleToggleKey(e, 'UE5ExtractStrings')} role="switch" tabindex="0" aria-checked={config.UE5ExtractStrings}></div>
-            </div>
-            <div class="setting-row">
-              <div class="setting-label-with-hint">
-                <span class="setting-label">{t(lang, 'settings.ue5.ghidraDecompile')}</span>
-                <span class="setting-hint-icon" title={t(lang, 'settings.ue5.ghidraDecompileHint')}>?</span>
-              </div>
-              <div class="toggle" class:active={config.UE5GhidraDecompile} onclick={() => toggleField('UE5GhidraDecompile')} onkeydown={(e) => handleToggleKey(e, 'UE5GhidraDecompile')} role="switch" tabindex="0" aria-checked={config.UE5GhidraDecompile}></div>
-            </div>
-            <div class="setting-row">
-              <div class="setting-label-with-hint">
-                <span class="setting-label">{t(lang, 'settings.ue5.nameResolution')}</span>
-                <span class="setting-hint-icon" title={t(lang, 'settings.ue5.nameResolutionHint')}>?</span>
-              </div>
-              <div class="toggle" class:active={config.UE5NameResolution} onclick={() => toggleField('UE5NameResolution')} onkeydown={(e) => handleToggleKey(e, 'UE5NameResolution')} role="switch" tabindex="0" aria-checked={config.UE5NameResolution}></div>
-            </div>
-            <div class="setting-row">
-              <div class="setting-label-with-hint">
-                <span class="setting-label">{t(lang, 'settings.ue5.buildIndexes')}</span>
-                <span class="setting-hint-icon" title={t(lang, 'settings.ue5.buildIndexesHint')}>?</span>
-              </div>
-              <div class="toggle" class:active={config.UE5BuildIndexes} onclick={() => toggleField('UE5BuildIndexes')} onkeydown={(e) => handleToggleKey(e, 'UE5BuildIndexes')} role="switch" tabindex="0" aria-checked={config.UE5BuildIndexes}></div>
-            </div>
-            <div class="setting-row">
-              <div class="setting-label-with-hint">
-                <span class="setting-label">{t(lang, 'settings.ue5.exportHookable')}</span>
-                <span class="setting-hint-icon" title={t(lang, 'settings.ue5.exportHookableHint')}>?</span>
-              </div>
-              <div class="toggle" class:active={config.UE5ExportHookable} onclick={() => toggleField('UE5ExportHookable')} onkeydown={(e) => handleToggleKey(e, 'UE5ExportHookable')} role="switch" tabindex="0" aria-checked={config.UE5ExportHookable}></div>
-            </div>
+            <SettingsToggle label={t(lang, 'settings.ue5.extractPak')} hint={t(lang, 'settings.ue5.extractPakHint')} active={config.UE5ExtractPAK} onToggle={() => toggleField('UE5ExtractPAK')} />
+            <SettingsToggle label={t(lang, 'settings.ue5.sdkDump')} hint={t(lang, 'settings.ue5.sdkDumpHint')} active={config.UE5SDKDump} onToggle={() => toggleField('UE5SDKDump')} />
+            <SettingsToggle label={t(lang, 'settings.ue5.extractStrings')} hint={t(lang, 'settings.ue5.extractStringsHint')} active={config.UE5ExtractStrings} onToggle={() => toggleField('UE5ExtractStrings')} />
+            <SettingsToggle label={t(lang, 'settings.ue5.ghidraDecompile')} hint={t(lang, 'settings.ue5.ghidraDecompileHint')} active={config.UE5GhidraDecompile} onToggle={() => toggleField('UE5GhidraDecompile')} />
+            <SettingsToggle label={t(lang, 'settings.ue5.nameResolution')} hint={t(lang, 'settings.ue5.nameResolutionHint')} active={config.UE5NameResolution} onToggle={() => toggleField('UE5NameResolution')} />
+            <SettingsToggle label={t(lang, 'settings.ue5.buildIndexes')} hint={t(lang, 'settings.ue5.buildIndexesHint')} active={config.UE5BuildIndexes} onToggle={() => toggleField('UE5BuildIndexes')} />
+            <SettingsToggle label={t(lang, 'settings.ue5.exportHookable')} hint={t(lang, 'settings.ue5.exportHookableHint')} active={config.UE5ExportHookable} onToggle={() => toggleField('UE5ExportHookable')} />
           </div>
         </section>
 
@@ -249,10 +171,7 @@
                 <option value="error">error</option>
               </select>
             </div>
-            <div class="setting-row">
-              <span class="setting-label">{t(lang, 'settings.logToFile')}</span>
-              <div class="toggle" class:active={config.LogToFile} onclick={() => toggleField('LogToFile')} onkeydown={(e) => handleToggleKey(e, 'LogToFile')} role="switch" tabindex="0" aria-checked={config.LogToFile}></div>
-            </div>
+            <SettingsToggle label={t(lang, 'settings.logToFile')} active={config.LogToFile} onToggle={() => toggleField('LogToFile')} />
           </div>
         </section>
 
@@ -474,30 +393,4 @@
     100% { opacity: 0; }
   }
 
-  .setting-label-with-hint {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 1;
-    min-width: 0;
-  }
-
-  .setting-hint-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    font-size: 10px;
-    cursor: help;
-    flex-shrink: 0;
-    transition: color 0.15s, border-color 0.15s;
-  }
-  .setting-hint-icon:hover {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
 </style>

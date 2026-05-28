@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Improve project structure by splitting god-functions, extracting reusable components, cleaning stray files, and fixing .gitignore gaps.
+**Goal:** Improve project structure by splitting god-functions, extracting reusable components, fixing broken imports, and cleaning .gitignore gaps.
 
-**Architecture:** Surgical extractions preserving all existing behavior. No new features, no API changes. Each task is independently testable and committable. Backend splits use method extraction on Engine. Frontend splits use Svelte component extraction with prop drilling.
+**Architecture:** Surgical extractions preserving all existing behavior. No new features, no API changes. Each task is independently testable and committable. Backend splits use method extraction on Engine. Frontend splits use Svelte 5 component extraction with `$props()`.
 
-**Tech Stack:** Go 1.25, Svelte 4, TypeScript, Cobra CLI
+**Tech Stack:** Go 1.25, Svelte 5, Vite 6, TypeScript, Cobra CLI
 
 ---
 
@@ -14,42 +14,154 @@
 
 ### Will be modified
 - `internal/engine/pipeline.go` — extract phases from `Run()` into sub-methods
-- `cmd/morgue/main.go` — move Cobra command builders to `internal/cli/`
-- `internal/cli/run.go` — add `NewRunCmd()` export
-- `internal/cli/tools_cmd.go` — add `NewToolsCmd()` export
-- `internal/cli/api_cmd.go` — add `NewApiCmd()` export
-- `internal/cli/info.go` — add `NewInfoCmd()` export
-- `internal/recipe/il2cpp.go` — remove `init()` registration
-- `frontend/src/components/PipelineProgress.svelte` — extract sub-components
-- `frontend/src/pages/SettingsPage.svelte` — extract SettingsToggle
-- `frontend/src/lib/pipeline.ts` — split into modules
+- `frontend/src/components/PipelineProgress.svelte` — extract stepper, fix broken AnalysisPanel import
+- `frontend/src/pages/SettingsPage.svelte` — extract SettingsToggle (18 repetitions)
 - `.gitignore` — add missing patterns
 
 ### Will be created
 - `internal/engine/emitter.go` — event emitter helper type
-- `internal/cli/selfupdate_cmd.go` — Cobra command builder for selfupdate
-- `internal/cli/version_cmd.go` — Cobra command builder for version
 - `frontend/src/components/PipelineStepper.svelte` — stage indicator circles
 - `frontend/src/components/SettingsToggle.svelte` — reusable toggle row
-- `frontend/src/lib/pipeline-types.ts` — pure type definitions
-- `frontend/src/lib/pipeline-events.ts` — event handler logic
-- `frontend/src/lib/history.ts` — run history store
 
-### Will NOT be changed (audit corrections)
-- `internal/tools/` — well-factored, no split needed (Sonnet wrongly suggested sub-packages)
-- `internal/services/tools_service.go` — thin wrappers are Wails-mandated (Sonnet wrongly suggested merging selfupdate)
-- `frontend/src/components/AnalysisPanel.svelte` — leaf component, 316/575 lines are CSS, logic is 145 lines. No high-value split.
+### Will NOT be changed (audit decisions)
+- `internal/tools/` — well-factored, no split needed
+- `internal/services/tools_service.go` — thin wrappers are Wails-mandated
+- `internal/recipe/il2cpp.go` — fully functional recipe (256 lines of working code), NOT a stub
 - `internal/tui/` — legacy but functional for `--watch`, leave for separate decision
+- `cmd/morgue/main.go` — 343 lines, Cobra commands co-located with handlers in `internal/cli/` already; splitting further adds navigation overhead without proportional benefit
+- `frontend/src/lib/pipeline.ts` — 315 lines, well-structured (types → store → events → history); splitting into 4 files creates circular dependency risk and navigation overhead for minimal gain
 
 ---
 
-## Task 1: Extract `Engine.Run()` phases (P0 — Critical)
+## Task 1: Extract `SettingsToggle.svelte` + `PipelineStepper.svelte` (P0 — Highest Value)
+
+**Why first:** SettingsToggle eliminates 18x copy-paste. PipelineStepper reduces PipelineProgress by ~120 lines. Both are mechanical extractions with immediate DRY payoff.
+
+**Files:**
+- Create: `frontend/src/components/SettingsToggle.svelte`
+- Create: `frontend/src/components/PipelineStepper.svelte`
+- Modify: `frontend/src/pages/SettingsPage.svelte`
+- Modify: `frontend/src/components/PipelineProgress.svelte`
+
+### 1A: SettingsToggle
+
+- [ ] **Step 1: Create `SettingsToggle.svelte`**
+
+The toggle pattern appears **18 times** in SettingsPage.svelte. Each instance follows this pattern (example from line 94):
+
+```svelte
+<div class="toggle" class:active={config.AutoUpdateCheck} onclick={() => toggleField('AutoUpdateCheck')} onkeydown={(e) => handleToggleKey(e, 'AutoUpdateCheck')} role="switch" tabindex="0" aria-checked={config.AutoUpdateCheck}>
+  <div class="toggle-slider"></div>
+</div>
+```
+
+Extract to reusable component:
+
+```svelte
+<script lang="ts">
+  let { label, active, onToggle }: {
+    label: string;
+    active: boolean;
+    onToggle: () => void;
+  } = $props();
+</script>
+
+<div class="setting-row">
+  <span class="setting-label">{label}</span>
+  <div class="toggle" class:active role="switch" aria-checked={active}
+       tabindex="0" onclick={onToggle}
+       onkeydown={(e) => e.key === 'Enter' && onToggle()}>
+    <div class="toggle-slider"></div>
+  </div>
+</div>
+
+<style>
+  /* toggle + setting-row styles extracted from SettingsPage */
+</style>
+```
+
+- [ ] **Step 2: Update `SettingsPage.svelte` to use `SettingsToggle`**
+
+Replace each of 18 toggle instances with:
+
+```svelte
+<SettingsToggle label={t(lang, 'settings.autoUpdate')} active={config.AutoUpdateCheck} onToggle={() => toggleField('AutoUpdateCheck')} />
+```
+
+Toggle instances at lines: 94, 98, 102, 113, 117, 130, 134, 138, 174, 178, 192, 199, 206, 213, 220, 227, 234, 254.
+
+- [ ] **Step 3: Verify visually**
+
+Run: `task dev`
+Expected: settings page identical. All 18 toggles work.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add frontend/src/components/SettingsToggle.svelte frontend/src/pages/SettingsPage.svelte
+git commit -m "refactor(ui): extract SettingsToggle, eliminate 18x repeated pattern
+
+SettingsPage reduced by ~130 lines. Toggle now reusable component
+with proper ARIA attributes."
+```
+
+### 1B: PipelineStepper
+
+- [ ] **Step 5: Create `PipelineStepper.svelte`**
+
+Extract stepper from PipelineProgress.svelte: template lines 92-116, CSS lines 300-401.
+
+Props: `stages` (computed stage status map), `stageIds` (ordered list), `lang` (i18n locale).
+
+```svelte
+<script lang="ts">
+  import { t } from '$lib/i18n';
+  // ... type StageStatus, $props()
+</script>
+
+<!-- stage circles, connector lines, labels from PipelineProgress lines 92-116 -->
+
+<style>
+  /* stepper styles from PipelineProgress lines 300-401 */
+</style>
+```
+
+- [ ] **Step 6: Fix broken AnalysisPanel import in PipelineProgress.svelte**
+
+Line 5 of PipelineProgress.svelte imports `AnalysisPanel.svelte` which **does not exist**. Either:
+- Remove the import and any references to `<AnalysisPanel>` in template, OR
+- If component is used in template, create a minimal placeholder
+
+Investigate usage first, then fix.
+
+- [ ] **Step 7: Update `PipelineProgress.svelte` to use `PipelineStepper`**
+
+Replace template lines 92-116 with `<PipelineStepper {stages} {stageIds} {lang} />`. Remove stepper CSS (lines 300-401). Total reduction: ~120 lines.
+
+- [ ] **Step 8: Build and verify**
+
+Run: `cd frontend && npm run build`
+Expected: clean build, no errors. Pipeline progress renders identically.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add frontend/src/components/PipelineStepper.svelte frontend/src/components/PipelineProgress.svelte
+git commit -m "refactor(ui): extract PipelineStepper, fix broken AnalysisPanel import
+
+Stage indicator circles/lines/labels now in own component.
+PipelineProgress reduced by ~120 lines. Removed dead AnalysisPanel import."
+```
+
+---
+
+## Task 2: Extract `Engine.Run()` phases (P1 — Tech Debt)
 
 **Files:**
 - Create: `internal/engine/emitter.go`
 - Modify: `internal/engine/pipeline.go`
 
-The `Run()` method is 355 lines (lines 38-393) containing 7 inline phases. Extract into sub-methods.
+The `Run()` method is **~365 lines (lines 46-411)** containing 7 inline phases. Extract into sub-methods.
 
 - [ ] **Step 1: Create `emitter.go`**
 
@@ -86,7 +198,7 @@ func (em emitter) send(ev PipelineEvent) {
 
 - [ ] **Step 2: Extract `shouldSkipTarget()` from pipeline.go**
 
-Extract lines 85-102 (skip-list check + exclude patterns) into:
+Extract lines 93-110 (skip-list check + exclude patterns):
 
 ```go
 // shouldSkipTarget checks skip-list and exclude patterns.
@@ -104,7 +216,7 @@ func (e *Engine) shouldSkipTarget(filePath string, opts *Options) (bool, string)
 
 - [ ] **Step 3: Extract `classifyTarget()` from pipeline.go**
 
-Extract lines 104-134 (recon + kind override + event emission) into:
+Extract lines 113-142 (recon + kind override + event emission):
 
 ```go
 // classifyTarget runs recon and applies scanner group kind override.
@@ -114,35 +226,35 @@ func (e *Engine) classifyTarget(
 	filePath string,
 	em emitter,
 ) (recon.Result, error) {
-	// ... extract recon logic from Run(), lines 104-134
+	// ... recon logic from Run(), lines 113-142
 }
 ```
 
 - [ ] **Step 4: Extract `ensureRuntimeDeps()` from pipeline.go**
 
-Extract lines 168-226 (runtime dependency installation loop) into:
+Extract lines 174-227 (runtime dependency installation loop):
 
 ```go
 // ensureRuntimeDeps installs missing runtime dependencies for a recipe.
 func (e *Engine) ensureRuntimeDeps(filePath string, rec recipe.Recipe, em emitter) error {
-	// ... extract runtime deps logic from Run(), lines 168-226
+	// ... runtime deps logic from Run(), lines 174-227
 }
 ```
 
 - [ ] **Step 5: Extract `ensureTools()` from pipeline.go**
 
-Extract lines 228-283 (tool installation with download/extract callbacks) into:
+Extract lines 236-291 (tool installation with download/extract callbacks):
 
 ```go
 // ensureTools installs missing tools for a recipe.
 func (e *Engine) ensureTools(filePath string, rec recipe.Recipe, em emitter) error {
-	// ... extract tool install logic from Run(), lines 228-283
+	// ... tool install logic from Run(), lines 236-291
 }
 ```
 
 - [ ] **Step 6: Extract `executeRecipe()` from pipeline.go**
 
-Extract lines 292-383 (output dir creation, progress/log goroutine, recipe execution, stats emission) into:
+Extract lines 301-401 (output dir creation, progress/log goroutine, recipe execution, stats emission):
 
 ```go
 // executeRecipe runs the recipe, forwards progress/log events, saves recon.json.
@@ -154,13 +266,13 @@ func (e *Engine) executeRecipe(
 	reconResult recon.Result,
 	em emitter,
 ) (TargetResult, error) {
-	// ... extract execution logic from Run(), lines 292-383
+	// ... execution logic from Run(), lines 301-401
 }
 ```
 
 - [ ] **Step 7: Rewrite `Run()` as orchestrator**
 
-Replace the 355-line body with ~60 lines that call the extracted methods:
+Replace the ~365-line body with ~60 lines calling extracted methods:
 
 ```go
 func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEvent) error {
@@ -203,7 +315,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 
 - [ ] **Step 8: Move `PipelineSummary` and `SummaryStats` types to types.go**
 
-These types (lines 21-35 of pipeline.go) belong with the other type definitions in `types.go`.
+These types (around lines 21-35 of pipeline.go) belong with other type definitions in `types.go`.
 
 - [ ] **Step 9: Build and verify**
 
@@ -221,321 +333,19 @@ Expected: all tests pass.
 git add internal/engine/
 git commit -m "refactor(engine): extract Run() phases into sub-methods
 
-Split 355-line god-function into shouldSkipTarget, classifyTarget,
+Split ~365-line god-function into shouldSkipTarget, classifyTarget,
 ensureRuntimeDeps, ensureTools, executeRecipe. Add emitter helper type.
 Run() is now ~60 lines orchestrating the phases."
 ```
 
 ---
 
-## Task 2: Move Cobra command builders to `internal/cli/` (P2)
+## Task 3: Fix .gitignore gaps (P2 — Hygiene)
 
 **Files:**
-- Modify: `cmd/morgue/main.go`, `internal/cli/run.go`, `internal/cli/tools_cmd.go`, `internal/cli/api_cmd.go`, `internal/cli/info.go`
-- Create: `internal/cli/selfupdate_cmd.go`, `internal/cli/version_cmd.go`
-
-Currently `main.go` has 6 Cobra command builder functions (lines 145-342) that just define flags and delegate to `cli.*` functions. Move them so `main.go` only has `main()`, `runGUI()`, `runCLI()`.
-
-- [ ] **Step 1: Add `NewRunCmd()` to `internal/cli/run.go`**
-
-Move `runCmd()` from main.go (lines 145-178) → `cli.NewRunCmd()`. The function builds a `*cobra.Command` with flags and calls `cli.Run()` in its RunE. Export the version/commit as parameters.
-
-```go
-// NewRunCmd creates the 'run' cobra command.
-func NewRunCmd(version string) *cobra.Command {
-	// ... moved from main.go runCmd(), lines 145-178
-}
-```
-
-- [ ] **Step 2: Add `NewToolsCmd()` to `internal/cli/tools_cmd.go`**
-
-Move `toolsCmd()` from main.go (lines 180-207) → `cli.NewToolsCmd()`.
-
-- [ ] **Step 3: Create `internal/cli/version_cmd.go` with `NewVersionCmd()`**
-
-Move `versionCmd()` from main.go (lines 209-217). Pass `version`, `commit` as parameters.
-
-```go
-func NewVersionCmd(version, commit string) *cobra.Command {
-	return &cobra.Command{
-		Use:   "version",
-		Short: "Print version",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("morgue %s (commit %s)\n", version, commit)
-		},
-	}
-}
-```
-
-- [ ] **Step 4: Create `internal/cli/selfupdate_cmd.go` with `NewSelfUpdateCmd()`**
-
-Move `selfUpdateCmd()` from main.go (lines 219-235).
-
-- [ ] **Step 5: Add `NewApiCmd()` to `internal/cli/api_cmd.go`**
-
-Move `apiCmd()` from main.go (lines 237-325) — this is the largest block, 88 lines of Cobra subcommand tree.
-
-- [ ] **Step 6: Add `NewInfoCmd()` to `internal/cli/info.go`**
-
-Move `infoCmd()` from main.go (lines 327-342).
-
-- [ ] **Step 7: Simplify `runCLI()` in main.go**
-
-```go
-func runCLI() {
-	root := &cobra.Command{Use: "morgue", Short: "Decompilation pipeline"}
-	root.AddCommand(
-		cli.NewRunCmd(Version),
-		cli.NewToolsCmd(),
-		cli.NewVersionCmd(Version, Commit),
-		cli.NewSelfUpdateCmd(Version),
-		cli.NewApiCmd(),
-		cli.NewInfoCmd(Version, Commit),
-	)
-	if err := root.Execute(); err != nil {
-		os.Exit(1)
-	}
-}
-```
-
-- [ ] **Step 8: Build and verify**
-
-Run: `go build ./cmd/morgue/`
-Expected: clean build.
-
-- [ ] **Step 9: Commit**
-
-```bash
-git add cmd/morgue/main.go internal/cli/
-git commit -m "refactor(cli): move Cobra command builders from main.go to internal/cli
-
-main.go reduced from 343 to ~120 lines. Each command is now
-co-located with its handler logic in internal/cli/."
-```
-
----
-
-## Task 3: Extract `PipelineStepper.svelte` and `SettingsToggle.svelte` (P1)
-
-**Files:**
-- Create: `frontend/src/components/PipelineStepper.svelte`
-- Create: `frontend/src/components/SettingsToggle.svelte`
-- Modify: `frontend/src/components/PipelineProgress.svelte`
-- Modify: `frontend/src/pages/SettingsPage.svelte`
-
-### 3A: PipelineStepper
-
-- [ ] **Step 1: Create `PipelineStepper.svelte`**
-
-Extract the stage stepper (PipelineProgress.svelte template lines 92-116, style lines 300-401) into a standalone component.
-
-Props: `stages` (computed stage status map), `stageIds` (ordered list), `lang` (i18n).
-
-```svelte
-<script lang="ts">
-  import { t } from '$lib/i18n';
-  // ... type StageStatus, props
-</script>
-
-<!-- stage circles, connector lines, labels from lines 92-116 -->
-
-<style>
-  /* stepper styles from lines 300-401 */
-</style>
-```
-
-- [ ] **Step 2: Update `PipelineProgress.svelte` to use `PipelineStepper`**
-
-Replace lines 92-116 with `<PipelineStepper {stages} {stageIds} {lang} />`. Remove stepper styles (lines 300-401) from PipelineProgress.
-
-- [ ] **Step 3: Verify visually**
-
-Run: `task dev` or `npm run dev`
-Expected: pipeline progress looks identical. Stage stepper renders correctly.
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add frontend/src/components/PipelineStepper.svelte frontend/src/components/PipelineProgress.svelte
-git commit -m "refactor(ui): extract PipelineStepper from PipelineProgress
-
-Stage indicator circles/lines/labels now in own component.
-PipelineProgress reduced by ~120 lines."
-```
-
-### 3B: SettingsToggle
-
-- [ ] **Step 5: Create `SettingsToggle.svelte`**
-
-The toggle pattern appears 15+ times in SettingsPage. Each instance is:
-
-```svelte
-<div class="setting-row">
-  <span class="setting-label">{t(lang, 'key')}</span>
-  <div class="toggle" class:active={config.field} onclick={() => toggleField('field')} onkeydown={...}>
-    <div class="toggle-slider"></div>
-  </div>
-</div>
-```
-
-Extract to:
-
-```svelte
-<script lang="ts">
-  let { label, active, onToggle }: {
-    label: string;
-    active: boolean;
-    onToggle: () => void;
-  } = $props();
-</script>
-
-<div class="setting-row">
-  <span class="setting-label">{label}</span>
-  <div class="toggle" class:active role="switch" aria-checked={active}
-       onclick={onToggle} onkeydown={(e) => e.key === 'Enter' && onToggle()}>
-    <div class="toggle-slider"></div>
-  </div>
-</div>
-
-<style>
-  /* toggle styles from SettingsPage */
-</style>
-```
-
-- [ ] **Step 6: Update `SettingsPage.svelte` to use `SettingsToggle`**
-
-Replace each toggle pattern with:
-
-```svelte
-<SettingsToggle label={t(lang, 'settings.autoUpdate')} active={config.autoUpdate} onToggle={() => toggleField('autoUpdate')} />
-```
-
-This replaces ~45 lines of repeated markup with ~15 lines of component usage.
-
-- [ ] **Step 7: Verify visually**
-
-Run: `task dev` or `npm run dev`
-Expected: settings page looks identical. All toggles work.
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add frontend/src/components/SettingsToggle.svelte frontend/src/pages/SettingsPage.svelte
-git commit -m "refactor(ui): extract SettingsToggle, eliminate 15x repeated pattern
-
-SettingsPage reduced by ~130 lines. Toggle now reusable component
-with proper ARIA attributes."
-```
-
----
-
-## Task 4: Split `pipeline.ts` into modules (P2)
-
-**Files:**
-- Create: `frontend/src/lib/pipeline-types.ts`
-- Create: `frontend/src/lib/pipeline-events.ts`
-- Create: `frontend/src/lib/history.ts`
-- Modify: `frontend/src/lib/pipeline.ts` (becomes pipeline store only)
-- Modify: all importers of `pipeline.ts`
-
-- [ ] **Step 1: Create `pipeline-types.ts`**
-
-Move from pipeline.ts lines 4-44: `PipelinePhase`, `PipelineTarget`, `PipelineState`.
-
-```typescript
-// frontend/src/lib/pipeline-types.ts
-export type PipelinePhase = 'idle' | 'scan' | 'recon' | 'tools' | 'execute' | 'done' | 'error' | 'cancelled';
-
-export interface PipelineTarget { /* ... lines 8-12 */ }
-
-export interface PipelineState { /* ... lines 14-44, all 25 fields */ }
-```
-
-- [ ] **Step 2: Create `history.ts`**
-
-Move from pipeline.ts lines 284-315: `HistoryEntry`, `history` store, `addHistoryEntry()`, `loadHistory()`. This module has zero coupling to pipeline state.
-
-```typescript
-// frontend/src/lib/history.ts
-import { writable } from 'svelte/store';
-
-export interface HistoryEntry { /* ... lines 284-293 */ }
-// ... loadHistory, history store, addHistoryEntry
-```
-
-- [ ] **Step 3: Create `pipeline-events.ts`**
-
-Move from pipeline.ts lines 87-282: `startPipeline()`, `updateFromEvent()`. These import from `pipeline-types.ts` and update the store from `pipeline.ts`.
-
-```typescript
-// frontend/src/lib/pipeline-events.ts
-import type { PipelineState } from './pipeline-types';
-import { pipelineState } from './pipeline';
-// ... startPipeline, updateFromEvent
-```
-
-- [ ] **Step 4: Slim down `pipeline.ts` to store-only**
-
-Keep lines 46-85: `initial` const, `pipelineState` writable store, `isRunning` derived, `resetPipeline()`. Re-export types from `pipeline-types.ts` for backward compatibility.
-
-```typescript
-// frontend/src/lib/pipeline.ts
-import type { PipelineState } from './pipeline-types';
-export type { PipelinePhase, PipelineTarget, PipelineState } from './pipeline-types';
-
-const initial: PipelineState = { /* ... */ };
-export const pipelineState = writable<PipelineState>(initial);
-export const isRunning = derived(pipelineState, $s => ...);
-export function resetPipeline() { pipelineState.set(initial); }
-```
-
-- [ ] **Step 5: Update imports in consuming files**
-
-Find all files importing from `pipeline.ts` and update:
-- Components importing `startPipeline`/`updateFromEvent` → import from `pipeline-events`
-- Components importing `HistoryEntry`/`history` → import from `history`
-- Components importing types only → can import from `pipeline-types` or keep `pipeline` (re-exports)
-
-- [ ] **Step 6: Build and verify**
-
-Run: `cd frontend && npm run build`
-Expected: clean build, no errors.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add frontend/src/lib/
-git commit -m "refactor(frontend): split pipeline.ts into types, events, history modules
-
-pipeline.ts: 315 -> ~40 lines (store only).
-pipeline-types.ts: pure type definitions.
-pipeline-events.ts: startPipeline + updateFromEvent.
-history.ts: independent run history store."
-```
-
----
-
-## Task 5: Fix IL2CPP stub and .gitignore (P2-P3)
-
-**Files:**
-- Modify: `internal/recipe/il2cpp.go`
 - Modify: `.gitignore`
 
-- [ ] **Step 1: Remove IL2CPP from registry**
-
-In `internal/recipe/il2cpp.go`, remove or comment out the `init()` function that calls `Register(&IL2CPP{})`. Keep the type definition for future implementation. This prevents the pipeline from matching IL2CPP targets and failing with a misleading error.
-
-```go
-// init registers IL2CPP when implementation is ready.
-// func init() { Register(&IL2CPP{}) }
-```
-
-- [ ] **Step 2: Build and verify**
-
-Run: `go build ./...`
-Expected: clean build. IL2CPP recipe no longer in registry.
-
-- [ ] **Step 3: Add missing .gitignore entries**
+- [ ] **Step 1: Add missing .gitignore entries**
 
 Append to `.gitignore`:
 
@@ -549,29 +359,32 @@ summary.json
 
 # Design mockups
 mockup-analysis.html
-
-# Decompilation output (should use testbed/)
-BepInEx/
-Cosmoteer/
-HalflingCore/
 ```
 
-- [ ] **Step 4: Remove stray files from git tracking**
+Note: BepInEx/, Cosmoteer/, HalflingCore/ are NOT tracked by git — no `git rm --cached` needed.
 
-Run: `git rm --cached -r BepInEx/ Cosmoteer/ HalflingCore/ .webview2/ coverage.out summary.json mockup-analysis.html 2>/dev/null; true`
-
-Note: only removes from git tracking, files stay on disk.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 2: Commit**
 
 ```bash
-git add .gitignore internal/recipe/il2cpp.go
-git commit -m "fix: unregister IL2CPP stub recipe, update .gitignore
-
-IL2CPP init() disabled — stub was registering a recipe that always
-fails. gitignore now covers webview2 cache, coverage output,
-mockups, and stray decompilation dirs."
+git add .gitignore
+git commit -m "fix: add missing .gitignore entries for webview2 cache, coverage, mockups"
 ```
+
+---
+
+## Removed from original plan (with reasoning)
+
+### ~~Move Cobra commands to internal/cli/~~ — REMOVED
+`main.go` is 343 lines. Commands already delegate to `cli.*` handlers. Splitting command *builders* into separate files from their *handlers* adds navigation overhead. Not worth it for this project size.
+
+### ~~Split pipeline.ts into 4 modules~~ — REMOVED
+315 lines, well-structured with clear sections. Splitting creates circular dependency risk (`pipeline-events.ts` → `pipeline.ts` → `pipeline-types.ts`). Navigation cost exceeds DRY benefit at this size.
+
+### ~~Unregister IL2CPP recipe~~ — REMOVED
+IL2CPP is a **fully functional recipe** (256 lines, 4 steps, uses il2cppdumper/ilspycmd/strings). Original plan incorrectly called it a "stub". No change needed.
+
+### ~~git rm stray dirs~~ — REMOVED
+BepInEx/, Cosmoteer/, HalflingCore/ were **never tracked** by git. `git rm --cached` would be a no-op.
 
 ---
 
@@ -583,4 +396,4 @@ After all tasks complete:
 - [ ] `go test ./...` — all tests pass
 - [ ] `cd frontend && npm run build` — clean frontend build
 - [ ] `git status` — no untracked stray files
-- [ ] Visual check: pipeline progress, settings page, analysis panel all look identical
+- [ ] Visual check: pipeline progress, settings page all look identical
