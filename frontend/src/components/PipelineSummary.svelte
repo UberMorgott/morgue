@@ -48,14 +48,6 @@
     </div>
   {/if}
 
-  {#if state.logs.length > 0}
-    <details class="summary-logs">
-      <summary class="logs-toggle">{t(lang, 'home.summary.log')} ({state.logs.length})</summary>
-      <div class="logs-body">
-        <pre class="log-text font-mono">{state.logs.join('\n')}</pre>
-      </div>
-    </details>
-  {/if}
 </div>
 
 <style>
@@ -144,33 +136,5 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .summary-logs {
-    border-top: 1px solid var(--border-subtle);
-    padding-top: 12px;
-  }
-  .logs-toggle {
-    font-size: 0.82rem;
-    color: var(--text-muted);
-    cursor: pointer;
-    padding: 4px 0;
-  }
-  .logs-toggle:hover {
-    color: var(--text-secondary);
-  }
-  .logs-body {
-    max-height: 200px;
-    overflow-y: auto;
-    margin-top: 8px;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-  .log-text {
-    font-size: 13px;
-    color: #e0d0c0;
-    line-height: 2;
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-all;
   }
 </style>

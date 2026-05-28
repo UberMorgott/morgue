@@ -80,6 +80,12 @@
             <span class="file-waiting">{t(lang, 'execution.waiting')}</span>
           {/if}
         </span>
+        <span class="tool-counter">
+          {#if counter && counter.count > 0}
+            <span class="counter-value font-accent">{counter.count}</span>
+            <span class="counter-unit">{counter.unit}</span>
+          {/if}
+        </span>
         <span class="tool-ring">
           {#if active}
             <ProgressRing value={progress} size={32} variant="accent" label="{Math.round(progress)}%" />
@@ -87,12 +93,6 @@
             <ProgressRing value={100} size={32} variant="success" label="&#x2713;" />
           {:else}
             <span class="ring-dash">&mdash;</span>
-          {/if}
-        </span>
-        <span class="tool-counter">
-          {#if counter}
-            <span class="counter-value font-accent">{counter.count}</span>
-            <span class="counter-unit">{counter.unit}</span>
           {/if}
         </span>
       </div>
@@ -126,7 +126,7 @@
 
   .tool-row {
     display: grid;
-    grid-template-columns: 100px 1fr auto auto;
+    grid-template-columns: 100px 1fr auto 36px;
     align-items: center;
     gap: 12px;
     padding: 10px 0;
