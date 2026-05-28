@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { t, type Lang } from '../lib/i18n';
   import ProgressRing from './ProgressRing.svelte';
 
   let {
+    lang,
     currentTarget = '',
     step = 0,
     stepTotal = 0,
@@ -11,6 +13,7 @@
     toolsNeeded = [] as string[],
     execCounters = {} as Record<string, { count: number; unit: string }>,
   }: {
+    lang: Lang;
     currentTarget?: string;
     step?: number;
     stepTotal?: number;
@@ -54,7 +57,7 @@
 </script>
 
 <div class="exec-panel glass neon-border animate-in" style="animation-delay: 0.8s;">
-  <h3 class="panel-title">&#x25B6; &#x0412;&#x042B;&#x041F;&#x041E;&#x041B;&#x041D;&#x0415;&#x041D;&#x0418;&#x0415;</h3>
+  <h3 class="panel-title">&#x25B6; {t(lang, 'execution.title')}</h3>
 
   <!-- Per-tool rows -->
   <div class="tool-grid">
@@ -68,11 +71,11 @@
         <span class="tool-file-info">
           {#if active}
             <span class="file-current">{currentTarget ? basename(currentTarget) : ''}</span>
-            <span class="file-step">Step {step + 1} / {stepTotal}</span>
+            <span class="file-step">{t(lang, 'execution.step')} {step + 1} / {stepTotal}</span>
           {:else if done}
-            <span class="file-done">&#x0413;&#x043E;&#x0442;&#x043E;&#x0432;&#x043E;</span>
+            <span class="file-done">{t(lang, 'execution.done')}</span>
           {:else}
-            <span class="file-waiting">&#x041E;&#x0436;&#x0438;&#x0434;&#x0430;&#x043D;&#x0438;&#x0435;...</span>
+            <span class="file-waiting">{t(lang, 'execution.waiting')}</span>
           {/if}
         </span>
         <span class="tool-ring">

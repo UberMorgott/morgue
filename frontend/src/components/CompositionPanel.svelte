@@ -1,5 +1,8 @@
 <script lang="ts">
-  let { groups, obfuscations }: {
+  import { t, type Lang } from '../lib/i18n';
+
+  let { lang, groups, obfuscations }: {
+    lang: Lang;
     groups: Array<{ kind: string; language: string; count: number; examples: string[] }>;
     obfuscations: Array<{ name: string; deobfuscator: string | null; affectedFiles: string[] }>;
   } = $props();
@@ -10,7 +13,7 @@
 </script>
 
 <div class="composition-panel glass neon-border animate-in">
-  <h3 class="panel-title">&#x2B21; СОСТАВ</h3>
+  <h3 class="panel-title">&#x2B21; {t(lang, 'composition.title')}</h3>
 
   <!-- Groups section -->
   <div class="groups">
@@ -22,7 +25,7 @@
         <span class="group-examples">
           {g.examples.slice(0, 2).join(', ')}
           {#if g.count > 2}
-            <span class="more-hint">and {g.count - 2} more</span>
+            <span class="more-hint">{t(lang, 'composition.andMore').replace('{n}', String(g.count - 2))}</span>
           {/if}
         </span>
       </div>
@@ -41,7 +44,7 @@
             </svg>
             <div class="obf-text">
               <strong>{ob.name}</strong>
-              <span class="obf-detail">&rarr; {ob.deobfuscator} will apply automatically &middot; {ob.affectedFiles.length} files</span>
+              <span class="obf-detail">&rarr; {ob.deobfuscator} {t(lang, 'composition.autoApply')} &middot; {ob.affectedFiles.length} {t(lang, 'composition.filesAffected')}</span>
             </div>
           </div>
         {:else}
@@ -52,9 +55,9 @@
             </svg>
             <div class="obf-text">
               <strong>{ob.name}</strong>
-              <span class="obf-detail">Deobfuscator unavailable &mdash; results partial</span>
+              <span class="obf-detail">{t(lang, 'composition.noDeobfuscator')}</span>
               <a class="obf-request" href={issueUrl(ob.name)} target="_blank" rel="noopener">
-                &#x1F4DD; Request {ob.name} support
+                &#x1F4DD; {t(lang, 'composition.requestSupport').replace('{name}', ob.name)}
               </a>
             </div>
           </div>

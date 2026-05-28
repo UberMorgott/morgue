@@ -282,9 +282,9 @@ export function updateFromEvent(data: any) {
           const tool = d.Tool;
           const prev = s.execCounters[tool] || { count: 0, unit: 'items' };
           let unit = prev.unit;
-          if (/type/i.test(message)) unit = 'types';
-          else if (/method|function/i.test(message)) unit = 'functions';
-          else if (/class/i.test(message)) unit = 'classes';
+          if (/\bclass\b/i.test(message)) unit = 'classes';
+          else if (/\bmethod\b|\bfunction\b/i.test(message)) unit = 'functions';
+          else if (/\btype\b/i.test(message)) unit = 'types';
           next.execCounters = { ...s.execCounters, [tool]: { count: prev.count + 1, unit } };
         }
       }
