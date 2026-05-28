@@ -27,7 +27,7 @@
   }
 </script>
 
-<div class="about-page">
+<div class="about-page page-container">
   <h2 class="page-title">{t(lang, 'about.title')}</h2>
 
   <div class="about-grid">
@@ -111,43 +111,22 @@
 </div>
 
 <style>
-  .about-page {
-    padding: clamp(16px, 3vw, 40px);
-    overflow-y: auto;
-    height: 100%;
-  }
-  .page-title {
-    font-family: 'Orbitron', sans-serif;
-    font-size: clamp(18px, 2.5vw, 28px);
-    color: var(--text-primary);
-    margin-bottom: clamp(16px, 2vw, 28px);
-  }
   .about-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: clamp(12px, 2vw, 20px);
   }
   .about-card {
-    background: rgba(30, 24, 38, 0.7);
-    border: 1px solid rgba(255, 155, 55, 0.1);
-    border-radius: 12px;
     padding: clamp(16px, 2vw, 24px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
-  .card-title {
-    font-family: 'Orbitron', sans-serif;
-    font-size: clamp(12px, 1.5vw, 16px);
-    color: var(--accent);
-    margin-bottom: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
   /* App header */
   .app-header {
     display: flex;
     align-items: center;
     gap: 14px;
-    margin-bottom: 14px;
   }
   .app-icon {
     width: 48px;
@@ -157,14 +136,14 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Orbitron', 'Play', sans-serif;
     font-size: 24px;
     font-weight: 700;
     color: #fff;
     flex-shrink: 0;
   }
   .app-name {
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Orbitron', 'Play', sans-serif;
     font-size: clamp(18px, 2.5vw, 24px);
     color: var(--text-primary);
     margin: 0;
@@ -178,6 +157,7 @@
     font-size: clamp(12px, 1.4vw, 14px);
     color: var(--text-secondary);
     line-height: 1.5;
+    margin: 0;
   }
 
   /* Info rows */
@@ -209,7 +189,7 @@
     color: var(--accent);
     padding: 2px 8px;
     border-radius: 4px;
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Orbitron', 'Play', sans-serif;
     font-size: clamp(10px, 1.2vw, 12px);
   }
   .info-value.mono {
@@ -232,7 +212,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Orbitron', 'Play', sans-serif;
     font-weight: 700;
     font-size: 18px;
     color: #fff;
@@ -293,5 +273,6 @@
     font-size: clamp(11px, 1.3vw, 13px);
     color: var(--text-muted);
     line-height: 1.6;
+    margin: 0;
   }
 </style>

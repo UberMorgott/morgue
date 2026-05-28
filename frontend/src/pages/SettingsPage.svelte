@@ -62,8 +62,8 @@
   }
 </script>
 
-<div class="settings-page">
-  <h2 class="settings-title">{t(lang, 'settings.title')}</h2>
+<div class="settings-page page-container">
+  <h2 class="page-title">{t(lang, 'settings.title')}</h2>
 
   {#if loading}
     <div class="settings-loading">{t(lang, 'settings.loading')}</div>
@@ -199,24 +199,6 @@
 </div>
 
 <style>
-  .settings-page {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    padding: 20px;
-    gap: 16px;
-  }
-
-  .settings-title {
-    font-family: 'Orbitron', 'Play', sans-serif;
-    font-size: clamp(16px, 1.3vw, 22px);
-    font-weight: 600;
-    color: var(--text-heading);
-    letter-spacing: 1px;
-    margin: 0;
-    flex-shrink: 0;
-  }
-
   .settings-loading {
     color: var(--text-muted);
     padding: 24px;
@@ -251,18 +233,6 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-  }
-
-  .card-title {
-    font-family: 'Orbitron', 'Play', sans-serif;
-    font-size: clamp(10px, 0.85vw, 13px);
-    font-weight: 600;
-    color: var(--accent);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin: 0;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border-subtle);
   }
 
   .card-rows {

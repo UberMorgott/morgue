@@ -243,6 +243,78 @@ html::after {
               0 0 48px rgba(255, 100, 0, 0.1);
 }
 
+/* Page layout — unified container for all pages */
+.page-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 32px;
+  gap: 24px;
+  overflow-y: auto;
+}
+
+/* Page title — unified heading for all pages */
+.page-title {
+  font-family: 'Orbitron', 'Play', sans-serif;
+  font-size: clamp(18px, 2.5vw, 28px);
+  font-weight: 600;
+  color: var(--text-heading);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+/* Page header row — title + action buttons */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+/* Card title — Orbitron heading inside glass cards */
+.card-title {
+  font-family: 'Orbitron', 'Play', sans-serif;
+  font-size: clamp(10px, 0.85vw, 13px);
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Page action buttons (outline style) */
+.page-action-btn {
+  all: unset;
+  font-size: clamp(11px, 0.85vw, 13px);
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.page-action-btn:hover:not(:disabled) {
+  background: var(--accent-dim);
+}
+.page-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.page-action-btn.accent {
+  background: var(--accent);
+  color: var(--bg-page);
+  font-weight: 600;
+  border: none;
+}
+.page-action-btn.accent:hover:not(:disabled) {
+  box-shadow: 0 0 12px var(--accent-dim);
+}
+
 /* Pipeline panel — standard glass container for pipeline UI sections */
 .pipeline-panel {
   display: flex;
