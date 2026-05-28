@@ -41,10 +41,10 @@ export interface PipelineState {
   toolsInstalled: string[];  // tools that finished installing
   downloadingTool: string;   // current tool being downloaded
   downloadProgress: number;  // 0-100 or -1 for indeterminate (extracting)
-  obfuscations: Array<{ file: string; obfuscator: string; deobfuscator: string }>;
+  obfuscations: Array<{ name: string; deobfuscator: string | null; affectedFiles: string[] }>;
   downloadBytes: number;       // bytes downloaded so far
   downloadTotalBytes: number;  // total bytes to download
-  execCounters: Record<string, number>;  // per-tool Processing/Decompiling message counts
+  execCounters: Record<string, { count: number; unit: string }>;  // per-tool Processing/Decompiling message counts
 }
 
 const initial: PipelineState = {
@@ -194,15 +194,24 @@ export function updateFromEvent(data: any) {
       if (d.RecipeDesc) next.recipeDesc = d.RecipeDesc;
     }
 
-    // Accumulate obfuscation detections
+    // Accumulate obfuscation detections (grouped by obfuscator name)
     if (d.Obfuscator) {
       const fname = target ? (target.split(/[\\/]/).pop() || target) : '';
-      if (fname && !next.obfuscations.find(o => o.file === fname && o.obfuscator === d.Obfuscator)) {
-        next.obfuscations = [...s.obfuscations, {
-          file: fname,
-          obfuscator: d.Obfuscator,
-          deobfuscator: d.Deobfuscator || '',
-        }];
+      if (fname) {
+        const existing = next.obfuscations.find(o => o.name === d.Obfuscator);
+        if (existing) {
+          if (!existing.affectedFiles.includes(fname)) {
+            next.obfuscations = next.obfuscations.map(o =>
+              o.name === d.Obfuscator ? { ...o, affectedFiles: [...o.affectedFiles, fname] } : o
+            );
+          }
+        } else {
+          next.obfuscations = [...next.obfuscations, {
+            name: d.Obfuscator,
+            deobfuscator: d.Deobfuscator || null,
+            affectedFiles: [fname],
+          }];
+        }
       }
     }
 
@@ -271,7 +280,12 @@ export function updateFromEvent(data: any) {
         // Count Processing/Decompiling messages per tool
         if (d.Tool && (message.startsWith('Processing') || message.startsWith('Decompiling'))) {
           const tool = d.Tool;
-          next.execCounters = { ...s.execCounters, [tool]: (s.execCounters[tool] || 0) + 1 };
+          const prev = s.execCounters[tool] || { count: 0, unit: 'items' };
+          let unit = prev.unit;
+          if (/type/i.test(message)) unit = 'types';
+          else if (/method|function/i.test(message)) unit = 'functions';
+          else if (/class/i.test(message)) unit = 'classes';
+          next.execCounters = { ...s.execCounters, [tool]: { count: prev.count + 1, unit } };
         }
       }
     }
