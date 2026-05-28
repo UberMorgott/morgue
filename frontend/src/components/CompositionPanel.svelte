@@ -3,12 +3,20 @@
 
   let { lang, groups, obfuscations }: {
     lang: Lang;
-    groups: Array<{ kind: string; language: string; count: number; examples: string[] }>;
+    groups: Array<{ kind: string; language: string; count: number; totalSize: number; examples: string[] }>;
     obfuscations: Array<{ name: string; deobfuscator: string | null; affectedFiles: string[] }>;
   } = $props();
 
   function issueUrl(name: string): string {
     return `https://github.com/UberMorgott/morgue/issues/new?title=Deobfuscator+request:+${encodeURIComponent(name)}&labels=enhancement`;
+  }
+
+  function formatSize(bytes: number): string {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   }
 </script>
 
@@ -17,15 +25,17 @@
 
   <!-- Groups section -->
   <div class="groups">
-    {#each groups as g (g.kind)}
+    {#each groups.filter(g => g.kind.toLowerCase() !== 'unknown') as g (g.kind)}
       <div class="group-row">
-        <span class="group-count font-accent">{g.count}</span>
         <span class="group-kind">{g.kind}</span>
-        <span class="lang-badge">{g.language}</span>
-        <span class="group-examples font-mono">
-          {g.examples.slice(0, 2).join(', ')}
-          {#if g.count > 2}
-            <span class="more-hint">{t(lang, 'composition.andMore').replace('{n}', String(g.count - 2))}</span>
+        {#if g.language}
+          <span class="lang-badge">{g.language}</span>
+        {/if}
+        <span class="group-meta">
+          <span class="group-count font-accent">{g.count}</span>
+          <span class="group-unit">{g.count === 1 ? 'file' : 'files'}</span>
+          {#if g.totalSize > 0}
+            <span class="group-size">{formatSize(g.totalSize)}</span>
           {/if}
         </span>
       </div>
@@ -79,21 +89,14 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 6px 0;
-  }
-
-  .group-count {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--accent);
-    min-width: 28px;
-    text-align: right;
+    padding: 8px 0;
   }
 
   .group-kind {
     font-size: 0.84rem;
     font-weight: 600;
     color: var(--text-primary);
+    min-width: 100px;
   }
 
   .lang-badge {
@@ -109,19 +112,29 @@
     letter-spacing: 0.3px;
   }
 
-  .group-examples {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1;
+  .group-meta {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    margin-left: auto;
   }
 
-  .more-hint {
+  .group-count {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .group-unit {
+    font-size: 0.75rem;
     color: var(--text-muted);
-    opacity: 0.7;
-    font-style: italic;
+  }
+
+  .group-size {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    margin-left: 8px;
+    font-weight: 500;
   }
 
   /* Obfuscation section */

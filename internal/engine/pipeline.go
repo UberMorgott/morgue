@@ -25,7 +25,15 @@ func pauseChecker(pg *PauseGate) recipe.PauseChecker {
 	return pg
 }
 
-// Run executes the full pipeline: scan → recon → skip → match → execute → save.
+// fileTask holds the analysis result for a single file (pass 1), used in pass 2.
+type fileTask struct {
+	group    scanner.TargetGroup
+	filePath string
+	recon    recon.Result
+	recipe   recipe.Recipe
+}
+
+// Run executes the full pipeline: scan → analyse all → emit tools → execute all → save.
 func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEvent) error {
 	startTime := time.Now()
 	em := emitter{ch: events}
@@ -48,8 +56,9 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 	})
 
 	var results []TargetResult
+	var tasks []fileTask
 
-	// Phase 2: Process each group
+	// Pass 1 (analysis): recon + match for every file, collect required tools.
 	for _, group := range scanResult.Groups {
 		for _, filePath := range group.Files {
 			select {
@@ -58,7 +67,6 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			default:
 			}
 
-			// Block if paused, respecting cancellation
 			if opts.Pause != nil {
 				if err := opts.Pause.WaitIfPaused(ctx); err != nil {
 					return err
@@ -110,42 +118,76 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				RecipeDesc: rec.Description(),
 			})
 
-			// Emit tools event with full list before install
-			em.send(PipelineEvent{
-				Phase:       "tools",
-				Target:      filePath,
-				Message:     fmt.Sprintf("%d tools needed", len(rec.RequiredTools())),
-				ToolsNeeded: rec.RequiredTools(),
+			tasks = append(tasks, fileTask{
+				group:    group,
+				filePath: filePath,
+				recon:    reconResult,
+				recipe:   rec,
 			})
-
-			// Check runtime dependencies
-			if err := e.ensureRuntimeDeps(filePath, rec, em); err != nil {
-				results = append(results, TargetResult{
-					Group: group, Recon: reconResult, Recipe: rec,
-					Error: fmt.Errorf("failed to install required runtime"),
-				})
-				continue
-			}
-
-			// Check required tools
-			if err := e.ensureTools(filePath, rec, em); err != nil {
-				results = append(results, TargetResult{
-					Group: group, Recon: reconResult, Recipe: rec, Error: err,
-				})
-				continue
-			}
-
-			// Pause check before execution
-			if opts.Pause != nil {
-				if err := opts.Pause.WaitIfPaused(ctx); err != nil {
-					return err
-				}
-			}
-
-			// Execute recipe
-			tr := e.executeRecipe(ctx, filePath, &opts, rec, reconResult, group, em)
-			results = append(results, tr)
 		}
+	}
+
+	// Emit ONE aggregated tools event with all unique tools in execution order.
+	allToolsSeen := map[string]bool{}
+	var allTools []string
+	for _, t := range tasks {
+		for _, name := range t.recipe.RequiredTools() {
+			if !allToolsSeen[name] {
+				allToolsSeen[name] = true
+				allTools = append(allTools, name)
+			}
+		}
+	}
+	if len(allTools) > 0 {
+		em.send(PipelineEvent{
+			Phase:       "tools",
+			Target:      opts.Input,
+			Message:     fmt.Sprintf("%d tools needed", len(allTools)),
+			ToolsNeeded: allTools,
+		})
+	}
+
+	// Pass 2 (execution): install tools + run recipes.
+	for _, t := range tasks {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		if opts.Pause != nil {
+			if err := opts.Pause.WaitIfPaused(ctx); err != nil {
+				return err
+			}
+		}
+
+		// Check runtime dependencies
+		if err := e.ensureRuntimeDeps(t.filePath, t.recipe, em); err != nil {
+			results = append(results, TargetResult{
+				Group: t.group, Recon: t.recon, Recipe: t.recipe,
+				Error: fmt.Errorf("failed to install required runtime"),
+			})
+			continue
+		}
+
+		// Check required tools
+		if err := e.ensureTools(t.filePath, t.recipe, em); err != nil {
+			results = append(results, TargetResult{
+				Group: t.group, Recon: t.recon, Recipe: t.recipe, Error: err,
+			})
+			continue
+		}
+
+		// Pause check before execution
+		if opts.Pause != nil {
+			if err := opts.Pause.WaitIfPaused(ctx); err != nil {
+				return err
+			}
+		}
+
+		// Execute recipe
+		tr := e.executeRecipe(ctx, t.filePath, &opts, t.recipe, t.recon, t.group, em)
+		results = append(results, tr)
 	}
 
 	// Write summary.json
@@ -353,8 +395,18 @@ func (e *Engine) executeRecipe(
 					logOpen = false
 					continue
 				}
+				tool := currentTool
+				logMsg := msg
+				// Parse [tool] prefix if present — recipes tag log messages
+				// with their tool to avoid misattribution from channel races.
+				if strings.HasPrefix(msg, "[") {
+					if idx := strings.Index(msg, "] "); idx > 0 {
+						tool = msg[1:idx]
+						logMsg = msg[idx+2:]
+					}
+				}
 				em.send(PipelineEvent{
-					Phase: "log", Target: filePath, Tool: currentTool, Message: msg,
+					Phase: "log", Target: filePath, Tool: tool, Message: logMsg,
 				})
 			}
 		}

@@ -48,9 +48,9 @@ func (u *UnityMono) Execute(ctx *Context) error {
 			}
 		}
 	}
-	log := func(msg string) {
+	logTool := func(tool, msg string) {
 		if ctx.Log != nil {
-			ctx.Log <- msg
+			ctx.Log <- "[" + tool + "] " + msg
 		}
 	}
 	reportCount := func(step int, dur time.Duration, tool string, count int, unit string) {
@@ -87,11 +87,30 @@ func (u *UnityMono) Execute(ctx *Context) error {
 	start = time.Now()
 	stringsPath, err := ctx.Tools.Resolve("strings")
 	if err != nil {
-		log(fmt.Sprintf("strings tool not available: %v", err))
+		logTool("strings", fmt.Sprintf("strings tool not available: %v", err))
 		report(1, Skipped, time.Since(start), nil, "strings")
 	} else {
 		stringsOut := filepath.Join(ctx.Output, "strings.txt")
-		result, _ := util.RunCmd(ctx.Ctx, stringsPath, []string{"-nobanner", "-accepteula", ctx.Target}, "")
+		strLineCount := 0
+		strLastLog := time.Now().Add(-2 * time.Second)
+		strLastProgress := time.Now().Add(-2 * time.Second)
+		result, _ := util.RunCmdStreaming(ctx.Ctx, stringsPath, []string{"-nobanner", "-accepteula", ctx.Target}, "", func(line string) {
+			strLineCount++
+			if strLineCount%100 == 0 && time.Since(strLastLog) >= time.Second {
+				logTool("strings", fmt.Sprintf("Extracting strings: %d so far...", strLineCount))
+				strLastLog = time.Now()
+			}
+			if time.Since(strLastProgress) >= time.Second {
+				if ctx.Progress != nil {
+					ctx.Progress <- StepProgress{
+						Step: 1, Total: total, Name: steps[1].Name,
+						Tool: "strings", Status: Running,
+						Count: strLineCount, Unit: "strings",
+					}
+				}
+				strLastProgress = time.Now()
+			}
+		})
 		if result != nil {
 			os.WriteFile(stringsOut, []byte(result.Stdout), 0644)
 		}
@@ -111,7 +130,11 @@ func (u *UnityMono) Execute(ctx *Context) error {
 	}
 	srcDir := filepath.Join(ctx.Output, "src")
 	os.MkdirAll(srcDir, 0755)
-	result, err := util.RunCmd(ctx.Ctx, ilspyPath, []string{"-p", "-o", srcDir, ctx.Target}, "")
+	ilspyArgs := []string{"-p", "-o", srcDir, ctx.Target}
+	if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
+		ilspyArgs = append(ilspyArgs, "--language-version", ctx.Config.CSharpLanguageVersion)
+	}
+	result, err := util.RunCmd(ctx.Ctx, ilspyPath, ilspyArgs, "")
 	exitCode := -1
 	if result != nil {
 		exitCode = result.ExitCode
@@ -122,10 +145,14 @@ func (u *UnityMono) Execute(ctx *Context) error {
 		if result != nil && result.Stderr != "" {
 			msg += "\n" + strings.TrimSpace(result.Stderr)
 		}
-		log(msg)
+		logTool("ilspycmd", msg)
 		os.RemoveAll(srcDir)
 		os.MkdirAll(srcDir, 0755)
-		result, err = util.RunCmd(ctx.Ctx, ilspyPath, []string{"-o", srcDir, ctx.Target}, "")
+		retryArgs := []string{"-o", srcDir, ctx.Target}
+		if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
+			retryArgs = append(retryArgs, "--language-version", ctx.Config.CSharpLanguageVersion)
+		}
+		result, err = util.RunCmd(ctx.Ctx, ilspyPath, retryArgs, "")
 		exitCode = -1
 		if result != nil {
 			exitCode = result.ExitCode
@@ -138,17 +165,17 @@ func (u *UnityMono) Execute(ctx *Context) error {
 			originalErr := fmt.Errorf("ilspycmd failed (exit %d): %s", exitCode, stderr)
 
 			// Fallback: per-type decompilation
-			log("ilspycmd whole-assembly failed, trying per-type fallback...")
-			fallbackOK := perTypeFallback(ctx.Ctx, ilspyPath, ctx.Target, srcDir, log)
+			logTool("ilspycmd", "ilspycmd whole-assembly failed, trying per-type fallback...")
+			fallbackOK := perTypeFallback(ctx.Ctx, ilspyPath, ctx.Target, srcDir, func(msg string) { logTool("ilspycmd", msg) })
 			if !fallbackOK {
 				report(2, Failed, time.Since(start), originalErr, "ilspycmd")
 				return originalErr
 			}
 		} else {
-			log("ilspycmd succeeded without -p (flat file mode)")
+			logTool("ilspycmd", "ilspycmd succeeded without -p (flat file mode)")
 		}
 	} else {
-		log("ilspycmd succeeded in project mode")
+		logTool("ilspycmd", "ilspycmd succeeded in project mode")
 	}
 	csCount := countFilesWithExt(srcDir, ".cs")
 	reportCount(2, time.Since(start), "ilspycmd", csCount, "types")

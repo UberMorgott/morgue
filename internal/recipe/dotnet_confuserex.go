@@ -59,9 +59,9 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 			}
 		}
 	}
-	log := func(msg string) {
+	logTool := func(tool, msg string) {
 		if ctx.Log != nil {
-			ctx.Log <- msg
+			ctx.Log <- "[" + tool + "] " + msg
 		}
 	}
 	reportCount := func(step int, dur time.Duration, tool string, count int, unit string) {
@@ -107,7 +107,7 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 			return fmt.Errorf("nofuserex exit %d: %s", r.ExitCode, r.Stderr)
 		}
 		return nil
-	}, report, log)
+	}, report, logTool)
 
 	// Step 2: Unpack (resource/constant unpacking)
 	current = d.runToolStep(ctx, 2, current, interDir, "confuserex-killer", func(toolPath, input, output string) error {
@@ -119,7 +119,7 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 			return fmt.Errorf("unpacker exit %d: %s", r.ExitCode, r.Stderr)
 		}
 		return nil
-	}, report, log)
+	}, report, logTool)
 
 	// Step 3: String decrypt (de4dot-cex --strtyp delegate)
 	current = d.runToolStep(ctx, 3, current, interDir, "de4dot-cex", func(toolPath, input, output string) error {
@@ -131,7 +131,7 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 			return fmt.Errorf("de4dot-cex exit %d: %s", r.ExitCode, r.Stderr)
 		}
 		return nil
-	}, report, log)
+	}, report, logTool)
 
 	// Step 4: Control flow + rename (de4dot-cex second pass)
 	current = d.runToolStep(ctx, 4, current, interDir, "de4dot-cex", func(toolPath, input, output string) error {
@@ -143,7 +143,7 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 			return fmt.Errorf("de4dot-cex exit %d: %s", r.ExitCode, r.Stderr)
 		}
 		return nil
-	}, report, log)
+	}, report, logTool)
 
 	// Step 5: Proxy removal
 	current = d.runToolStep(ctx, 5, current, interDir, "proxycall-remover", func(toolPath, input, output string) error {
@@ -155,18 +155,37 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 			return fmt.Errorf("proxycall-remover exit %d: %s", r.ExitCode, r.Stderr)
 		}
 		return nil
-	}, report, log)
+	}, report, logTool)
 
 	// Step 6: Extract strings
 	report(6, Running, 0, nil, "strings")
 	start = time.Now()
 	stringsPath, err := ctx.Tools.Resolve("strings")
 	if err != nil {
-		log(fmt.Sprintf("strings tool not available: %v", err))
+		logTool("strings", fmt.Sprintf("strings tool not available: %v", err))
 		report(6, Skipped, time.Since(start), nil, "strings")
 	} else {
 		stringsOut := filepath.Join(ctx.Output, "strings.txt")
-		r, _ := util.RunCmd(ctx.Ctx, stringsPath, []string{"-nobanner", "-accepteula", current}, "")
+		strLineCount := 0
+		strLastLog := time.Now().Add(-2 * time.Second)
+		strLastProgress := time.Now().Add(-2 * time.Second)
+		r, _ := util.RunCmdStreaming(ctx.Ctx, stringsPath, []string{"-nobanner", "-accepteula", current}, "", func(line string) {
+			strLineCount++
+			if strLineCount%100 == 0 && time.Since(strLastLog) >= time.Second {
+				logTool("strings", fmt.Sprintf("Extracting strings: %d so far...", strLineCount))
+				strLastLog = time.Now()
+			}
+			if time.Since(strLastProgress) >= time.Second {
+				if ctx.Progress != nil {
+					ctx.Progress <- StepProgress{
+						Step: 6, Total: total, Name: steps[6].Name,
+						Tool: "strings", Status: Running,
+						Count: strLineCount, Unit: "strings",
+					}
+				}
+				strLastProgress = time.Now()
+			}
+		})
 		if r != nil {
 			os.WriteFile(stringsOut, []byte(r.Stdout), 0644)
 		}
@@ -179,7 +198,7 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 	// Step 7: Extract embedded (best-effort, scan for costura etc.)
 	report(7, Running, 0, nil, "")
 	start = time.Now()
-	log("Embedded extraction: scanning for Costura.Fody resources")
+	logTool("ilspycmd", "Embedded extraction: scanning for Costura.Fody resources")
 	report(7, Skipped, time.Since(start), nil, "") // placeholder — needs specialized logic
 
 	// Step 8: Decompile
@@ -192,7 +211,11 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 	}
 	srcDir := filepath.Join(ctx.Output, "src")
 	os.MkdirAll(srcDir, 0755)
-	result, runErr := util.RunCmd(ctx.Ctx, ilspyPath, []string{"-p", "-o", srcDir, current}, "")
+	ilspyArgs := []string{"-p", "-o", srcDir, current}
+	if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
+		ilspyArgs = append(ilspyArgs, "--language-version", ctx.Config.CSharpLanguageVersion)
+	}
+	result, runErr := util.RunCmd(ctx.Ctx, ilspyPath, ilspyArgs, "")
 	exitCode := -1
 	if result != nil {
 		exitCode = result.ExitCode
@@ -212,7 +235,7 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 	// Step 9: Build indexes
 	report(9, Running, 0, nil, "")
 	start = time.Now()
-	log("Building indexes for decompiled output")
+	logTool("ilspycmd", "Building indexes for decompiled output")
 	report(9, Skipped, time.Since(start), nil, "") // placeholder
 
 	return nil
@@ -223,28 +246,28 @@ func (d *DotnetConfuserEx) runToolStep(
 	ctx *Context, stepIdx int, current, interDir, toolName string,
 	run func(toolPath, input, output string) error,
 	report func(int, StepStatus, time.Duration, error, string),
-	log func(string),
+	logTool func(string, string),
 ) string {
 	report(stepIdx, Running, 0, nil, toolName)
 	start := time.Now()
 
 	toolPath, err := ctx.Tools.Resolve(toolName)
 	if err != nil {
-		log(fmt.Sprintf("%s not available: %v", toolName, err))
+		logTool(toolName, fmt.Sprintf("%s not available: %v", toolName, err))
 		report(stepIdx, Skipped, time.Since(start), nil, toolName)
 		return current
 	}
 
 	output := filepath.Join(interDir, fmt.Sprintf("step%d_%s%s", stepIdx, toolName, filepath.Ext(current)))
 	if err := run(toolPath, current, output); err != nil {
-		log(fmt.Sprintf("%s failed: %v — using previous stage", toolName, err))
+		logTool(toolName, fmt.Sprintf("%s failed: %v — using previous stage", toolName, err))
 		report(stepIdx, Failed, time.Since(start), err, toolName)
 		return current // fallback: keep using previous stage
 	}
 
 	// Verify output exists
 	if _, err := os.Stat(output); err != nil {
-		log(fmt.Sprintf("%s produced no output — using previous stage", toolName))
+		logTool(toolName, fmt.Sprintf("%s produced no output — using previous stage", toolName))
 		report(stepIdx, Failed, time.Since(start), err, toolName)
 		return current
 	}

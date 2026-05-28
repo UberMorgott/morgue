@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -193,15 +195,56 @@ func (m *Manager) InstallRuntime(kind RuntimeKind, cb *InstallCallbacks) error {
 	}
 }
 
-// installDotnetSDK downloads the .NET 10 SDK portable zip.
+// detectRequiredDotnetVersion scans NuGet-installed tools for their target
+// framework (e.g. tools/net10.0/any/) and returns the highest version found.
+// Falls back to "10.0" if no framework folder is detected.
+func detectRequiredDotnetVersion(toolsBaseDir string) string {
+	fallback := "10.0"
+	var versions []float64
+
+	for _, t := range Registry {
+		if t.Method != MethodNuGet {
+			continue
+		}
+		toolsSubdir := filepath.Join(toolsBaseDir, t.Name, "tools")
+		entries, err := os.ReadDir(toolsSubdir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			name := e.Name() // e.g. "net10.0"
+			if !strings.HasPrefix(name, "net") {
+				continue
+			}
+			verStr := strings.TrimPrefix(name, "net")
+			if v, err := strconv.ParseFloat(verStr, 64); err == nil {
+				versions = append(versions, v)
+			}
+		}
+	}
+
+	if len(versions) == 0 {
+		return fallback
+	}
+	sort.Float64s(versions)
+	highest := versions[len(versions)-1]
+	// Format: preserve one decimal (10.0, 12.0, etc.)
+	return strconv.FormatFloat(highest, 'f', 1, 64)
+}
+
+// installDotnetSDK downloads the .NET SDK portable zip, version auto-detected.
 func (m *Manager) installDotnetSDK(cb *InstallCallbacks) error {
 	destDir := m.localRuntimeDir(RuntimeDotnet)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return fmt.Errorf("create dotnet dir: %w", err)
 	}
 
+	dotnetVersion := detectRequiredDotnetVersion(m.baseDir)
 	zipPath := filepath.Join(m.baseDir, "runtimes", "dotnet-sdk.zip")
-	url := "https://aka.ms/dotnet/10.0/dotnet-sdk-win-x64.zip"
+	url := fmt.Sprintf("https://aka.ms/dotnet/%s/dotnet-sdk-win-x64.zip", dotnetVersion)
 
 	var progressCb func(bytesDown, bytesTotal int64)
 	if cb != nil && cb.OnProgress != nil {

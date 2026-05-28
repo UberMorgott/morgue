@@ -1,9 +1,11 @@
 <script lang="ts">
   import { t, type Lang } from '../lib/i18n';
+  import type { PipelinePhase } from '../lib/pipeline';
   import ProgressRing from './ProgressRing.svelte';
 
   let {
     lang,
+    phase = 'idle' as PipelinePhase,
     currentTarget = '',
     currentTool = '',
     step = 0,
@@ -12,9 +14,16 @@
     progress = 0,
     logs = [] as string[],
     toolsNeeded = [] as string[],
-    execCounters = {} as Record<string, { count: number; unit: string }>,
+    toolsInstalled = [] as string[],
+    downloadingTool = '',
+    downloadProgress = 0,
+    downloadBytes = 0,
+    downloadTotalBytes = 0,
+    lastMessage = '',
+    execCounters = {} as Record<string, { count: number; unit: string; countTotal: number }>,
   }: {
     lang: Lang;
+    phase?: PipelinePhase;
     currentTarget?: string;
     currentTool?: string;
     step?: number;
@@ -23,8 +32,16 @@
     progress?: number;
     logs?: string[];
     toolsNeeded?: string[];
-    execCounters?: Record<string, { count: number; unit: string }>;
+    toolsInstalled?: string[];
+    downloadingTool?: string;
+    downloadProgress?: number;
+    downloadBytes?: number;
+    downloadTotalBytes?: number;
+    lastMessage?: string;
+    execCounters?: Record<string, { count: number; unit: string; countTotal: number }>;
   } = $props();
+
+  type ToolState = 'checking' | 'downloading' | 'installing' | 'ready' | 'running' | 'done';
 
   let logEl: HTMLDivElement | null = $state(null);
 
@@ -35,16 +52,40 @@
     }
   });
 
-  function isActive(tool: string): boolean {
-    return currentTool === tool;
+  // Panel title: contextual based on phase
+  let panelTitle = $derived(
+    phase === 'tools' ? t(lang, 'tools.title')
+    : phase === 'execute' ? t(lang, 'execution.title')
+    : phase === 'done' ? t(lang, 'execution.done')
+    : t(lang, 'tools.title')
+  );
+
+  let panelIcon = $derived(
+    phase === 'tools' ? '⚙' : '▶'
+  );
+
+  function getToolState(tool: string): ToolState {
+    // Active tool = running
+    if (currentTool === tool) return 'running';
+    // Tool with counter data = done (counter only goes up via accumulation)
+    if (tool in execCounters) return 'done';
+
+    // Tools install phase states
+    if (tool === downloadingTool) {
+      const msg = lastMessage.toLowerCase();
+      if (msg.includes('extract') || msg.includes('распаков')) return 'installing';
+      return 'downloading';
+    }
+    if (toolsInstalled.includes(tool)) return 'ready';
+
+    // If we're past the tools phase, all tools are implicitly ready
+    if (phase === 'execute' || phase === 'done') return 'ready';
+
+    return 'checking';
   }
 
-  function isDone(tool: string): boolean {
-    return !isActive(tool) && tool in execCounters;
-  }
-
-  function isWaiting(tool: string): boolean {
-    return !isActive(tool) && !(tool in execCounters);
+  function formatMB(bytes: number): string {
+    return (bytes / 1048576).toFixed(0);
   }
 
   function basename(p: string): string {
@@ -58,26 +99,43 @@
   }
 </script>
 
-<div class="glass neon-border pipeline-panel animate-in" style="animation-delay: 0.8s;">
-  <h3 class="panel-title">&#x25B6; {t(lang, 'execution.title')}</h3>
+<div class="glass neon-border pipeline-panel animate-in" style="animation-delay: 0.15s;">
+  <h3 class="panel-title">{panelIcon} {panelTitle}</h3>
 
-  <!-- Per-tool rows -->
   <div class="tool-grid">
     {#each toolsNeeded as tool (tool)}
-      {@const active = isActive(tool)}
-      {@const done = isDone(tool)}
-      {@const waiting = isWaiting(tool)}
+      {@const state = getToolState(tool)}
       {@const counter = execCounters[tool]}
-      <div class="tool-row row-separator" class:waiting>
+      {@const ringValue =
+        state === 'done' ? 100
+        : state === 'ready' ? 100
+        : state === 'running' && counter && counter.countTotal > 0
+          ? Math.round((counter.count / counter.countTotal) * 100)
+          : state === 'downloading' ? downloadProgress
+        : -1}
+      {@const ringVariant =
+        state === 'done' ? 'success' : state === 'ready' ? 'accent' : 'accent'}
+      {@const ringLabel =
+        state === 'done' ? '✓'
+        : state === 'ready' ? '✓'
+        : ringValue >= 0 ? `${ringValue}%`
+        : ''}
+      {@const dimmed = state === 'checking'}
+      <div class="tool-row row-separator" class:dimmed>
         <span class="tool-name font-accent">{tool}</span>
-        <span class="tool-file-info">
-          {#if active}
-            <span class="file-current font-mono">{currentTarget ? basename(currentTarget) : ''}</span>
-            <span class="file-step">{t(lang, 'execution.step')} {step + 1} / {stepTotal}</span>
-          {:else if done}
-            <span class="file-done">{t(lang, 'execution.done')}</span>
-          {:else}
-            <span class="file-waiting">{t(lang, 'execution.waiting')}</span>
+        <span class="tool-info">
+          {#if state === 'checking'}
+            <span class="info-muted">{t(lang, 'tools.pending')}</span>
+          {:else if state === 'downloading'}
+            <span class="info-active">{formatMB(downloadBytes)} / {formatMB(downloadTotalBytes)} MB</span>
+          {:else if state === 'installing'}
+            <span class="info-active">{t(lang, 'pipeline.extracting')}</span>
+          {:else if state === 'ready'}
+            <span class="info-ready">{t(lang, 'tools.ready')}</span>
+          {:else if state === 'running'}
+            <span class="info-current font-mono">{currentTarget ? basename(currentTarget) : ''}</span>
+          {:else if state === 'done'}
+            <span class="info-done">{t(lang, 'execution.done')}</span>
           {/if}
         </span>
         <span class="tool-counter">
@@ -87,13 +145,7 @@
           {/if}
         </span>
         <span class="tool-ring">
-          {#if active}
-            <ProgressRing value={progress} size={32} variant="accent" label="{Math.round(progress)}%" />
-          {:else if done}
-            <ProgressRing value={100} size={32} variant="success" label="&#x2713;" />
-          {:else}
-            <span class="ring-dash">&mdash;</span>
-          {/if}
+          <ProgressRing value={ringValue} size={32} variant={ringVariant} label={ringLabel} />
         </span>
       </div>
     {/each}
@@ -132,7 +184,7 @@
     padding: 10px 0;
     transition: opacity 0.3s;
   }
-  .tool-row.waiting {
+  .tool-row.dimmed {
     opacity: 0.4;
   }
 
@@ -145,7 +197,7 @@
     white-space: nowrap;
   }
 
-  .tool-file-info {
+  .tool-info {
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -153,7 +205,26 @@
     min-width: 0;
   }
 
-  .file-current {
+  .info-muted {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  .info-active {
+    font-size: 0.82rem;
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .info-ready {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    font-style: italic;
+  }
+
+  .info-current {
     font-size: 0.82rem;
     color: var(--text-primary);
     overflow: hidden;
@@ -161,22 +232,10 @@
     white-space: nowrap;
   }
 
-  .file-step {
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    letter-spacing: 0.3px;
-  }
-
-  .file-done {
+  .info-done {
     font-size: 0.82rem;
     color: var(--success);
     font-weight: 500;
-  }
-
-  .file-waiting {
-    font-size: 0.82rem;
-    color: var(--text-muted);
-    font-style: italic;
   }
 
   .tool-ring {
@@ -186,12 +245,6 @@
     width: 36px;
     height: 36px;
     flex-shrink: 0;
-  }
-
-  .ring-dash {
-    font-size: 1.1rem;
-    color: var(--text-muted);
-    opacity: 0.5;
   }
 
   .tool-counter {

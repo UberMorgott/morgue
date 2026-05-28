@@ -80,6 +80,11 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 			ctx.Log <- msg
 		}
 	}
+	logTool := func(tool, msg string) {
+		if ctx.Log != nil {
+			ctx.Log <- "[" + tool + "] " + msg
+		}
+	}
 	reportCount := func(step int, dur time.Duration, tool string, count int, unit string) {
 		if ctx.Progress != nil {
 			ctx.Progress <- StepProgress{
@@ -130,19 +135,22 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		return err
 	}
 
-	log(fmt.Sprintf("Running Il2CppDumper: %s + %s", filepath.Base(ctx.Target), filepath.Base(metadataPath)))
-	result, err := util.RunCmdWithStdin(ctx.Ctx, dumperPath, []string{
+	logTool("il2cppdumper", fmt.Sprintf("Running Il2CppDumper: %s + %s", filepath.Base(ctx.Target), filepath.Base(metadataPath)))
+	dumperLastLog := time.Now().Add(-2 * time.Second)
+	result, err := util.RunCmdStreamingWithStdin(ctx.Ctx, dumperPath, []string{
 		ctx.Target,
 		metadataPath,
 		metaDir,
-	}, "", strings.NewReader("\r\n"))
+	}, "", strings.NewReader("\r\n"), func(line string) {
+		if time.Since(dumperLastLog) >= time.Second && strings.TrimSpace(line) != "" {
+			logTool("il2cppdumper", fmt.Sprintf("Il2CppDumper: %s", strings.TrimSpace(line)))
+			dumperLastLog = time.Now()
+		}
+	})
 
 	exitCode := -1
 	if result != nil {
 		exitCode = result.ExitCode
-		if result.Stdout != "" {
-			log(result.Stdout)
-		}
 	}
 
 	// Il2CppDumper crashes on Console.ReadKey() after completing work — check output instead of exit code
@@ -159,7 +167,7 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 
 	// Count outputs for logging
 	dummyDlls := countFiles(dummyDllDir, ".dll")
-	log(fmt.Sprintf("Il2CppDumper produced %d dummy assemblies", dummyDlls))
+	logTool("il2cppdumper", fmt.Sprintf("Il2CppDumper produced %d dummy assemblies", dummyDlls))
 	reportCount(1, time.Since(start), "il2cppdumper", dummyDlls, "assemblies")
 
 	// Step 2: Decompile metadata assemblies with ilspycmd
@@ -178,6 +186,12 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		return err
 	}
 
+	// Build optional language-version args for ilspycmd
+	var langVerArgs []string
+	if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
+		langVerArgs = []string{"--language-version", ctx.Config.CSharpLanguageVersion}
+	}
+
 	// Find all DLLs in DummyDll/, filter out system/engine libs
 	dlls, err := filepath.Glob(filepath.Join(dummyDllDir, "*.dll"))
 	if err != nil || len(dlls) == 0 {
@@ -189,6 +203,13 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 	succeeded := 0
 	failed := 0
 	skipped := 0
+	// Pre-count non-system DLLs for progress reporting
+	totalUserDlls := 0
+	for _, dll := range dlls {
+		if !isSystemDll(filepath.Base(dll)) {
+			totalUserDlls++
+		}
+	}
 	for _, dll := range dlls {
 		dllName := filepath.Base(dll)
 		if isSystemDll(dllName) {
@@ -207,10 +228,9 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		outDir := filepath.Join(srcDir, baseName)
 		os.MkdirAll(outDir, 0755)
 
-		log(fmt.Sprintf("Decompiling %s...", dllName))
-		res, runErr := util.RunCmd(ctx.Ctx, ilspyPath, []string{
-			"-p", "-o", outDir, dll,
-		}, "")
+		logTool("ilspycmd", fmt.Sprintf("Decompiling %s...", dllName))
+		decompArgs := append([]string{"-p", "-o", outDir, dll}, langVerArgs...)
+		res, runErr := util.RunCmd(ctx.Ctx, ilspyPath, decompArgs, "")
 
 		ec := -1
 		if res != nil {
@@ -221,9 +241,8 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 			// Retry without project mode
 			os.RemoveAll(outDir)
 			os.MkdirAll(outDir, 0755)
-			res, runErr = util.RunCmd(ctx.Ctx, ilspyPath, []string{
-				"-o", outDir, dll,
-			}, "")
+			retryArgs := append([]string{"-o", outDir, dll}, langVerArgs...)
+			res, runErr = util.RunCmd(ctx.Ctx, ilspyPath, retryArgs, "")
 			ec = -1
 			if res != nil {
 				ec = res.ExitCode
@@ -233,15 +252,23 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 				if res != nil && res.Stderr != "" {
 					msg += "\n" + strings.TrimSpace(res.Stderr)
 				}
-				log(msg)
+				logTool("ilspycmd", msg)
 				failed++
 				continue
 			}
 		}
 		succeeded++
+		if ctx.Progress != nil {
+			ctx.Progress <- StepProgress{
+				Step: 2, Total: total, Name: steps[2].Name,
+				Tool: "ilspycmd", Status: Running,
+				Count: succeeded, CountTotal: totalUserDlls, Unit: "assemblies",
+			}
+		}
+		logTool("ilspycmd", fmt.Sprintf("Decompiled %d/%d assemblies", succeeded, len(dlls)-skipped))
 	}
 
-	log(fmt.Sprintf("Decompiled %d assemblies (%d failed, %d system skipped)", succeeded, failed, skipped))
+	logTool("ilspycmd", fmt.Sprintf("Decompiled %d assemblies (%d failed, %d system skipped)", succeeded, failed, skipped))
 
 	if succeeded == 0 && failed > 0 {
 		errMsg := fmt.Errorf("all %d assembly decompilations failed", failed)
@@ -255,15 +282,33 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 	start = time.Now()
 	stringsPath, err := ctx.Tools.Resolve("strings")
 	if err != nil {
-		log(fmt.Sprintf("strings tool not available: %v", err))
+		logTool("strings", fmt.Sprintf("strings tool not available: %v", err))
 		report(3, Skipped, time.Since(start), nil, "strings")
 	} else {
 		stringsOut := filepath.Join(ctx.Output, "strings.txt")
-		res, _ := util.RunCmd(ctx.Ctx, stringsPath, []string{"-nobanner", "-accepteula", ctx.Target}, "")
+		strLineCount := 0
+		strLastLog := time.Now().Add(-2 * time.Second)
+		strLastProgress := time.Now().Add(-2 * time.Second)
+		res, _ := util.RunCmdStreaming(ctx.Ctx, stringsPath, []string{"-nobanner", "-accepteula", ctx.Target}, "", func(line string) {
+			strLineCount++
+			if strLineCount%100 == 0 && time.Since(strLastLog) >= time.Second {
+				logTool("strings", fmt.Sprintf("Extracting strings: %d so far...", strLineCount))
+				strLastLog = time.Now()
+			}
+			if time.Since(strLastProgress) >= time.Second {
+				if ctx.Progress != nil {
+					ctx.Progress <- StepProgress{
+						Step: 3, Total: total, Name: steps[3].Name,
+						Tool: "strings", Status: Running,
+						Count: strLineCount, Unit: "strings",
+					}
+				}
+				strLastProgress = time.Now()
+			}
+		})
 		if res != nil {
 			os.WriteFile(stringsOut, []byte(res.Stdout), 0644)
-			lines := strings.Count(res.Stdout, "\n")
-			log(fmt.Sprintf("Extracted %d strings from GameAssembly.dll", lines))
+			logTool("strings", fmt.Sprintf("Extracted %d strings from GameAssembly.dll", strLineCount))
 		}
 		// Analyze and structure strings
 		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))

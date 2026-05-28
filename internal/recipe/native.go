@@ -87,6 +87,7 @@ public class MorgueExport extends GhidraScript {
                         f.println(c.getC());
                         f.println();
                         count++;
+                        println("Morgue:fn:" + count + ":" + func.getName());
                     }
                 } else {
                     f.println("// FAILED: " + func.getName() + " @ " + func.getEntryPoint());
@@ -121,9 +122,9 @@ func (n *Native) Execute(ctx *Context) error {
 			}
 		}
 	}
-	log := func(msg string) {
+	logTool := func(tool, msg string) {
 		if ctx.Log != nil {
-			ctx.Log <- msg
+			ctx.Log <- "[" + tool + "] " + msg
 		}
 	}
 	reportCount := func(step int, dur time.Duration, tool string, count int, unit string) {
@@ -160,11 +161,30 @@ func (n *Native) Execute(ctx *Context) error {
 	start = time.Now()
 	stringsPath, err := ctx.Tools.Resolve("strings")
 	if err != nil {
-		log(fmt.Sprintf("strings tool not available: %v", err))
+		logTool("strings", fmt.Sprintf("strings tool not available: %v", err))
 		report(1, Skipped, time.Since(start), nil, "strings")
 	} else {
 		stringsOut := filepath.Join(ctx.Output, "strings.txt")
-		r, _ := util.RunCmd(ctx.Ctx, stringsPath, []string{"-nobanner", "-accepteula", ctx.Target}, "")
+		strLineCount := 0
+		strLastLog := time.Now().Add(-2 * time.Second)
+		strLastProgress := time.Now().Add(-2 * time.Second)
+		r, _ := util.RunCmdStreaming(ctx.Ctx, stringsPath, []string{"-nobanner", "-accepteula", ctx.Target}, "", func(line string) {
+			strLineCount++
+			if strLineCount%100 == 0 && time.Since(strLastLog) >= time.Second {
+				logTool("strings", fmt.Sprintf("Extracting strings: %d so far...", strLineCount))
+				strLastLog = time.Now()
+			}
+			if time.Since(strLastProgress) >= time.Second {
+				if ctx.Progress != nil {
+					ctx.Progress <- StepProgress{
+						Step: 1, Total: total, Name: steps[1].Name,
+						Tool: "strings", Status: Running,
+						Count: strLineCount, Unit: "strings",
+					}
+				}
+				strLastProgress = time.Now()
+			}
+		})
 		if r != nil {
 			os.WriteFile(stringsOut, []byte(r.Stdout), 0644)
 		}
@@ -231,15 +251,36 @@ func (n *Native) Execute(ctx *Context) error {
 	baseName := strings.TrimSuffix(filepath.Base(ctx.Target), filepath.Ext(ctx.Target))
 	outputFile := filepath.Join(srcDir, baseName+".c")
 
-	// Run Ghidra analyzeHeadless
-	log(fmt.Sprintf("Running Ghidra analyzeHeadless on %s", filepath.Base(ctx.Target)))
-	result, err := util.RunCmd(ctx.Ctx, analyzeHeadless, []string{
+	// Run Ghidra analyzeHeadless with streaming for real-time progress
+	logTool("ghidra", fmt.Sprintf("Running Ghidra analyzeHeadless on %s", filepath.Base(ctx.Target)))
+	ghidraFuncCount := 0
+	lastLogTime := time.Now().Add(-2 * time.Second) // allow first log immediately
+	result, err := util.RunCmdStreaming(ctx.Ctx, analyzeHeadless, []string{
 		projDir, "MorgueProject",
 		"-import", ctx.Target,
 		"-postScript", scriptPath, outputFile,
 		"-scriptPath", filepath.Dir(scriptPath),
 		"-deleteProject",
-	}, "")
+	}, "", func(line string) {
+		// Parse "Morgue:fn:<count>:<funcName>" from our export script
+		if strings.HasPrefix(line, "Morgue:fn:") {
+			parts := strings.SplitN(line, ":", 4)
+			if len(parts) >= 4 {
+				fmt.Sscanf(parts[2], "%d", &ghidraFuncCount)
+				if time.Since(lastLogTime) >= time.Second {
+					logTool("ghidra", fmt.Sprintf("Ghidra: decompiled %d functions (%s)", ghidraFuncCount, parts[3]))
+					if ctx.Progress != nil {
+						ctx.Progress <- StepProgress{
+							Step: 2, Total: total, Name: steps[2].Name,
+							Tool: "ghidra", Status: Running,
+							Count: ghidraFuncCount, Unit: "functions",
+						}
+					}
+					lastLogTime = time.Now()
+				}
+			}
+		}
+	})
 
 	exitCode := -1
 	if result != nil {
@@ -251,7 +292,7 @@ func (n *Native) Execute(ctx *Context) error {
 			stderr = result.Stderr
 		}
 		execErr := fmt.Errorf("ghidra analyzeHeadless failed (exit %d): %s", exitCode, stderr)
-		log(execErr.Error())
+		logTool("ghidra", execErr.Error())
 		report(2, Failed, time.Since(start), execErr, "ghidra")
 		return execErr
 	}
@@ -260,12 +301,12 @@ func (n *Native) Execute(ctx *Context) error {
 	info, err := os.Stat(outputFile)
 	if err != nil || info.Size() == 0 {
 		execErr := fmt.Errorf("ghidra produced no output at %s", outputFile)
-		log(execErr.Error())
+		logTool("ghidra", execErr.Error())
 		report(2, Failed, time.Since(start), execErr, "ghidra")
 		return execErr
 	}
 
-	log(fmt.Sprintf("Ghidra decompiled to %s (%d bytes)", outputFile, info.Size()))
+	logTool("ghidra", fmt.Sprintf("Ghidra decompiled to %s (%d bytes)", outputFile, info.Size()))
 
 	// Parse function count from Ghidra script output
 	funcCount := 0

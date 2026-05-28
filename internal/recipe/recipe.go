@@ -49,15 +49,16 @@ type StepInfo struct {
 
 // StepProgress reports the progress of a single step.
 type StepProgress struct {
-	Step     int
-	Total    int
-	Name     string
-	Tool     string
-	Count    int
-	Unit     string
-	Status   StepStatus
-	Duration time.Duration
-	Error    error
+	Step       int
+	Total      int
+	Name       string
+	Tool       string
+	Count      int
+	CountTotal int // total items expected (e.g. total DLLs to decompile); 0 = indeterminate
+	Unit       string
+	Status     StepStatus
+	Duration   time.Duration
+	Error      error
 }
 
 // PauseChecker allows recipes to check for pause between steps.

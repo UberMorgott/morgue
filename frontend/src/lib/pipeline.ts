@@ -44,7 +44,7 @@ export interface PipelineState {
   obfuscations: Array<{ name: string; deobfuscator: string | null; affectedFiles: string[] }>;
   downloadBytes: number;       // bytes downloaded so far
   downloadTotalBytes: number;  // total bytes to download
-  execCounters: Record<string, { count: number; unit: string }>;  // per-tool Processing/Decompiling message counts
+  execCounters: Record<string, { count: number; unit: string; countTotal: number; _completed?: number; _done?: boolean }>;  // per-tool progress counters
   currentTool: string;  // tool currently executing
 }
 
@@ -155,6 +155,11 @@ export function updateFromEvent(data: any) {
       else if (phase === 'skip') { /* keep current phase */ }
     }
 
+    // If Progress present but no Phase given, and still in early phase — advance to execute
+    if (!phase && d.Progress && (s.phase === 'analysis' || s.phase === 'tools')) {
+      next.phase = 'execute';
+    }
+
     // Target (file being processed)
     if (target) {
       next.currentTarget = target;
@@ -183,7 +188,7 @@ export function updateFromEvent(data: any) {
       if (d.ReconKind) next.reconKind = d.ReconKind;
       if (d.Compiler) next.compiler = d.Compiler;
       if (d.Obfuscator) next.obfuscator = d.Obfuscator;
-      if (d.FileSize) next.fileSize = d.FileSize;
+      if (d.FileSize) next.fileSize = (s.fileSize || 0) + d.FileSize;
     }
 
     if (phase === 'match' && target && message) {
@@ -246,7 +251,8 @@ export function updateFromEvent(data: any) {
 
     // Capture tools needed list from either 'tools' or 'install' phase
     if ((phase === 'tools' || phase === 'install') && d.ToolsNeeded && Array.isArray(d.ToolsNeeded)) {
-      next.toolsNeeded = d.ToolsNeeded;
+      const merged = new Set([...s.toolsNeeded, ...d.ToolsNeeded]);
+      next.toolsNeeded = [...merged];
     }
 
     if (phase === 'install' && message) {
@@ -280,16 +286,7 @@ export function updateFromEvent(data: any) {
     if (phase === 'execute' || phase === 'log') {
       if (message) {
         next.logs = [...s.logs.slice(-19), message];
-        // Count Processing/Decompiling messages per tool
-        if (d.Tool && (message.startsWith('Processing') || message.startsWith('Decompiling'))) {
-          const tool = d.Tool;
-          const prev = s.execCounters[tool] || { count: 0, unit: 'items' };
-          let unit = prev.unit;
-          if (/\bclass\b/i.test(message)) unit = 'classes';
-          else if (/\bmethod\b|\bfunction\b/i.test(message)) unit = 'functions';
-          else if (/\btype\b/i.test(message)) unit = 'types';
-          next.execCounters = { ...s.execCounters, [tool]: { count: prev.count + 1, unit } };
-        }
+        // Counters are driven by StepProgress events only — no log-based counting.
       }
     }
 
@@ -298,8 +295,8 @@ export function updateFromEvent(data: any) {
       next.outputStats = d.OutputStats;
     }
 
-    // Track current tool from events
-    if (d.Tool) {
+    // Track current tool from Running events
+    if (d.Tool && (!d.Progress || d.Progress.Status === 'Running')) {
       next.currentTool = d.Tool;
     }
 
@@ -309,29 +306,54 @@ export function updateFromEvent(data: any) {
       next.step = p.Step ?? s.step;
       next.stepTotal = p.Total ?? s.stepTotal;
       next.stepName = p.Name ?? s.stepName;
+      // Only count a step as completed (+1) when its status is Success/Skipped/Failed.
+      // Running means the step is still in progress — don't inflate the percentage.
+      const stepDone = p.Status === 'Success' || p.Status === 'Skipped' || p.Status === 'Failed';
       next.progress = next.stepTotal > 0
-        ? Math.round(((next.step + 1) / next.stepTotal) * 100)
+        ? Math.round(((next.step + (stepDone ? 1 : 0)) / next.stepTotal) * 100)
         : 0;
 
-      // Mark tool as done when step completes
+      // Update execCounters from StepProgress events
       const stepTool = p.Tool || d.Tool || '';
+
+      // Running: show progress for active tool
+      if (stepTool && p.Status === 'Running' && p.Count > 0 && p.Unit) {
+        if (stepTool === next.currentTool || stepTool === s.currentTool || !s.execCounters[stepTool]) {
+          const prev = s.execCounters[stepTool] || { count: 0, unit: p.Unit, countTotal: 0, _completed: 0 };
+          next.execCounters = { ...s.execCounters, ...next.execCounters, [stepTool]: {
+            count: (prev._completed || 0) + p.Count,
+            unit: p.Unit,
+            countTotal: p.CountTotal || 0,
+            _completed: prev._completed || 0,
+          }};
+        }
+      }
+
+      // Completion: update counter (shown when tool is not active)
       if (stepTool && (p.Status === 'Success' || p.Status === 'Skipped' || p.Status === 'Failed')) {
-        if (!(stepTool in next.execCounters)) {
-          next.execCounters = { ...s.execCounters, [stepTool]: { count: 0, unit: '' } };
-        }
-        // Update counters from step completion
-        if (p.Count > 0 && p.Unit) {
-          next.execCounters = { ...next.execCounters, [stepTool]: { count: p.Count, unit: p.Unit } };
-        }
-        next.currentTool = '';
+        const prev = next.execCounters[stepTool] || s.execCounters[stepTool] || { count: 0, unit: '', countTotal: 0, _completed: 0 };
+        const completed = (prev._completed || 0) + (p.Count > 0 ? p.Count : 0);
+        next.execCounters = { ...next.execCounters, [stepTool]: {
+          count: completed,
+          unit: p.Unit || prev.unit || '',
+          countTotal: 0,
+          _completed: completed,
+        }};
       }
     }
 
-    // Done
+    // Done — mark all tools as _done
     if (d.Done) {
       next.phase = 'done';
       next.progress = 100;
+      next.currentTool = '';
       next.outputPath = d.OutputPath || d.Output || s.outputPath;
+      // Mark all tools as done
+      const finalCounters = { ...s.execCounters, ...next.execCounters };
+      for (const tool of Object.keys(finalCounters)) {
+        finalCounters[tool] = { ...finalCounters[tool], _done: true };
+      }
+      next.execCounters = finalCounters;
     }
 
     // Capture OutputPath whenever provided (any phase)
