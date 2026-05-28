@@ -14,11 +14,17 @@ type UpdateStatus struct {
 // UpdateService exposes self-update functionality to the frontend.
 type UpdateService struct {
 	Version string
+	Commit  string
 }
 
 // GetVersion returns the current application version.
 func (s *UpdateService) GetVersion() string {
 	return s.Version
+}
+
+// GetCommit returns the current build commit hash.
+func (s *UpdateService) GetCommit() string {
+	return s.Commit
 }
 
 // Check queries GitHub for the latest release.

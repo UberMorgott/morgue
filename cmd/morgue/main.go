@@ -43,7 +43,7 @@ func runGUI() {
 	pipelineSvc := services.NewPipelineService()
 	configSvc := &services.ConfigService{}
 	reconSvc := &services.ReconService{}
-	updateSvc := &services.UpdateService{Version: Version}
+	updateSvc := &services.UpdateService{Version: Version, Commit: Commit}
 
 	// Declare apiSrv early so OnShutdown closure can capture it
 	var apiSrv *api.Server

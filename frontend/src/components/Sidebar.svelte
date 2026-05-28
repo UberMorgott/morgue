@@ -12,6 +12,7 @@
     { id: 'home',     icon: '\u2302', key: 'sidebar.home' },
     { id: 'tools',    icon: '\u2699', key: 'sidebar.tools' },
     { id: 'settings', icon: '\u2630', key: 'sidebar.settings' },
+    { id: 'about',    icon: '\u24D8', key: 'sidebar.about' },
   ];
 
   function navigate(id: string) {

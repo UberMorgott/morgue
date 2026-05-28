@@ -205,6 +205,24 @@ const translations: Record<string, Record<Lang, string>> = {
   'pipeline.obfuscator': { en: 'Obfuscator:', ru: 'Обфускатор:' },
   'pipeline.size': { en: 'Size:', ru: 'Размер:' },
 
+  // About page
+  'sidebar.about': { en: 'About', ru: 'О программе' },
+  'about.title': { en: 'About Morgue', ru: 'О программе' },
+  'about.description': { en: 'Automated binary decompilation pipeline for .NET, Delphi, Unity, Unreal Engine and native targets.', ru: 'Автоматический pipeline декомпиляции бинарных файлов для .NET, Delphi, Unity, Unreal Engine и нативных целей.' },
+  'about.version': { en: 'Version', ru: 'Версия' },
+  'about.commit': { en: 'Commit', ru: 'Коммит' },
+  'about.goVersion': { en: 'Go version', ru: 'Версия Go' },
+  'about.wailsVersion': { en: 'Wails version', ru: 'Версия Wails' },
+  'about.platform': { en: 'Platform', ru: 'Платформа' },
+  'about.license': { en: 'License', ru: 'Лицензия' },
+  'about.author': { en: 'Author', ru: 'Автор' },
+  'about.links': { en: 'Links', ru: 'Ссылки' },
+  'about.github': { en: 'GitHub Repository', ru: 'Репозиторий GitHub' },
+  'about.issues': { en: 'Report a Bug', ru: 'Сообщить об ошибке' },
+  'about.releases': { en: 'Releases', ru: 'Релизы' },
+  'about.tools': { en: 'Installed tools', ru: 'Установлено инструментов' },
+  'about.recipes': { en: 'Available recipes', ru: 'Доступно рецептов' },
+
   // Settings — Unreal Engine
   'settings.unrealEngine': { en: 'Unreal Engine', ru: 'Unreal Engine' },
   'settings.ue5.extractPak': { en: 'Extract PAK assets', ru: 'Извлечение PAK-ассетов' },
