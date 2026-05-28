@@ -46,15 +46,6 @@
     {#each toolsNeeded as tool (tool)}
       {@const state = getToolState(tool)}
       <div class="tool-item row-separator">
-        <div class="tool-ring">
-          {#if state === 'ready'}
-            <ProgressRing value={100} variant="success" label="✓" />
-          {:else if state === 'downloading' || state === 'extracting'}
-            <ProgressRing value={downloadProgress} variant="accent" label="{downloadProgress}%" />
-          {:else}
-            <ProgressRing value={0} variant="accent" label="" />
-          {/if}
-        </div>
         <span class="tool-name font-mono">{tool}</span>
         <span class="tool-status" class:status-ready={state === 'ready'} class:status-warm={state === 'downloading' || state === 'extracting'} class:status-muted={state === 'pending'}>
           {#if state === 'ready'}
@@ -67,6 +58,15 @@
             {t(lang, 'tools.pending')}
           {/if}
         </span>
+        <div class="tool-ring">
+          {#if state === 'ready'}
+            <ProgressRing value={100} variant="success" label="✓" />
+          {:else if state === 'downloading' || state === 'extracting'}
+            <ProgressRing value={downloadProgress} variant="accent" label="{downloadProgress}%" />
+          {:else}
+            <ProgressRing value={0} variant="accent" label="" />
+          {/if}
+        </div>
       </div>
     {/each}
   </div>
