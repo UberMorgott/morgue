@@ -9,7 +9,7 @@
   } = $props();
 </script>
 
-<div class="acc-section acc-section-summary">
+<div class="acc-section acc-section-summary row-separator">
   <div class="acc-section-header">
     <svg class="acc-icon acc-icon-done" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M5 8l2 2 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     <span class="acc-section-title">{t(lang, 'home.summary')}</span>
@@ -19,22 +19,22 @@
   </div>
 
   <div class="summary-stats">
-    <div class="stat">
+    <div class="stat card-sm">
       <span class="stat-num font-accent">{state.reconResults.length}</span>
       <span class="stat-label">{t(lang, 'home.summary.files')}</span>
     </div>
-    <div class="stat">
+    <div class="stat card-sm">
       <span class="stat-num font-accent">{state.reconResults.filter(r => r.kind && r.kind !== 'Skipped' && r.kind !== 'Unknown').length}</span>
       <span class="stat-label">{t(lang, 'home.summary.decompiled')}</span>
     </div>
-    <div class="stat">
+    <div class="stat card-sm">
       <span class="stat-num font-accent">{state.reconResults.filter(r => r.kind === 'Skipped').length}</span>
       <span class="stat-label">{t(lang, 'home.summary.skipped')}</span>
     </div>
   </div>
 
   {#if state.outputStats.length > 0}
-    <div class="output-stats font-mono">
+    <div class="output-stats card-sm font-mono">
       {#each state.outputStats as line, i (i)}
         <div class="output-stat-line">{line}</div>
       {/each}
@@ -42,7 +42,7 @@
   {/if}
 
   {#if state.outputPath}
-    <div class="summary-output">
+    <div class="summary-output card-sm">
       <span class="result-label">Output:</span>
       <span class="result-path selectable font-mono">{state.outputPath}</span>
     </div>
@@ -64,10 +64,6 @@
     flex-direction: column;
     gap: 10px;
     padding: 16px 20px;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .acc-section:last-of-type {
-    border-bottom: none;
   }
   .acc-section-header {
     display: flex;
@@ -105,9 +101,6 @@
     gap: 4px;
     flex: 1;
     padding: 12px;
-    background: var(--bg-card);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-subtle);
   }
   .stat-num {
     font-size: 1.5rem;
@@ -124,10 +117,6 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: 10px 14px;
-    background: var(--bg-card);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-subtle);
     font-size: 0.82rem;
     color: var(--text-secondary);
     line-height: 1.5;
@@ -142,9 +131,6 @@
     align-items: center;
     gap: 10px;
     padding: 12px 16px;
-    background: var(--bg-card);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-subtle);
   }
   .result-label {
     font-size: 0.88rem;

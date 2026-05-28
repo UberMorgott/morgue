@@ -266,6 +266,71 @@ html::after {
 }
 
 /* ══════════════════════════════════════
+   LAYOUT & COMPONENT UTILITIES
+   ══════════════════════════════════════ */
+
+/* -- Text sizes -- */
+.text-xs { font-size: 0.72rem; }
+.text-sm { font-size: 0.78rem; }
+.text-base { font-size: 0.84rem; }
+
+/* Row separator */
+.row-separator {
+  border-bottom: 1px solid var(--border-subtle);
+}
+.row-separator:last-child {
+  border-bottom: none;
+}
+
+/* Small card block (stats, info blocks) */
+.card-sm {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+}
+
+/* Section label — small uppercase muted label */
+.section-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+/* Alert blocks (obfuscation warnings, errors) */
+.alert-block {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+}
+.alert-warning {
+  background: var(--warning-dim);
+  border: 1px solid rgba(255, 204, 68, 0.2);
+}
+.alert-error {
+  background: var(--error-dim);
+  border: 1px solid rgba(255, 68, 102, 0.2);
+}
+
+/* Log area — monospace scrollable output */
+.log-area {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  overflow-y: auto;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+
+/* ══════════════════════════════════════
    BUTTONS
    ══════════════════════════════════════ */
 
