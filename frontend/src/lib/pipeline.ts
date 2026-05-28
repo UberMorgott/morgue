@@ -319,6 +319,10 @@ export function updateFromEvent(data: any) {
         if (!(stepTool in next.execCounters)) {
           next.execCounters = { ...s.execCounters, [stepTool]: { count: 0, unit: '' } };
         }
+        // Update counters from step completion
+        if (p.Count > 0 && p.Unit) {
+          next.execCounters = { ...next.execCounters, [stepTool]: { count: p.Count, unit: p.Unit } };
+        }
         next.currentTool = '';
       }
     }

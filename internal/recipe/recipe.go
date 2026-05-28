@@ -53,6 +53,8 @@ type StepProgress struct {
 	Total    int
 	Name     string
 	Tool     string
+	Count    int
+	Unit     string
 	Status   StepStatus
 	Duration time.Duration
 	Error    error

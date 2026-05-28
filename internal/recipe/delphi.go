@@ -54,6 +54,15 @@ func (d *Delphi) Execute(ctx *Context) error {
 			ctx.Log <- msg
 		}
 	}
+	reportCount := func(step int, dur time.Duration, tool string, count int, unit string) {
+		if ctx.Progress != nil {
+			ctx.Progress <- StepProgress{
+				Step: step, Total: total, Name: steps[step].Name,
+				Tool: tool, Status: Success, Duration: dur,
+				Count: count, Unit: unit,
+			}
+		}
+	}
 
 	// Step 0: Copy original (only when keeping intermediates)
 	var start time.Time
@@ -86,7 +95,8 @@ func (d *Delphi) Execute(ctx *Context) error {
 		}
 		// Analyze and structure strings
 		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
-		report(1, Success, time.Since(start), nil, "strings")
+		strCount := countLines(stringsOut)
+		reportCount(1, time.Since(start), "strings", strCount, "strings")
 	}
 
 	// Step 2: IDR analysis

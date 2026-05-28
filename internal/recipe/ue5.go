@@ -57,6 +57,15 @@ func (u *UE5) Execute(ctx *Context) error {
 			ctx.Log <- msg
 		}
 	}
+	reportCount := func(step int, dur time.Duration, tool string, count int, unit string) {
+		if ctx.Progress != nil {
+			ctx.Progress <- StepProgress{
+				Step: step, Total: total, Name: steps[step].Name,
+				Tool: tool, Status: Success, Duration: dur,
+				Count: count, Unit: unit,
+			}
+		}
+	}
 
 	// Find game root — target might be an exe or directory
 	gameRoot := ctx.Target
@@ -85,6 +94,7 @@ func (u *UE5) Execute(ctx *Context) error {
 			extractDir := filepath.Join(ctx.Output, "extracted")
 			os.MkdirAll(extractDir, 0755)
 			failCount := 0
+			successCount := 0
 			for _, pak := range pakFiles {
 				log(fmt.Sprintf("Extracting: %s", filepath.Base(pak)))
 				result, runErr := util.RunCmd(ctx.Ctx, retocPath, []string{"extract", pak, "-o", extractDir}, "")
@@ -94,12 +104,14 @@ func (u *UE5) Execute(ctx *Context) error {
 				} else if result != nil && result.ExitCode != 0 {
 					log(fmt.Sprintf("retoc exit %d on %s: %s", result.ExitCode, filepath.Base(pak), result.Stderr))
 					failCount++
+				} else {
+					successCount++
 				}
 			}
 			if failCount == len(pakFiles) {
 				report(0, Failed, time.Since(start), fmt.Errorf("all %d PAK extractions failed", failCount), "retoc")
 			} else {
-				report(0, Success, time.Since(start), nil, "retoc")
+				reportCount(0, time.Since(start), "retoc", successCount, "paks")
 			}
 		}
 	}
@@ -142,7 +154,8 @@ func (u *UE5) Execute(ctx *Context) error {
 				}
 				// Analyze and structure strings
 				analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
-				report(2, Success, time.Since(start), nil, "strings")
+				strCount := countLines(stringsOut)
+				reportCount(2, time.Since(start), "strings", strCount, "strings")
 			}
 		}
 	}
