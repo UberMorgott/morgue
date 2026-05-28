@@ -12,6 +12,7 @@ require (
 	github.com/google/go-github/v60 v60.0.0
 	github.com/saferwall/pe v1.6.5
 	github.com/spf13/cobra v1.10.2
+	github.com/wailsapp/go-webview2 v1.0.23
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.67
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -75,7 +76,6 @@ require (
 	github.com/skeema/knownhosts v1.3.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
-	github.com/wailsapp/go-webview2 v1.0.23 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	gitlab.com/gitlab-org/api/client-go v1.9.1 // indirect
