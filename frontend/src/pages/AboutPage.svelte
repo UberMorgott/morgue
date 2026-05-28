@@ -53,7 +53,7 @@
         </div>
         <div class="info-row">
           <span class="info-label">{t(lang, 'about.platform')}</span>
-          <span class="info-value mono">{navigator.platform}</span>
+          <span class="info-value mono">{navigator.platform === 'Win32' ? 'Windows x64' : navigator.platform}</span>
         </div>
         <div class="info-row">
           <span class="info-label">{t(lang, 'about.license')}</span>
