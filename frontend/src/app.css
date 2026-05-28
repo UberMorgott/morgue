@@ -524,6 +524,11 @@ input:focus, select:focus, textarea:focus {
               0 0 2px rgba(255, 138, 32, 0.3);
 }
 
+select option {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
 input::placeholder {
   color: var(--text-muted);
 }

@@ -4,7 +4,6 @@
   import PipelineStepper from './PipelineStepper.svelte';
   import StatsStrip from './StatsStrip.svelte';
   import CompositionPanel from './CompositionPanel.svelte';
-  import ToolsPanel from './ToolsPanel.svelte';
   import ExecutionPanel from './ExecutionPanel.svelte';
   import PipelineSummary from './PipelineSummary.svelte';
 
@@ -77,18 +76,20 @@
 
   // Build composition groups from reconResults
   let compositionGroups = $derived.by(() => {
-    const map = new Map<string, { kind: string; language: string; count: number; examples: string[] }>();
+    const map = new Map<string, { kind: string; language: string; count: number; totalSize: number; examples: string[] }>();
     for (const r of $pipelineState.reconResults) {
       const key = `${r.reconKind}|${r.compiler}`;
       const existing = map.get(key);
       if (existing) {
         existing.count++;
+        existing.totalSize += r.size || 0;
         existing.examples.push(r.file);
       } else {
         map.set(key, {
           kind: r.reconKind || r.kind || 'Unknown',
           language: r.compiler || '',
           count: 1,
+          totalSize: r.size || 0,
           examples: [r.file],
         });
       }
@@ -96,19 +97,60 @@
     return Array.from(map.values());
   });
 
-  // Compute stats for StatsStrip
-  let statsPlatform = $derived($pipelineState.reconKind || 'Unknown');
-  let statsTechStack = $derived($pipelineState.compiler || '');
-  let statsFileCount = $derived($pipelineState.reconResults.length);
-  let statsTotalSize = $derived(formatFileSize(
-    $pipelineState.reconResults.reduce((sum, r) => sum + (r.size || 0), 0) || $pipelineState.fileSize
-  ));
-  let statsObfuscationCount = $derived($pipelineState.obfuscations.length);
+  // Compute stats for StatsStrip — freeze values after analysis phase
+  // Use recipeName for platform badge (describes the decompilation approach);
+  // reconKind is a technical classifier shown in CompositionPanel instead.
+  // Frozen stats: capture once during analysis, don't let later events overwrite
+  let statsPlatform = $state('Unknown');
+  let statsTechStack = $state('');
+  let frozenFileCount = $state(0);
+  let frozenTotalSize = $state('');
+  let frozenObfuscationCount = $state(0);
+  let statsReady = $state(false);
+
+  $effect(() => {
+    const st = $pipelineState;
+    // Count all non-skipped files (kind may be empty during analysis, filled after match)
+    const nonSkipped = st.reconResults.filter(r => r.kind !== 'Skipped');
+    const count = nonSkipped.length;
+    // Use accumulated fileSize (sum of all recon events) — most reliable source
+    const sizeFromRecon = nonSkipped.reduce((sum, r) => sum + (r.size || 0), 0);
+    const sizeTotal = Math.max(sizeFromRecon, st.fileSize || 0);
+    const size = sizeTotal > 0 ? formatFileSize(sizeTotal) : '';
+    const obfCount = st.obfuscations.length;
+    const platform = '';
+    const techStack = '';
+
+    // Keep updating while in analysis phase
+    if (st.phase === 'analysis') {
+      frozenFileCount = count;
+      frozenTotalSize = size;
+      frozenObfuscationCount = obfCount;
+      statsPlatform = platform;
+      statsTechStack = techStack;
+      if (count > 0) statsReady = true;
+    } else if (!statsReady && count > 0) {
+      // First time we see data outside analysis (late arrival) — capture once
+      frozenFileCount = count;
+      frozenTotalSize = size;
+      frozenObfuscationCount = obfCount;
+      statsPlatform = platform;
+      statsTechStack = techStack;
+      statsReady = true;
+    }
+  });
+
+  let statsFileCount = $derived(frozenFileCount);
+  let statsTotalSize = $derived(frozenTotalSize);
+  let statsObfuscationCount = $derived(frozenObfuscationCount);
 
   // Single visible panel in row-2col should span full width
   let showComposition = $derived(showAnalysis && compositionGroups.length > 0);
-  let showToolsPanel = $derived(showTools && $pipelineState.toolsNeeded.length > 0);
-  let rowSingle = $derived(showComposition !== showToolsPanel);
+  // Unified panel: show as soon as toolsNeeded has items (tools phase), continue through execution
+  let showUnifiedPanel = $derived(
+    (showTools || showExecution) && $pipelineState.toolsNeeded.length > 0
+  );
+  let rowSingle = $derived(showComposition !== showUnifiedPanel);
 
   function formatFileSize(bytes: number): string {
     if (!bytes) return '0 B';
@@ -135,8 +177,8 @@
     />
   {/if}
 
-  <!-- Two-column row: Composition + Tools -->
-  {#if showComposition || showToolsPanel}
+  <!-- Two-column row: Composition + Unified Tools/Execution -->
+  {#if showComposition || showUnifiedPanel}
     <div class="row-2col" class:row-single={rowSingle}>
       {#if showComposition}
         <CompositionPanel
@@ -145,9 +187,17 @@
           obfuscations={$pipelineState.obfuscations}
         />
       {/if}
-      {#if showToolsPanel}
-        <ToolsPanel
+      {#if showUnifiedPanel}
+        <ExecutionPanel
           {lang}
+          phase={$pipelineState.phase}
+          currentTarget={$pipelineState.currentTarget}
+          currentTool={$pipelineState.currentTool}
+          step={$pipelineState.step}
+          stepTotal={$pipelineState.stepTotal}
+          stepName={$pipelineState.stepName}
+          progress={$pipelineState.progress}
+          logs={$pipelineState.logs}
           toolsNeeded={$pipelineState.toolsNeeded}
           toolsInstalled={$pipelineState.toolsInstalled}
           downloadingTool={$pipelineState.downloadingTool}
@@ -155,25 +205,10 @@
           downloadBytes={$pipelineState.downloadBytes}
           downloadTotalBytes={$pipelineState.downloadTotalBytes}
           lastMessage={$pipelineState.lastMessage}
+          execCounters={$pipelineState.execCounters}
         />
       {/if}
     </div>
-  {/if}
-
-  <!-- Execution panel -->
-  {#if showExecution}
-    <ExecutionPanel
-      {lang}
-      currentTarget={$pipelineState.currentTarget}
-      currentTool={$pipelineState.currentTool}
-      step={$pipelineState.step}
-      stepTotal={$pipelineState.stepTotal}
-      stepName={$pipelineState.stepName}
-      progress={$pipelineState.progress}
-      logs={$pipelineState.logs}
-      toolsNeeded={$pipelineState.toolsNeeded}
-      execCounters={$pipelineState.execCounters}
-    />
   {/if}
 
   <!-- Summary -->

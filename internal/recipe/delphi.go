@@ -49,9 +49,9 @@ func (d *Delphi) Execute(ctx *Context) error {
 			}
 		}
 	}
-	log := func(msg string) {
+	logTool := func(tool, msg string) {
 		if ctx.Log != nil {
-			ctx.Log <- msg
+			ctx.Log <- "[" + tool + "] " + msg
 		}
 	}
 	reportCount := func(step int, dur time.Duration, tool string, count int, unit string) {
@@ -85,7 +85,7 @@ func (d *Delphi) Execute(ctx *Context) error {
 	start = time.Now()
 	stringsPath, err := ctx.Tools.Resolve("strings")
 	if err != nil {
-		log(fmt.Sprintf("strings tool not available: %v", err))
+		logTool("strings", fmt.Sprintf("strings tool not available: %v", err))
 		report(1, Skipped, time.Since(start), nil, "strings")
 	} else {
 		stringsOut := filepath.Join(ctx.Output, "strings.txt")
@@ -104,14 +104,14 @@ func (d *Delphi) Execute(ctx *Context) error {
 	start = time.Now()
 	idrPath, err := ctx.Tools.Resolve("idr")
 	if err != nil {
-		log(fmt.Sprintf("IDR not available: %v", err))
+		logTool("idr", fmt.Sprintf("IDR not available: %v", err))
 		report(2, Skipped, time.Since(start), nil, "idr")
 	} else {
 		idrOut := filepath.Join(ctx.Output, "idr")
 		os.MkdirAll(idrOut, 0755)
 		result, _ := util.RunCmd(ctx.Ctx, idrPath, []string{"-a", ctx.Target, "-o", idrOut}, "")
 		if result != nil && result.ExitCode != 0 {
-			log(fmt.Sprintf("IDR failed: exit %d", result.ExitCode))
+			logTool("idr", fmt.Sprintf("IDR failed: exit %d", result.ExitCode))
 			report(2, Failed, time.Since(start), fmt.Errorf("IDR exit %d", result.ExitCode), "idr")
 		} else {
 			report(2, Success, time.Since(start), nil, "idr")
@@ -123,7 +123,7 @@ func (d *Delphi) Execute(ctx *Context) error {
 	start = time.Now()
 	ghidraPath, err := ctx.Tools.Resolve("ghidra")
 	if err != nil {
-		log(fmt.Sprintf("Ghidra not available: %v", err))
+		logTool("ghidra", fmt.Sprintf("Ghidra not available: %v", err))
 		report(3, Skipped, time.Since(start), nil, "ghidra")
 	} else {
 		ghidraOut := filepath.Join(ctx.Output, "ghidra")
@@ -133,7 +133,7 @@ func (d *Delphi) Execute(ctx *Context) error {
 			"-postScript", "ExportDecompiled.java",
 		}, "")
 		if result != nil && result.ExitCode != 0 {
-			log(fmt.Sprintf("Ghidra failed: exit %d", result.ExitCode))
+			logTool("ghidra", fmt.Sprintf("Ghidra failed: exit %d", result.ExitCode))
 			report(3, Failed, time.Since(start), fmt.Errorf("ghidra exit %d", result.ExitCode), "ghidra")
 		} else {
 			report(3, Success, time.Since(start), nil, "ghidra")

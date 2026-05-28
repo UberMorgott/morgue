@@ -98,6 +98,7 @@
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.csharpVersion')}</span>
               <select class="setting-select" bind:value={config.CSharpLanguageVersion} onchange={onConfigChange}>
+                <option value="Auto">Auto</option>
                 <option value="Latest">Latest</option>
                 <option value="11">11</option>
                 <option value="10">10</option>

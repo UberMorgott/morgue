@@ -195,6 +195,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'settings.apiStatus': { en: 'API Status', ru: 'Статус API' },
   'settings.copyButton': { en: 'Copy AI Instructions', ru: 'Скопировать инструкции' },
   'settings.copied': { en: 'Copied!', ru: 'Скопировано!' },
+  'settings.copyFailed': { en: 'Clipboard unavailable — copy manually', ru: 'Буфер недоступен — скопируйте вручную' },
+  'settings.close': { en: 'Close', ru: 'Закрыть' },
 
   // Pipeline progress
   'pipeline.toolReady': { en: 'ready', ru: 'готов' },

@@ -18,7 +18,7 @@ func TestDefault(t *testing.T) {
 		{"StepTimeoutMinutes", cfg.StepTimeoutMinutes, 60},
 		{"ConcurrentTargets", cfg.ConcurrentTargets, 1},
 		{"DownloadRetries", cfg.DownloadRetries, 3},
-		{"CSharpLanguageVersion", cfg.CSharpLanguageVersion, "Latest"},
+		{"CSharpLanguageVersion", cfg.CSharpLanguageVersion, "Auto"},
 		{"LogLevel", cfg.LogLevel, "info"},
 		{"UpdateChannel", cfg.UpdateChannel, "stable"},
 		{"GenerateCallgraph", cfg.GenerateCallgraph, true},

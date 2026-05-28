@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -179,8 +180,9 @@ func runCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run [target]",
 		Short: "Run decompilation pipeline on a target binary",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			target := strings.Join(args, " ")
 			output, _ := cmd.Flags().GetString("output")
 			watch, _ := cmd.Flags().GetBool("watch")
 			quiet, _ := cmd.Flags().GetBool("quiet")
@@ -189,7 +191,7 @@ func runCmd() *cobra.Command {
 			exclude, _ := cmd.Flags().GetStringSlice("exclude")
 
 			return cli.Run(cli.RunOptions{
-				Target:  args[0],
+				Target:  target,
 				Output:  output,
 				Recipe:  recipe,
 				NoSkip:  noSkip,
@@ -282,16 +284,17 @@ func apiCmd() *cobra.Command {
 	})
 
 	apiRunCmd := &cobra.Command{
-		Use:   "run <file>",
+		Use:   "run <path>",
 		Short: "Send a decompilation job to the GUI",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			target := strings.Join(args, " ")
 			output, _ := cmd.Flags().GetString("output")
 			wait, _ := cmd.Flags().GetBool("wait")
 			if wait {
-				return cli.APIRunWait(args[0], output)
+				return cli.APIRunWait(target, output)
 			}
-			return cli.APIRun(args[0], output)
+			return cli.APIRun(target, output)
 		},
 	}
 	apiRunCmd.Flags().StringP("output", "o", "", "Output directory")

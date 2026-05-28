@@ -55,7 +55,7 @@ func Default() Config {
 		StepTimeoutMinutes:    60,
 		ConcurrentTargets:     1,
 		DownloadRetries:       3,
-		CSharpLanguageVersion: "Latest",
+		CSharpLanguageVersion: "Auto",
 		LogLevel:              "info",
 		UpdateChannel:         "stable",
 		GenerateCallgraph:     true,
