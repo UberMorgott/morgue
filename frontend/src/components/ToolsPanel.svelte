@@ -55,7 +55,7 @@
             <ProgressRing value={0} variant="accent" label="" />
           {/if}
         </div>
-        <span class="tool-name">{tool}</span>
+        <span class="tool-name font-mono">{tool}</span>
         <span class="tool-status" class:status-ready={state === 'ready'} class:status-warm={state === 'downloading' || state === 'extracting'} class:status-muted={state === 'pending'}>
           {#if state === 'ready'}
             {t(lang, 'tools.ready')}
@@ -98,7 +98,6 @@
     font-size: 0.88rem;
     font-weight: 600;
     color: var(--text-primary);
-    font-family: ui-monospace, monospace;
     flex: 1;
     min-width: 0;
     overflow: hidden;

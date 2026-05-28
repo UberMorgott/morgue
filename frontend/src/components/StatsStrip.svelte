@@ -28,7 +28,7 @@
       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
       <polyline points="14 2 14 8 20 8" />
     </svg>
-    <span class="stat-number">{fileCount}</span>
+    <span class="stat-number font-accent">{fileCount}</span>
     <span class="stat-label">{t(lang, 'stats.files')}</span>
   </div>
 
@@ -39,7 +39,7 @@
     <svg class="stat-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
       <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
     </svg>
-    <span class="stat-number">{totalSize}</span>
+    <span class="stat-number font-accent">{totalSize}</span>
   </div>
 
   <!-- Obfuscation count (conditional) -->
@@ -49,7 +49,7 @@
       <svg class="stat-icon-warn" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
       </svg>
-      <span class="stat-number warn">{obfuscationCount}</span>
+      <span class="stat-number warn font-accent">{obfuscationCount}</span>
       <span class="stat-label warn">{t(lang, 'stats.obfuscations')}</span>
     </div>
   {/if}
@@ -89,7 +89,6 @@
   }
 
   .stat-number {
-    font-family: 'Orbitron', sans-serif;
     font-size: 0.88rem;
     font-weight: 600;
     color: var(--accent);

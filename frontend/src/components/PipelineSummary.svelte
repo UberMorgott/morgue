@@ -14,27 +14,27 @@
     <svg class="acc-icon acc-icon-done" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M5 8l2 2 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     <span class="acc-section-title">{t(lang, 'home.summary')}</span>
     {#if state.startedAt > 0}
-      <span class="acc-elapsed">{elapsed}</span>
+      <span class="acc-elapsed font-mono">{elapsed}</span>
     {/if}
   </div>
 
   <div class="summary-stats">
     <div class="stat">
-      <span class="stat-num">{state.reconResults.length}</span>
+      <span class="stat-num font-accent">{state.reconResults.length}</span>
       <span class="stat-label">{t(lang, 'home.summary.files')}</span>
     </div>
     <div class="stat">
-      <span class="stat-num">{state.reconResults.filter(r => r.kind && r.kind !== 'Skipped' && r.kind !== 'Unknown').length}</span>
+      <span class="stat-num font-accent">{state.reconResults.filter(r => r.kind && r.kind !== 'Skipped' && r.kind !== 'Unknown').length}</span>
       <span class="stat-label">{t(lang, 'home.summary.decompiled')}</span>
     </div>
     <div class="stat">
-      <span class="stat-num">{state.reconResults.filter(r => r.kind === 'Skipped').length}</span>
+      <span class="stat-num font-accent">{state.reconResults.filter(r => r.kind === 'Skipped').length}</span>
       <span class="stat-label">{t(lang, 'home.summary.skipped')}</span>
     </div>
   </div>
 
   {#if state.outputStats.length > 0}
-    <div class="output-stats">
+    <div class="output-stats font-mono">
       {#each state.outputStats as line, i (i)}
         <div class="output-stat-line">{line}</div>
       {/each}
@@ -44,7 +44,7 @@
   {#if state.outputPath}
     <div class="summary-output">
       <span class="result-label">Output:</span>
-      <span class="result-path selectable">{state.outputPath}</span>
+      <span class="result-path selectable font-mono">{state.outputPath}</span>
     </div>
   {/if}
 
@@ -52,7 +52,7 @@
     <details class="summary-logs">
       <summary class="logs-toggle">{t(lang, 'home.summary.log')} ({state.logs.length})</summary>
       <div class="logs-body">
-        <pre class="log-text">{state.logs.join('\n')}</pre>
+        <pre class="log-text font-mono">{state.logs.join('\n')}</pre>
       </div>
     </details>
   {/if}
@@ -88,7 +88,6 @@
   }
   .acc-elapsed {
     font-size: 0.78rem;
-    font-family: 'Consolas', 'Courier New', monospace;
     color: var(--text-muted);
     margin-left: auto;
   }
@@ -114,7 +113,6 @@
     font-size: 1.5rem;
     font-weight: 700;
     color: var(--accent);
-    font-family: 'Orbitron', monospace;
   }
   .stat-label {
     font-size: 0.72rem;
@@ -130,7 +128,6 @@
     background: var(--bg-card);
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-subtle);
-    font-family: 'Consolas', 'Courier New', monospace;
     font-size: 0.82rem;
     color: var(--text-secondary);
     line-height: 1.5;
@@ -157,7 +154,6 @@
   }
   .result-path {
     font-size: 0.84rem;
-    font-family: 'Consolas', 'Courier New', monospace;
     color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -185,7 +181,6 @@
   }
   .log-text {
     font-size: 13px;
-    font-family: 'Consolas', 'Courier New', monospace;
     color: #e0d0c0;
     line-height: 2;
     margin: 0;

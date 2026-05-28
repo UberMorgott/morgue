@@ -19,10 +19,10 @@
   <div class="groups">
     {#each groups as g (g.kind)}
       <div class="group-row">
-        <span class="group-count">{g.count}</span>
+        <span class="group-count font-accent">{g.count}</span>
         <span class="group-kind">{g.kind}</span>
         <span class="lang-badge">{g.language}</span>
-        <span class="group-examples">
+        <span class="group-examples font-mono">
           {g.examples.slice(0, 2).join(', ')}
           {#if g.count > 2}
             <span class="more-hint">{t(lang, 'composition.andMore').replace('{n}', String(g.count - 2))}</span>
@@ -83,7 +83,6 @@
   }
 
   .group-count {
-    font-family: 'Orbitron', monospace;
     font-size: 14px;
     font-weight: 700;
     color: var(--accent);
@@ -112,7 +111,6 @@
 
   .group-examples {
     font-size: 0.78rem;
-    font-family: 'Consolas', 'Courier New', monospace;
     color: var(--text-muted);
     overflow: hidden;
     text-overflow: ellipsis;
