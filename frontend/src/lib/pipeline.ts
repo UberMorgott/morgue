@@ -305,7 +305,13 @@ export function updateFromEvent(data: any) {
       const p = d.Progress;
       next.step = p.Step ?? s.step;
       next.stepTotal = p.Total ?? s.stepTotal;
-      next.stepName = p.Name ?? s.stepName;
+      // Only update stepName from intermediate events (files, functions, phases)
+      // Skip initial Running events that carry recipe step names ("Copy original", "Extract metadata")
+      if (p.Name && (p.Count > 0 || p.Name.startsWith('ghidra:') || p.Name.includes('.'))) {
+        next.stepName = p.Name;
+      } else if (p.Status === 'Success' || p.Status === 'Failed') {
+        next.stepName = ''; // clear on completion
+      }
       // Only count a step as completed (+1) when its status is Success/Skipped/Failed.
       // Running means the step is still in progress — don't inflate the percentage.
       const stepDone = p.Status === 'Success' || p.Status === 'Skipped' || p.Status === 'Failed';
