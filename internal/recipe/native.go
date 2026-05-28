@@ -137,187 +137,202 @@ func (n *Native) Execute(ctx *Context) error {
 		}
 	}
 
+	// Batch mode: StepFilter limits which steps run.
+	// "strings" = only copy + strings, "ghidra" = only ghidra, "" = all.
+	runStrings := ctx.StepFilter == "" || ctx.StepFilter == "strings"
+	runGhidra := ctx.StepFilter == "" || ctx.StepFilter == "ghidra"
+
 	// Step 0: Copy original (only when keeping intermediates)
 	var start time.Time
-	if ctx.Config.KeepIntermediates {
-		report(0, Running, 0, nil, "")
-		start = time.Now()
-		origDir := filepath.Join(ctx.Output, "original")
-		if err := os.MkdirAll(origDir, 0755); err != nil {
-			report(0, Failed, time.Since(start), err, "")
-			return err
+	if runStrings {
+		if ctx.Config.KeepIntermediates {
+			report(0, Running, 0, nil, "")
+			start = time.Now()
+			origDir := filepath.Join(ctx.Output, "original")
+			if err := os.MkdirAll(origDir, 0755); err != nil {
+				report(0, Failed, time.Since(start), err, "")
+				return err
+			}
+			if err := copyFile(ctx.Target, filepath.Join(origDir, filepath.Base(ctx.Target))); err != nil {
+				report(0, Failed, time.Since(start), err, "")
+				return err
+			}
+			report(0, Success, time.Since(start), nil, "")
+		} else {
+			report(0, Skipped, 0, nil, "")
 		}
-		if err := copyFile(ctx.Target, filepath.Join(origDir, filepath.Base(ctx.Target))); err != nil {
-			report(0, Failed, time.Since(start), err, "")
-			return err
-		}
-		report(0, Success, time.Since(start), nil, "")
-	} else {
-		report(0, Skipped, 0, nil, "")
 	}
 
 	// Step 1: Extract strings
-	report(1, Running, 0, nil, "strings")
-	start = time.Now()
-	stringsPath, err := ctx.Tools.Resolve("strings")
-	if err != nil {
-		logTool("strings", fmt.Sprintf("strings tool not available: %v", err))
-		report(1, Skipped, time.Since(start), nil, "strings")
-	} else {
-		stringsOut := filepath.Join(ctx.Output, "strings.txt")
-		strLineCount := 0
-		strLastLog := time.Now().Add(-2 * time.Second)
-		strLastProgress := time.Now().Add(-2 * time.Second)
-		r, _ := util.RunCmdStreaming(ctx.Ctx, stringsPath, []string{"-nobanner", "-accepteula", ctx.Target}, "", func(line string) {
-			strLineCount++
-			if strLineCount%100 == 0 && time.Since(strLastLog) >= time.Second {
-				logTool("strings", fmt.Sprintf("Extracting strings: %d so far...", strLineCount))
-				strLastLog = time.Now()
-			}
-			if time.Since(strLastProgress) >= time.Second {
-				if ctx.Progress != nil {
-					ctx.Progress <- StepProgress{
-						Step: 1, Total: total, Name: steps[1].Name,
-						Tool: "strings", Status: Running,
-						Count: strLineCount, Unit: "strings",
-					}
+	if runStrings {
+		report(1, Running, 0, nil, "strings")
+		start = time.Now()
+		stringsPath, err := ctx.Tools.Resolve("strings")
+		if err != nil {
+			logTool("strings", fmt.Sprintf("strings tool not available: %v", err))
+			report(1, Skipped, time.Since(start), nil, "strings")
+		} else {
+			stringsOut := filepath.Join(ctx.Output, "strings.txt")
+			strLineCount := 0
+			strLastLog := time.Now().Add(-2 * time.Second)
+			strLastProgress := time.Now().Add(-2 * time.Second)
+			r, _ := util.RunCmdStreaming(ctx.Ctx, stringsPath, []string{"-nobanner", "-accepteula", ctx.Target}, "", func(line string) {
+				strLineCount++
+				if strLineCount%100 == 0 && time.Since(strLastLog) >= time.Second {
+					logTool("strings", fmt.Sprintf("Extracting strings: %d so far...", strLineCount))
+					strLastLog = time.Now()
 				}
-				strLastProgress = time.Now()
+				if time.Since(strLastProgress) >= time.Second {
+					if ctx.Progress != nil {
+						ctx.Progress <- StepProgress{
+							Step: 1, Total: total, Name: steps[1].Name,
+							Tool: "strings", Status: Running,
+							Count: strLineCount, Unit: "strings",
+						}
+					}
+					strLastProgress = time.Now()
+				}
+			})
+			if r != nil {
+				os.WriteFile(stringsOut, []byte(r.Stdout), 0644)
 			}
-		})
-		if r != nil {
-			os.WriteFile(stringsOut, []byte(r.Stdout), 0644)
+			// Analyze and structure strings
+			analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
+			strCount := countLines(stringsOut)
+			reportCount(1, time.Since(start), "strings", strCount, "strings")
 		}
-		// Analyze and structure strings
-		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
-		strCount := countLines(stringsOut)
-		reportCount(1, time.Since(start), "strings", strCount, "strings")
+		// In strings-only mode, stop here
+		if !runGhidra {
+			return nil
+		}
 	}
 
 	// Step 2: Decompile with Ghidra
-	report(2, Running, 0, nil, "ghidra")
-	start = time.Now()
-	ghidraPath, err := ctx.Tools.Resolve("ghidra")
-	if err != nil {
-		report(2, Failed, time.Since(start), fmt.Errorf("ghidra not available: %w", err), "ghidra")
-		return fmt.Errorf("ghidra not available: %w", err)
-	}
+	if runGhidra {
+		report(2, Running, 0, nil, "ghidra")
+		start = time.Now()
+		ghidraPath, err := ctx.Tools.Resolve("ghidra")
+		if err != nil {
+			report(2, Failed, time.Since(start), fmt.Errorf("ghidra not available: %w", err), "ghidra")
+			return fmt.Errorf("ghidra not available: %w", err)
+		}
 
-	// ghidraPath points to ghidraRun.bat; we need support/analyzeHeadless
-	ghidraDir := filepath.Dir(ghidraPath)
-	analyzeHeadless := filepath.Join(ghidraDir, "support", "analyzeHeadless")
-	if runtime.GOOS == "windows" {
-		analyzeHeadless += ".bat"
-	}
+		// ghidraPath points to ghidraRun.bat; we need support/analyzeHeadless
+		ghidraDir := filepath.Dir(ghidraPath)
+		analyzeHeadless := filepath.Join(ghidraDir, "support", "analyzeHeadless")
+		if runtime.GOOS == "windows" {
+			analyzeHeadless += ".bat"
+		}
 
-	// Create temp dir for Ghidra project files
-	projDir, err := os.MkdirTemp("", "morgue-ghidra-*")
-	if err != nil {
-		report(2, Failed, time.Since(start), err, "ghidra")
-		return err
-	}
-	defer os.RemoveAll(projDir)
+		// Create temp dir for Ghidra project files
+		projDir, err := os.MkdirTemp("", "morgue-ghidra-*")
+		if err != nil {
+			report(2, Failed, time.Since(start), err, "ghidra")
+			return err
+		}
+		defer os.RemoveAll(projDir)
 
-	// Write the export script to a temp file.
-	// The filename MUST be MorgueExport.java — Ghidra requires the filename
-	// to match the public class name inside the script.
-	scriptDir, err := os.MkdirTemp("", "morgue-ghidra-script-*")
-	if err != nil {
-		report(2, Failed, time.Since(start), err, "ghidra")
-		return err
-	}
-	defer os.RemoveAll(scriptDir)
-	scriptPath := filepath.Join(scriptDir, "MorgueExport.java")
-	scriptFile, err := os.Create(scriptPath)
-	if err != nil {
-		report(2, Failed, time.Since(start), err, "ghidra")
-		return err
-	}
+		// Write the export script to a temp file.
+		// The filename MUST be MorgueExport.java — Ghidra requires the filename
+		// to match the public class name inside the script.
+		scriptDir, err := os.MkdirTemp("", "morgue-ghidra-script-*")
+		if err != nil {
+			report(2, Failed, time.Since(start), err, "ghidra")
+			return err
+		}
+		defer os.RemoveAll(scriptDir)
+		scriptPath := filepath.Join(scriptDir, "MorgueExport.java")
+		scriptFile, err := os.Create(scriptPath)
+		if err != nil {
+			report(2, Failed, time.Since(start), err, "ghidra")
+			return err
+		}
 
-	if _, err = scriptFile.WriteString(ghidraExportScript); err != nil {
+		if _, err = scriptFile.WriteString(ghidraExportScript); err != nil {
+			scriptFile.Close()
+			report(2, Failed, time.Since(start), err, "ghidra")
+			return err
+		}
 		scriptFile.Close()
-		report(2, Failed, time.Since(start), err, "ghidra")
-		return err
-	}
-	scriptFile.Close()
 
-	// Prepare output directory and file
-	srcDir := filepath.Join(ctx.Output, "src")
-	if err := os.MkdirAll(srcDir, 0755); err != nil {
-		report(2, Failed, time.Since(start), err, "ghidra")
-		return err
-	}
+		// Prepare output directory and file
+		srcDir := filepath.Join(ctx.Output, "src")
+		if err := os.MkdirAll(srcDir, 0755); err != nil {
+			report(2, Failed, time.Since(start), err, "ghidra")
+			return err
+		}
 
-	baseName := strings.TrimSuffix(filepath.Base(ctx.Target), filepath.Ext(ctx.Target))
-	outputFile := filepath.Join(srcDir, baseName+".c")
+		baseName := strings.TrimSuffix(filepath.Base(ctx.Target), filepath.Ext(ctx.Target))
+		outputFile := filepath.Join(srcDir, baseName+".c")
 
-	// Run Ghidra analyzeHeadless with streaming for real-time progress
-	logTool("ghidra", fmt.Sprintf("Running Ghidra analyzeHeadless on %s", filepath.Base(ctx.Target)))
-	ghidraFuncCount := 0
-	lastLogTime := time.Now().Add(-2 * time.Second) // allow first log immediately
-	result, err := util.RunCmdStreaming(ctx.Ctx, analyzeHeadless, []string{
-		projDir, "MorgueProject",
-		"-import", ctx.Target,
-		"-postScript", scriptPath, outputFile,
-		"-scriptPath", filepath.Dir(scriptPath),
-		"-deleteProject",
-	}, "", func(line string) {
-		// Parse "Morgue:fn:<count>:<funcName>" from our export script
-		if strings.HasPrefix(line, "Morgue:fn:") {
-			parts := strings.SplitN(line, ":", 4)
-			if len(parts) >= 4 {
-				fmt.Sscanf(parts[2], "%d", &ghidraFuncCount)
-				if time.Since(lastLogTime) >= time.Second {
-					logTool("ghidra", fmt.Sprintf("Ghidra: decompiled %d functions (%s)", ghidraFuncCount, parts[3]))
-					if ctx.Progress != nil {
-						ctx.Progress <- StepProgress{
-							Step: 2, Total: total, Name: steps[2].Name,
-							Tool: "ghidra", Status: Running,
-							Count: ghidraFuncCount, Unit: "functions",
+		// Run Ghidra analyzeHeadless with streaming for real-time progress
+		logTool("ghidra", fmt.Sprintf("Running Ghidra analyzeHeadless on %s", filepath.Base(ctx.Target)))
+		ghidraFuncCount := 0
+		lastLogTime := time.Now().Add(-2 * time.Second) // allow first log immediately
+		result, err := util.RunCmdStreaming(ctx.Ctx, analyzeHeadless, []string{
+			projDir, "MorgueProject",
+			"-import", ctx.Target,
+			"-postScript", scriptPath, outputFile,
+			"-scriptPath", filepath.Dir(scriptPath),
+			"-deleteProject",
+		}, "", func(line string) {
+			// Parse "Morgue:fn:<count>:<funcName>" from our export script
+			if strings.HasPrefix(line, "Morgue:fn:") {
+				parts := strings.SplitN(line, ":", 4)
+				if len(parts) >= 4 {
+					fmt.Sscanf(parts[2], "%d", &ghidraFuncCount)
+					if time.Since(lastLogTime) >= time.Second {
+						logTool("ghidra", fmt.Sprintf("Ghidra: decompiled %d functions (%s)", ghidraFuncCount, parts[3]))
+						if ctx.Progress != nil {
+							ctx.Progress <- StepProgress{
+								Step: 2, Total: total, Name: steps[2].Name,
+								Tool: "ghidra", Status: Running,
+								Count: ghidraFuncCount, Unit: "functions",
+							}
 						}
+						lastLogTime = time.Now()
 					}
-					lastLogTime = time.Now()
+				}
+			}
+		})
+
+		exitCode := -1
+		if result != nil {
+			exitCode = result.ExitCode
+		}
+		if err != nil || exitCode != 0 {
+			stderr := ""
+			if result != nil && result.Stderr != "" {
+				stderr = result.Stderr
+			}
+			execErr := fmt.Errorf("ghidra analyzeHeadless failed (exit %d): %s", exitCode, stderr)
+			logTool("ghidra", execErr.Error())
+			report(2, Failed, time.Since(start), execErr, "ghidra")
+			return execErr
+		}
+
+		// Verify output file exists and is non-empty
+		info, err := os.Stat(outputFile)
+		if err != nil || info.Size() == 0 {
+			execErr := fmt.Errorf("ghidra produced no output at %s", outputFile)
+			logTool("ghidra", execErr.Error())
+			report(2, Failed, time.Since(start), execErr, "ghidra")
+			return execErr
+		}
+
+		logTool("ghidra", fmt.Sprintf("Ghidra decompiled to %s (%d bytes)", outputFile, info.Size()))
+
+		// Parse function count from Ghidra script output
+		funcCount := 0
+		if result != nil {
+			for _, line := range strings.Split(result.Stdout, "\n") {
+				if n, err := fmt.Sscanf(line, "Morgue: Decompiled %d functions", &funcCount); n == 1 && err == nil {
+					break
 				}
 			}
 		}
-	})
-
-	exitCode := -1
-	if result != nil {
-		exitCode = result.ExitCode
+		reportCount(2, time.Since(start), "ghidra", funcCount, "functions")
 	}
-	if err != nil || exitCode != 0 {
-		stderr := ""
-		if result != nil && result.Stderr != "" {
-			stderr = result.Stderr
-		}
-		execErr := fmt.Errorf("ghidra analyzeHeadless failed (exit %d): %s", exitCode, stderr)
-		logTool("ghidra", execErr.Error())
-		report(2, Failed, time.Since(start), execErr, "ghidra")
-		return execErr
-	}
-
-	// Verify output file exists and is non-empty
-	info, err := os.Stat(outputFile)
-	if err != nil || info.Size() == 0 {
-		execErr := fmt.Errorf("ghidra produced no output at %s", outputFile)
-		logTool("ghidra", execErr.Error())
-		report(2, Failed, time.Since(start), execErr, "ghidra")
-		return execErr
-	}
-
-	logTool("ghidra", fmt.Sprintf("Ghidra decompiled to %s (%d bytes)", outputFile, info.Size()))
-
-	// Parse function count from Ghidra script output
-	funcCount := 0
-	if result != nil {
-		for _, line := range strings.Split(result.Stdout, "\n") {
-			if n, err := fmt.Sscanf(line, "Morgue: Decompiled %d functions", &funcCount); n == 1 && err == nil {
-				break
-			}
-		}
-	}
-	reportCount(2, time.Since(start), "ghidra", funcCount, "functions")
 
 	return nil
 }
