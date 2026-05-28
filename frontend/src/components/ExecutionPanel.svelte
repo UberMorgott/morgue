@@ -233,6 +233,9 @@
     font-size: 0.75rem;
     line-height: 1.6;
     color: var(--text-muted);
+    -webkit-user-select: text;
+    user-select: text;
+    cursor: text;
   }
 
   .log-line {
