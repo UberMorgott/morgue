@@ -40,11 +40,11 @@ func (u *UnityMono) RequiredTools() []string {
 func (u *UnityMono) Execute(ctx *Context) error {
 	steps := u.Steps()
 	total := len(steps)
-	report := func(step int, status StepStatus, dur time.Duration, err error) {
+	report := func(step int, status StepStatus, dur time.Duration, err error, tool string) {
 		if ctx.Progress != nil {
 			ctx.Progress <- StepProgress{
 				Step: step, Total: total, Name: steps[step].Name,
-				Status: status, Duration: dur, Error: err,
+				Tool: tool, Status: status, Duration: dur, Error: err,
 			}
 		}
 	}
@@ -57,29 +57,29 @@ func (u *UnityMono) Execute(ctx *Context) error {
 	// Step 0: Copy original (only when keeping intermediates)
 	var start time.Time
 	if ctx.Config.KeepIntermediates {
-		report(0, Running, 0, nil)
+		report(0, Running, 0, nil, "")
 		start = time.Now()
 		origDir := filepath.Join(ctx.Output, "original")
 		if err := os.MkdirAll(origDir, 0755); err != nil {
-			report(0, Failed, time.Since(start), err)
+			report(0, Failed, time.Since(start), err, "")
 			return err
 		}
 		if err := copyFile(ctx.Target, filepath.Join(origDir, filepath.Base(ctx.Target))); err != nil {
-			report(0, Failed, time.Since(start), err)
+			report(0, Failed, time.Since(start), err, "")
 			return err
 		}
-		report(0, Success, time.Since(start), nil)
+		report(0, Success, time.Since(start), nil, "")
 	} else {
-		report(0, Skipped, 0, nil)
+		report(0, Skipped, 0, nil, "")
 	}
 
 	// Step 1: Extract strings
-	report(1, Running, 0, nil)
+	report(1, Running, 0, nil, "strings")
 	start = time.Now()
 	stringsPath, err := ctx.Tools.Resolve("strings")
 	if err != nil {
 		log(fmt.Sprintf("strings tool not available: %v", err))
-		report(1, Skipped, time.Since(start), nil)
+		report(1, Skipped, time.Since(start), nil, "strings")
 	} else {
 		stringsOut := filepath.Join(ctx.Output, "strings.txt")
 		result, _ := util.RunCmd(ctx.Ctx, stringsPath, []string{"-nobanner", "-accepteula", ctx.Target}, "")
@@ -88,15 +88,15 @@ func (u *UnityMono) Execute(ctx *Context) error {
 		}
 		// Analyze and structure strings
 		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
-		report(1, Success, time.Since(start), nil)
+		report(1, Success, time.Since(start), nil, "strings")
 	}
 
 	// Step 2: Decompile managed DLLs
-	report(2, Running, 0, nil)
+	report(2, Running, 0, nil, "ilspycmd")
 	start = time.Now()
 	ilspyPath, err := ctx.Tools.Resolve("ilspycmd")
 	if err != nil {
-		report(2, Failed, time.Since(start), err)
+		report(2, Failed, time.Since(start), err, "ilspycmd")
 		return fmt.Errorf("ilspycmd not available: %w", err)
 	}
 	srcDir := filepath.Join(ctx.Output, "src")
@@ -131,7 +131,7 @@ func (u *UnityMono) Execute(ctx *Context) error {
 			log("ilspycmd whole-assembly failed, trying per-type fallback...")
 			fallbackOK := perTypeFallback(ctx.Ctx, ilspyPath, ctx.Target, srcDir, log)
 			if !fallbackOK {
-				report(2, Failed, time.Since(start), originalErr)
+				report(2, Failed, time.Since(start), originalErr, "ilspycmd")
 				return originalErr
 			}
 		} else {
@@ -140,7 +140,7 @@ func (u *UnityMono) Execute(ctx *Context) error {
 	} else {
 		log("ilspycmd succeeded in project mode")
 	}
-	report(2, Success, time.Since(start), nil)
+	report(2, Success, time.Since(start), nil, "ilspycmd")
 
 	return nil
 }

@@ -27,6 +27,7 @@ type PipelineEvent struct {
 	Phase          string              `json:"Phase"`
 	Target         string              `json:"Target"`
 	Message        string              `json:"Message"`
+	Tool           string              `json:"Tool,omitempty"`
 	Progress       *recipe.StepProgress `json:"Progress,omitempty"`
 	Done           bool                `json:"Done"`
 	Error          error               `json:"Error,omitempty"`

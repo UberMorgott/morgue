@@ -5,6 +5,7 @@
   let {
     lang,
     currentTarget = '',
+    currentTool = '',
     step = 0,
     stepTotal = 0,
     stepName = '',
@@ -15,6 +16,7 @@
   }: {
     lang: Lang;
     currentTarget?: string;
+    currentTool?: string;
     step?: number;
     stepTotal?: number;
     stepName?: string;
@@ -34,7 +36,7 @@
   });
 
   function isActive(tool: string): boolean {
-    return stepName.toLowerCase().includes(tool.toLowerCase());
+    return currentTool === tool;
   }
 
   function isDone(tool: string): boolean {

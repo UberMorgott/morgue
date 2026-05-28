@@ -165,6 +165,7 @@
     <ExecutionPanel
       {lang}
       currentTarget={$pipelineState.currentTarget}
+      currentTool={$pipelineState.currentTool}
       step={$pipelineState.step}
       stepTotal={$pipelineState.stepTotal}
       stepName={$pipelineState.stepName}

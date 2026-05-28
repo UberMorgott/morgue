@@ -44,11 +44,11 @@ func (u *UE5) RequiredTools() []string {
 func (u *UE5) Execute(ctx *Context) error {
 	steps := u.Steps()
 	total := len(steps)
-	report := func(step int, status StepStatus, dur time.Duration, err error) {
+	report := func(step int, status StepStatus, dur time.Duration, err error, tool string) {
 		if ctx.Progress != nil {
 			ctx.Progress <- StepProgress{
 				Step: step, Total: total, Name: steps[step].Name,
-				Status: status, Duration: dur, Error: err,
+				Tool: tool, Status: status, Duration: dur, Error: err,
 			}
 		}
 	}
@@ -69,18 +69,18 @@ func (u *UE5) Execute(ctx *Context) error {
 
 	// Step 0: Extract PAK assets
 	if ctx.Config != nil && !ctx.Config.UE5ExtractPAK {
-		report(0, Skipped, 0, nil)
+		report(0, Skipped, 0, nil, "retoc")
 		log("PAK extraction disabled in settings")
 	} else {
-		report(0, Running, 0, nil)
+		report(0, Running, 0, nil, "retoc")
 		start := time.Now()
 		retocPath, err := ctx.Tools.Resolve("retoc")
 		if err != nil {
 			log(fmt.Sprintf("retoc not available: %v — skipping PAK extraction", err))
-			report(0, Skipped, time.Since(start), nil)
+			report(0, Skipped, time.Since(start), nil, "retoc")
 		} else if len(pakFiles) == 0 {
 			log("No .pak/.utoc files found — skipping extraction")
-			report(0, Skipped, time.Since(start), nil)
+			report(0, Skipped, time.Since(start), nil, "retoc")
 		} else {
 			extractDir := filepath.Join(ctx.Output, "extracted")
 			os.MkdirAll(extractDir, 0755)
@@ -97,40 +97,40 @@ func (u *UE5) Execute(ctx *Context) error {
 				}
 			}
 			if failCount == len(pakFiles) {
-				report(0, Failed, time.Since(start), fmt.Errorf("all %d PAK extractions failed", failCount))
+				report(0, Failed, time.Since(start), fmt.Errorf("all %d PAK extractions failed", failCount), "retoc")
 			} else {
-				report(0, Success, time.Since(start), nil)
+				report(0, Success, time.Since(start), nil, "retoc")
 			}
 		}
 	}
 
 	// Step 1: SDK class dump (stub — requires runtime injection or static RTTI parse)
 	if ctx.Config != nil && !ctx.Config.UE5SDKDump {
-		report(1, Skipped, 0, nil)
+		report(1, Skipped, 0, nil, "")
 		log("SDK class dump disabled in settings")
 	} else {
-		report(1, Running, 0, nil)
+		report(1, Running, 0, nil, "")
 		start := time.Now()
 		log("SDK class dump: not yet implemented (requires UE4SS runtime injection)")
-		report(1, Skipped, time.Since(start), nil)
+		report(1, Skipped, time.Since(start), nil, "")
 	}
 
 	// Step 2: Extract strings
 	if ctx.Config != nil && !ctx.Config.UE5ExtractStrings {
-		report(2, Skipped, 0, nil)
+		report(2, Skipped, 0, nil, "strings")
 		log("String extraction disabled in settings")
 	} else {
-		report(2, Running, 0, nil)
+		report(2, Running, 0, nil, "strings")
 		start := time.Now()
 		stringsPath, err := ctx.Tools.Resolve("strings")
 		if err != nil {
 			log(fmt.Sprintf("strings tool not available: %v", err))
-			report(2, Skipped, time.Since(start), nil)
+			report(2, Skipped, time.Since(start), nil, "strings")
 		} else {
 			gameExe := findGameExe(gameRoot)
 			if gameExe == "" {
 				log("No game executable found for string extraction")
-				report(2, Skipped, time.Since(start), nil)
+				report(2, Skipped, time.Since(start), nil, "strings")
 			} else {
 				stringsOut := filepath.Join(ctx.Output, "strings.txt")
 				log(fmt.Sprintf("Extracting strings from: %s", filepath.Base(gameExe)))
@@ -142,53 +142,53 @@ func (u *UE5) Execute(ctx *Context) error {
 				}
 				// Analyze and structure strings
 				analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
-				report(2, Success, time.Since(start), nil)
+				report(2, Success, time.Since(start), nil, "strings")
 			}
 		}
 	}
 
 	// Step 3: Ghidra decompilation (optional, long-running)
 	if ctx.Config != nil && !ctx.Config.UE5GhidraDecompile {
-		report(3, Skipped, 0, nil)
+		report(3, Skipped, 0, nil, "ghidra")
 		log("Ghidra decompilation disabled in settings")
 	} else {
-		report(3, Running, 0, nil)
+		report(3, Running, 0, nil, "ghidra")
 		start := time.Now()
 		log("Ghidra decompilation: stub (enable in settings for full binary analysis)")
-		report(3, Skipped, time.Since(start), nil)
+		report(3, Skipped, time.Since(start), nil, "ghidra")
 	}
 
 	// Step 4: Name resolution (stub)
 	if ctx.Config != nil && !ctx.Config.UE5NameResolution {
-		report(4, Skipped, 0, nil)
+		report(4, Skipped, 0, nil, "")
 		log("Name resolution disabled in settings")
 	} else {
-		report(4, Running, 0, nil)
+		report(4, Running, 0, nil, "")
 		start := time.Now()
 		log("Name resolution: stub (requires SDK dump output)")
-		report(4, Skipped, time.Since(start), nil)
+		report(4, Skipped, time.Since(start), nil, "")
 	}
 
 	// Step 5: Build search indexes (stub)
 	if ctx.Config != nil && !ctx.Config.UE5BuildIndexes {
-		report(5, Skipped, 0, nil)
+		report(5, Skipped, 0, nil, "")
 		log("Build indexes disabled in settings")
 	} else {
-		report(5, Running, 0, nil)
+		report(5, Running, 0, nil, "")
 		start := time.Now()
 		log("Build indexes: stub")
-		report(5, Skipped, time.Since(start), nil)
+		report(5, Skipped, time.Since(start), nil, "")
 	}
 
 	// Step 6: Export hookable symbols (stub)
 	if ctx.Config != nil && !ctx.Config.UE5ExportHookable {
-		report(6, Skipped, 0, nil)
+		report(6, Skipped, 0, nil, "")
 		log("Export hookable symbols disabled in settings")
 	} else {
-		report(6, Running, 0, nil)
+		report(6, Running, 0, nil, "")
 		start := time.Now()
 		log("Export hookable symbols: stub")
-		report(6, Skipped, time.Since(start), nil)
+		report(6, Skipped, time.Since(start), nil, "")
 	}
 
 	return nil

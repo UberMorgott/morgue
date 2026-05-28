@@ -113,11 +113,11 @@ public class MorgueExport extends GhidraScript {
 func (n *Native) Execute(ctx *Context) error {
 	steps := n.Steps()
 	total := len(steps)
-	report := func(step int, status StepStatus, dur time.Duration, err error) {
+	report := func(step int, status StepStatus, dur time.Duration, err error, tool string) {
 		if ctx.Progress != nil {
 			ctx.Progress <- StepProgress{
 				Step: step, Total: total, Name: steps[step].Name,
-				Status: status, Duration: dur, Error: err,
+				Tool: tool, Status: status, Duration: dur, Error: err,
 			}
 		}
 	}
@@ -130,29 +130,29 @@ func (n *Native) Execute(ctx *Context) error {
 	// Step 0: Copy original (only when keeping intermediates)
 	var start time.Time
 	if ctx.Config.KeepIntermediates {
-		report(0, Running, 0, nil)
+		report(0, Running, 0, nil, "")
 		start = time.Now()
 		origDir := filepath.Join(ctx.Output, "original")
 		if err := os.MkdirAll(origDir, 0755); err != nil {
-			report(0, Failed, time.Since(start), err)
+			report(0, Failed, time.Since(start), err, "")
 			return err
 		}
 		if err := copyFile(ctx.Target, filepath.Join(origDir, filepath.Base(ctx.Target))); err != nil {
-			report(0, Failed, time.Since(start), err)
+			report(0, Failed, time.Since(start), err, "")
 			return err
 		}
-		report(0, Success, time.Since(start), nil)
+		report(0, Success, time.Since(start), nil, "")
 	} else {
-		report(0, Skipped, 0, nil)
+		report(0, Skipped, 0, nil, "")
 	}
 
 	// Step 1: Extract strings
-	report(1, Running, 0, nil)
+	report(1, Running, 0, nil, "strings")
 	start = time.Now()
 	stringsPath, err := ctx.Tools.Resolve("strings")
 	if err != nil {
 		log(fmt.Sprintf("strings tool not available: %v", err))
-		report(1, Skipped, time.Since(start), nil)
+		report(1, Skipped, time.Since(start), nil, "strings")
 	} else {
 		stringsOut := filepath.Join(ctx.Output, "strings.txt")
 		r, _ := util.RunCmd(ctx.Ctx, stringsPath, []string{"-nobanner", "-accepteula", ctx.Target}, "")
@@ -161,15 +161,15 @@ func (n *Native) Execute(ctx *Context) error {
 		}
 		// Analyze and structure strings
 		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
-		report(1, Success, time.Since(start), nil)
+		report(1, Success, time.Since(start), nil, "strings")
 	}
 
 	// Step 2: Decompile with Ghidra
-	report(2, Running, 0, nil)
+	report(2, Running, 0, nil, "ghidra")
 	start = time.Now()
 	ghidraPath, err := ctx.Tools.Resolve("ghidra")
 	if err != nil {
-		report(2, Failed, time.Since(start), fmt.Errorf("ghidra not available: %w", err))
+		report(2, Failed, time.Since(start), fmt.Errorf("ghidra not available: %w", err), "ghidra")
 		return fmt.Errorf("ghidra not available: %w", err)
 	}
 
@@ -183,7 +183,7 @@ func (n *Native) Execute(ctx *Context) error {
 	// Create temp dir for Ghidra project files
 	projDir, err := os.MkdirTemp("", "morgue-ghidra-*")
 	if err != nil {
-		report(2, Failed, time.Since(start), err)
+		report(2, Failed, time.Since(start), err, "ghidra")
 		return err
 	}
 	defer os.RemoveAll(projDir)
@@ -193,20 +193,20 @@ func (n *Native) Execute(ctx *Context) error {
 	// to match the public class name inside the script.
 	scriptDir, err := os.MkdirTemp("", "morgue-ghidra-script-*")
 	if err != nil {
-		report(2, Failed, time.Since(start), err)
+		report(2, Failed, time.Since(start), err, "ghidra")
 		return err
 	}
 	defer os.RemoveAll(scriptDir)
 	scriptPath := filepath.Join(scriptDir, "MorgueExport.java")
 	scriptFile, err := os.Create(scriptPath)
 	if err != nil {
-		report(2, Failed, time.Since(start), err)
+		report(2, Failed, time.Since(start), err, "ghidra")
 		return err
 	}
 
 	if _, err = scriptFile.WriteString(ghidraExportScript); err != nil {
 		scriptFile.Close()
-		report(2, Failed, time.Since(start), err)
+		report(2, Failed, time.Since(start), err, "ghidra")
 		return err
 	}
 	scriptFile.Close()
@@ -214,7 +214,7 @@ func (n *Native) Execute(ctx *Context) error {
 	// Prepare output directory and file
 	srcDir := filepath.Join(ctx.Output, "src")
 	if err := os.MkdirAll(srcDir, 0755); err != nil {
-		report(2, Failed, time.Since(start), err)
+		report(2, Failed, time.Since(start), err, "ghidra")
 		return err
 	}
 
@@ -242,7 +242,7 @@ func (n *Native) Execute(ctx *Context) error {
 		}
 		execErr := fmt.Errorf("ghidra analyzeHeadless failed (exit %d): %s", exitCode, stderr)
 		log(execErr.Error())
-		report(2, Failed, time.Since(start), execErr)
+		report(2, Failed, time.Since(start), execErr, "ghidra")
 		return execErr
 	}
 
@@ -251,12 +251,12 @@ func (n *Native) Execute(ctx *Context) error {
 	if err != nil || info.Size() == 0 {
 		execErr := fmt.Errorf("ghidra produced no output at %s", outputFile)
 		log(execErr.Error())
-		report(2, Failed, time.Since(start), execErr)
+		report(2, Failed, time.Since(start), execErr, "ghidra")
 		return execErr
 	}
 
 	log(fmt.Sprintf("Ghidra decompiled to %s (%d bytes)", outputFile, info.Size()))
-	report(2, Success, time.Since(start), nil)
+	report(2, Success, time.Since(start), nil, "ghidra")
 
 	return nil
 }

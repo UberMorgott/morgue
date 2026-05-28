@@ -332,6 +332,7 @@ func (e *Engine) executeRecipe(
 				log.Printf("progress forwarder panic: %v", r)
 			}
 		}()
+		var currentTool string
 		progressOpen := true
 		logOpen := true
 		for progressOpen || logOpen {
@@ -341,15 +342,20 @@ func (e *Engine) executeRecipe(
 					progressOpen = false
 					continue
 				}
+				if p.Tool != "" {
+					currentTool = p.Tool
+				}
 				em.send(PipelineEvent{
-					Phase: "execute", Target: filePath, Progress: &p,
+					Phase: "execute", Target: filePath, Tool: p.Tool, Progress: &p,
 				})
 			case msg, ok := <-logCh:
 				if !ok {
 					logOpen = false
 					continue
 				}
-				em.emit("log", filePath, msg)
+				em.send(PipelineEvent{
+					Phase: "log", Target: filePath, Tool: currentTool, Message: msg,
+				})
 			}
 		}
 	}()
