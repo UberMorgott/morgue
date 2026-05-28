@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t, type Lang } from '../lib/i18n';
 
-  type StageId = 'scan' | 'recon' | 'tools' | 'execute' | 'done';
+  type StageId = 'analysis' | 'tools' | 'execute' | 'done';
   type StageStatus = 'pending' | 'active' | 'done' | 'error';
 
   let { stages, stageIds, lang }: {
@@ -9,6 +9,13 @@
     stageIds: StageId[];
     lang: Lang;
   } = $props();
+
+  const labelKey: Record<StageId, string> = {
+    analysis: 'stepper.analysis',
+    tools: 'stepper.tools',
+    execute: 'stepper.execution',
+    done: 'stepper.done',
+  };
 </script>
 
 <div class="stepper">
@@ -24,7 +31,7 @@
           <span class="stage-dot"></span>
         {/if}
       </div>
-      <span class="stage-label">{t(lang, `home.stage.${id}`)}</span>
+      <span class="stage-label">{t(lang, labelKey[id])}</span>
     </div>
     {#if i < stageIds.length - 1}
       {@const nextStatus = stages[stageIds[i + 1]]}
@@ -41,7 +48,7 @@
   /* -- Stage stepper (CSS grid) -- */
   .stepper {
     display: grid;
-    grid-template-columns: 32px 1fr 32px 1fr 32px 1fr 32px 1fr 32px;
+    grid-template-columns: 32px 1fr 32px 1fr 32px 1fr 32px;
     align-items: start;
     width: 100%;
     padding: 8px 16px;

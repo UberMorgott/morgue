@@ -16,25 +16,26 @@
     type PipelinePhase,
   } from '../lib/pipeline';
 
-  let { lang = 'en' as Lang, inputPath = '', startupBusy = false, onselect, onbrowse, onclear }: {
+  let { lang = 'en' as Lang, inputPath = '', startupBusy = false, onselect, onbrowsefile, onbrowsedir, onclear }: {
     lang?: Lang;
     inputPath?: string;
     startupBusy?: boolean;
     onselect?: (detail: { path: string }) => void;
-    onbrowse?: () => void;
+    onbrowsefile?: () => void;
+    onbrowsedir?: () => void;
     onclear?: () => void;
   } = $props();
 
   let lastProcessedPath = $state('');
 
   // Accumulating panel: once a section is shown, it stays visible for the run
-  let showDetection = $state(false);
+  let showAnalysis = $state(false);
   let showTools = $state(false);
   let showExecution = $state(false);
   let showSummary = $state(false);
 
   function resetSections() {
-    showDetection = false;
+    showAnalysis = false;
     showTools = false;
     showExecution = false;
     showSummary = false;
@@ -59,7 +60,7 @@
 
   // Section visibility effects
   $effect(() => {
-    if (['scan', 'recon'].includes($pipelineState.phase)) showDetection = true;
+    if ($pipelineState.phase === 'analysis') showAnalysis = true;
   });
   $effect(() => {
     if ($pipelineState.phase === 'tools' || $pipelineState.toolsNeeded.length > 0) showTools = true;
@@ -120,8 +121,12 @@
     onselect?.(detail);
   }
 
-  function handleBrowse() {
-    onbrowse?.();
+  function handleBrowseFile() {
+    onbrowsefile?.();
+  }
+
+  function handleBrowseDir() {
+    onbrowsedir?.();
   }
 
   function handleClear() {
@@ -211,7 +216,7 @@
       <h1 class="hero-title">{t(lang, 'home.title')}</h1>
       <p class="hero-subtitle">{t(lang, 'home.subtitle')}</p>
     </div>
-    <DropZone {lang} disabled={running || startupBusy} onselect={handleSelect} onbrowse={handleBrowse} />
+    <DropZone {lang} disabled={running || startupBusy} onselect={handleSelect} onbrowsefile={handleBrowseFile} onbrowsedir={handleBrowseDir} />
 
     {#if $history.length > 0}
       <PipelineHistory {lang} entries={$history} onselect={(detail) => onselect?.(detail)} />
@@ -226,7 +231,7 @@
       {paused}
       {running}
       {elapsed}
-      {showDetection}
+      {showAnalysis}
       {showTools}
       {showExecution}
       {showSummary}
