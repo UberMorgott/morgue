@@ -133,10 +133,7 @@
           {:else if state === 'ready'}
             <span class="info-ready">{t(lang, 'tools.ready')}</span>
           {:else if state === 'running'}
-            <span class="info-current font-mono">{currentTarget ? basename(currentTarget) : ''}</span>
-            {#if step >= 0 && stepTotal > 0 && currentTool === tool}
-              <span class="info-step">{t(lang, stepName) || stepName}</span>
-            {/if}
+            <span class="info-current font-mono">{currentTool === tool && stepName ? (t(lang, stepName) || stepName) : (currentTarget ? basename(currentTarget) : '')}</span>
           {:else if state === 'done'}
             <span class="info-done">{t(lang, 'execution.done')}</span>
           {/if}
