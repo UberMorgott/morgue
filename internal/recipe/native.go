@@ -87,7 +87,8 @@ public class MorgueExport extends GhidraScript {
                         f.println(c.getC());
                         f.println();
                         count++;
-                        println("Morgue:fn:" + count + ":" + func.getName());
+                        System.out.println("Morgue:fn:" + count + ":" + func.getName());
+                        System.out.flush();
                     }
                 } else {
                     f.println("// FAILED: " + func.getName() + " @ " + func.getEntryPoint());
@@ -106,7 +107,8 @@ public class MorgueExport extends GhidraScript {
         f.close();
         decomp.dispose();
 
-        println("Morgue: Decompiled " + count + " functions, " + errors + " errors -> " + outputPath);
+        System.out.println("Morgue: Decompiled " + count + " functions, " + errors + " errors -> " + outputPath);
+        System.out.flush();
     }
 }
 `

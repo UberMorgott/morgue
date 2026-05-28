@@ -134,6 +134,9 @@
             <span class="info-ready">{t(lang, 'tools.ready')}</span>
           {:else if state === 'running'}
             <span class="info-current font-mono">{currentTarget ? basename(currentTarget) : ''}</span>
+            {#if step >= 0 && stepTotal > 0 && currentTool === tool}
+              <span class="info-step">{stepName || `${step + 1}/${stepTotal}`}</span>
+            {/if}
           {:else if state === 'done'}
             <span class="info-done">{t(lang, 'execution.done')}</span>
           {/if}
@@ -211,6 +214,12 @@
     font-size: 0.82rem;
     color: var(--text-muted);
     font-style: italic;
+  }
+
+  .info-step {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    letter-spacing: 0.3px;
   }
 
   .info-active {
