@@ -254,16 +254,16 @@
   let outdatedCount = $derived(tools.filter(t => t.updateAvailable).length);
 </script>
 
-<div class="tools-page">
-  <div class="tools-header">
-    <h2 class="tools-title">{t(lang, 'tools.title')}</h2>
+<div class="tools-page page-container">
+  <div class="page-header">
+    <h2 class="page-title">{t(lang, 'tools.title')}</h2>
     <div class="tools-actions">
-      <button class="header-btn" onclick={forceCheckUpdates} disabled={busy || anyChecking}>{t(lang, 'tools.checkUpdates')}</button>
+      <button class="page-action-btn" onclick={forceCheckUpdates} disabled={busy || anyChecking}>{t(lang, 'tools.checkUpdates')}</button>
       {#if missingCount > 0}
-        <button class="header-btn" onclick={downloadAll} disabled={busy}>{t(lang, 'tools.downloadAll')} ({missingCount})</button>
+        <button class="page-action-btn" onclick={downloadAll} disabled={busy}>{t(lang, 'tools.downloadAll')} ({missingCount})</button>
       {/if}
       {#if outdatedCount > 0}
-        <button class="header-btn header-btn-accent" onclick={updateAll} disabled={busy}>{t(lang, 'tools.updateAll')} ({outdatedCount})</button>
+        <button class="page-action-btn accent" onclick={updateAll} disabled={busy}>{t(lang, 'tools.updateAll')} ({outdatedCount})</button>
       {/if}
     </div>
   </div>
@@ -287,17 +287,8 @@
 </div>
 
 <style>
-  .tools-page { display: flex; flex-direction: column; height: 100%; padding: 20px; gap: 16px; }
-  .tools-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-  .tools-title { font-size: clamp(18px, 2.5vw, 28px); font-weight: 600; color: var(--text-primary); margin: 0; }
   .tools-actions { display: flex; gap: 8px; }
-  .header-btn { all: unset; font-size: 12px; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--accent); color: var(--accent); cursor: pointer; transition: all 0.15s; }
-  .header-btn:hover:not(:disabled) { background: var(--accent-dim); }
-  .header-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .header-btn-accent { background: var(--accent); color: var(--bg-page); font-weight: 600; border: none; }
-  .header-btn-accent:hover:not(:disabled) { box-shadow: 0 0 12px var(--accent-dim); }
   .tools-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
   .tools-loading { color: var(--text-muted); padding: 24px; text-align: center; }
   .tools-empty { color: var(--text-muted); padding: 24px; text-align: center; }
-
 </style>
