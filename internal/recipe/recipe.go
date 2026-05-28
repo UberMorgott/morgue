@@ -2,6 +2,7 @@ package recipe
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/UberMorgott/morgue/internal/config"
@@ -33,6 +34,11 @@ func (s StepStatus) String() string {
 		return stepStatusNames[s]
 	}
 	return "Unknown"
+}
+
+// MarshalJSON serializes StepStatus as its string name for frontend consumption.
+func (s StepStatus) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.String())
 }
 
 // StepInfo describes a recipe step.
