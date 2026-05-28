@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { t, type Lang } from '../lib/i18n';
   import ProgressRing from './ProgressRing.svelte';
 
   let {
+    lang,
     toolsNeeded = [] as string[],
     toolsInstalled = [] as string[],
     downloadingTool = '',
@@ -10,6 +12,7 @@
     downloadTotalBytes = 0,
     lastMessage = '',
   }: {
+    lang: Lang;
     toolsNeeded?: string[];
     toolsInstalled?: string[];
     downloadingTool?: string;
@@ -38,7 +41,7 @@
 
 <div class="tools-panel glass neon-border animate-in" style="animation-delay: 0.15s;">
   <div class="tools-header">
-    <span class="tools-title">⚙ ИНСТРУМЕНТЫ</span>
+    <span class="tools-title">⚙ {t(lang, 'tools.title')}</span>
   </div>
 
   <div class="tools-list">
@@ -57,13 +60,13 @@
         <span class="tool-name">{tool}</span>
         <span class="tool-status" class:status-ready={state === 'ready'} class:status-warm={state === 'downloading' || state === 'extracting'} class:status-muted={state === 'pending'}>
           {#if state === 'ready'}
-            Готов
+            {t(lang, 'tools.ready')}
           {:else if state === 'downloading'}
-            {formatMB(downloadBytes)} / {formatMB(downloadTotalBytes)} MB Скачивание...
+            {formatMB(downloadBytes)} / {formatMB(downloadTotalBytes)} MB {t(lang, 'pipeline.downloading')}
           {:else if state === 'extracting'}
-            Распаковка...
+            {t(lang, 'pipeline.extracting')}
           {:else}
-            Ожидание
+            {t(lang, 'tools.pending')}
           {/if}
         </span>
       </div>

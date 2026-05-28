@@ -43,9 +43,15 @@
     }
 
     if (ph === 'cancelled' || ph === 'error') {
-      let errorIdx = order.length - 2;
-      if ($pipelineState.step === 0 && $pipelineState.stepTotal === 0) {
-        errorIdx = 0;
+      // Determine which stage the error occurred in based on accumulated state
+      let errorIdx = 0; // default: analysis
+      const st = $pipelineState;
+      if (st.step > 0 || st.stepTotal > 0 || st.logs.length > 0) {
+        errorIdx = 2; // execute
+      } else if (st.toolsNeeded.length > 0) {
+        errorIdx = 1; // tools
+      } else if (st.reconResults.length > 0) {
+        errorIdx = 1; // tools (recon done, failed at tools)
       }
       for (let i = 0; i < order.length; i++) {
         if (i < errorIdx) result[order[i]] = 'done';
@@ -115,6 +121,7 @@
   <!-- Stats strip -->
   {#if showAnalysis && statsFileCount > 0}
     <StatsStrip
+      {lang}
       platform={statsPlatform}
       techStack={statsTechStack}
       fileCount={statsFileCount}
@@ -128,12 +135,14 @@
     <div class="row-2col">
       {#if showAnalysis && compositionGroups.length > 0}
         <CompositionPanel
+          {lang}
           groups={compositionGroups}
           obfuscations={$pipelineState.obfuscations}
         />
       {/if}
       {#if showTools && $pipelineState.toolsNeeded.length > 0}
         <ToolsPanel
+          {lang}
           toolsNeeded={$pipelineState.toolsNeeded}
           toolsInstalled={$pipelineState.toolsInstalled}
           downloadingTool={$pipelineState.downloadingTool}
@@ -149,6 +158,7 @@
   <!-- Execution panel -->
   {#if showExecution}
     <ExecutionPanel
+      {lang}
       currentTarget={$pipelineState.currentTarget}
       step={$pipelineState.step}
       stepTotal={$pipelineState.stepTotal}

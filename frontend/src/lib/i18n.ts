@@ -116,9 +116,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'home.error': { en: 'Error', ru: 'Ошибка' },
 
   // Home — stages
-  'home.stage.scan': { en: 'Scan', ru: 'Скан' },
   'home.section.analysis': { en: 'Analysis', ru: 'Анализ' },
-  'home.stage.recon': { en: 'Recon', ru: 'Анализ' },
   'home.stage.tools': { en: 'Tools', ru: 'Инструменты' },
   'home.stage.execute': { en: 'Execute', ru: 'Декомпиляция' },
   'home.stage.done': { en: 'Done', ru: 'Готово' },
@@ -161,6 +159,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'tools.upToDate': { en: 'Up to date', ru: 'Актуален' },
   'tools.checking': { en: 'Checking updates...', ru: 'Проверка обновлений...' },
   'tools.checkUpdates': { en: 'Check updates', ru: 'Проверить обновления' },
+  'tools.ready': { en: 'Ready', ru: 'Готов' },
+  'tools.pending': { en: 'Pending', ru: 'Ожидание' },
 
   // Settings — folder picker
   'settings.browse': { en: 'Browse...', ru: 'Обзор...' },

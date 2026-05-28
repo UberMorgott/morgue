@@ -1,5 +1,8 @@
 <script lang="ts">
-  let { platform, techStack, fileCount, totalSize, obfuscationCount = 0 }: {
+  import { t, type Lang } from '../lib/i18n';
+
+  let { lang, platform, techStack, fileCount, totalSize, obfuscationCount = 0 }: {
+    lang: Lang;
     platform: string;
     techStack: string;
     fileCount: number;
@@ -26,7 +29,7 @@
       <polyline points="14 2 14 8 20 8" />
     </svg>
     <span class="stat-number">{fileCount}</span>
-    <span class="stat-label">files</span>
+    <span class="stat-label">{t(lang, 'stats.files')}</span>
   </div>
 
   <span class="stat-divider"></span>
@@ -47,7 +50,7 @@
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
       </svg>
       <span class="stat-number warn">{obfuscationCount}</span>
-      <span class="stat-label warn">obfuscated</span>
+      <span class="stat-label warn">{t(lang, 'stats.obfuscations')}</span>
     </div>
   {/if}
 </div>
