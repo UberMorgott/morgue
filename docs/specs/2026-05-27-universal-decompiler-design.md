@@ -1,5 +1,7 @@
 # Universal Decompiler — Design Spec
 
+> **Note:** This is a forward-looking design spec. The core workflow (auto-detect → tools → execute → output) is implemented. UE5 pipeline, Go binary support, and per-tool stdout progress parsers (Level 2) are planned future work.
+
 ## Vision
 Morgue should decompile any Windows binary — .NET, native C++, UE5 games, Unity games — with auto-detection, auto-tool-install, and AI-optimized output.
 
