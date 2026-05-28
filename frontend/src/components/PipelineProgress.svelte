@@ -226,8 +226,8 @@
   .pipeline-view {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 20px;
+    align-items: stretch;
+    gap: 16px;
     width: 100%;
   }
 
@@ -236,7 +236,7 @@
     grid-template-columns: 1fr 1fr;
     gap: 16px;
     width: 100%;
-    align-items: start;
+    align-items: stretch;
   }
 
   /* When only one child is present, let it span full width */
