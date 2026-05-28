@@ -36,3 +36,13 @@ docs/superpowers/
 morgue.yaml
 .env
 .env.local
+
+# WebView2 runtime cache
+.webview2/
+
+# Test/build artifacts
+coverage.out
+summary.json
+
+# Design mockups
+mockup-analysis.html

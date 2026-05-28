@@ -38,8 +38,10 @@ type PipelineEvent struct {
 	RecipeName  string   `json:"RecipeName,omitempty"`
 	RecipeDesc  string   `json:"RecipeDesc,omitempty"`
 	ToolsNeeded []string `json:"ToolsNeeded,omitempty"`
-	OutputPath  string   `json:"OutputPath,omitempty"`
-	OutputStats []string `json:"OutputStats,omitempty"`
+	OutputPath     string   `json:"OutputPath,omitempty"`
+	OutputStats    []string `json:"OutputStats,omitempty"`
+	FilesTotal     int      `json:"FilesTotal,omitempty"`
+	FilesProcessed int      `json:"FilesProcessed,omitempty"`
 }
 
 // PauseGate allows pausing/resuming the pipeline between steps.
@@ -108,6 +110,23 @@ func (pg *PauseGate) WaitIfPaused(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// PipelineSummary wraps results with aggregate stats.
+type PipelineSummary struct {
+	Stats   SummaryStats   `json:"stats"`
+	Results []summaryEntry `json:"results"`
+}
+
+// SummaryStats holds aggregate pipeline statistics.
+type SummaryStats struct {
+	Total    int            `json:"total"`
+	Success  int            `json:"success"`
+	Failed   int            `json:"failed"`
+	Skipped  int            `json:"skipped"`
+	Duration string         `json:"duration"`
+	ByKind   map[string]int `json:"by_kind"`
+	ByRecipe map[string]int `json:"by_recipe"`
 }
 
 // Options configures a pipeline run.

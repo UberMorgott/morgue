@@ -25,51 +25,27 @@ func pauseChecker(pg *PauseGate) recipe.PauseChecker {
 	return pg
 }
 
-// PipelineSummary wraps results with aggregate stats.
-type PipelineSummary struct {
-	Stats   SummaryStats   `json:"stats"`
-	Results []summaryEntry `json:"results"`
-}
-
-// SummaryStats holds aggregate pipeline statistics.
-type SummaryStats struct {
-	Total    int            `json:"total"`
-	Success  int            `json:"success"`
-	Failed   int            `json:"failed"`
-	Skipped  int            `json:"skipped"`
-	Duration string         `json:"duration"`
-	ByKind   map[string]int `json:"by_kind"`
-	ByRecipe map[string]int `json:"by_recipe"`
-}
-
 // Run executes the full pipeline: scan → recon → skip → match → execute → save.
 func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEvent) error {
 	startTime := time.Now()
+	em := emitter{ch: events}
 	defer func() {
-		if events != nil {
-			events <- PipelineEvent{Phase: "done", Done: true, OutputPath: opts.Output}
-		}
+		em.send(PipelineEvent{Phase: "done", Done: true, OutputPath: opts.Output})
 	}()
 
-	emit := func(phase, target, msg string) {
-		if events != nil {
-			events <- PipelineEvent{Phase: phase, Target: target, Message: msg}
-		}
-	}
-	emitErr := func(phase, target string, err error) {
-		if events != nil {
-			events <- PipelineEvent{Phase: phase, Target: target, Error: err}
-		}
-	}
-
 	// Phase 1: Scan
-	emit("scan", opts.Input, "Scanning for binaries...")
+	em.emit("scan", opts.Input, "Scanning for binaries...")
 	scanResult, err := e.Scan(opts.Input)
 	if err != nil {
-		emitErr("scan", opts.Input, err)
+		em.emitErr("scan", opts.Input, err)
 		return fmt.Errorf("scan: %w", err)
 	}
-	emit("scan", opts.Input, fmt.Sprintf("Found %d files in %d groups", len(scanResult.Files), len(scanResult.Groups)))
+	em.send(PipelineEvent{
+		Phase:      "scan",
+		Target:     opts.Input,
+		Message:    fmt.Sprintf("Found %d files in %d groups", len(scanResult.Files), len(scanResult.Groups)),
+		FilesTotal: len(scanResult.Files),
+	})
 
 	var results []TargetResult
 
@@ -95,7 +71,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 					results = append(results, TargetResult{
 						Group: group, Skipped: true, SkipReason: reason,
 					})
-					emit("skip", filePath, fmt.Sprintf("Skipped: %s", reason))
+					em.emit("skip", filePath, fmt.Sprintf("Skipped: %s", reason))
 					continue
 				}
 			}
@@ -105,127 +81,45 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				results = append(results, TargetResult{
 					Group: group, Skipped: true, SkipReason: "excluded",
 				})
-				emit("skip", filePath, "Excluded by pattern")
+				em.emit("skip", filePath, "Excluded by pattern")
 				continue
 			}
 
-			// Recon
-			emit("recon", filePath, "Classifying...")
-			reconResult, err := e.Classify(ctx, filePath)
+			// Recon + kind override
+			reconResult, err := e.classifyTarget(ctx, group, filePath, em)
 			if err != nil {
-				emitErr("recon", filePath, err)
 				results = append(results, TargetResult{Group: group, Error: err})
 				continue
-			}
-
-			// Override Kind based on scanner group classification
-			switch group.Kind {
-			case scanner.GroupUnreal:
-				reconResult.Kind = recon.UnrealEngine
-			case scanner.GroupUnityMono:
-				reconResult.Kind = recon.UnityMono
-			case scanner.GroupUnityIL2CPP:
-				reconResult.Kind = recon.UnityIL2CPP
-			}
-
-			// Emit enriched recon event
-			if events != nil {
-				events <- PipelineEvent{
-					Phase:      "recon",
-					Target:     filePath,
-					Message:    reconResult.Kind.String(),
-					ReconKind:  reconResult.Kind.String(),
-					Compiler:   reconResult.Compiler,
-					Obfuscator: reconResult.Obfuscator,
-					FileSize:   reconResult.Size,
-				}
 			}
 
 			// Match recipe
 			rec := e.MatchRecipe(&reconResult, opts.Recipe)
 			if rec == nil {
-				emit("match", filePath, "No matching recipe found")
+				em.emit("match", filePath, "No matching recipe found")
 				results = append(results, TargetResult{
 					Group: group, Recon: reconResult,
 					Skipped: true, SkipReason: "no matching recipe",
 				})
 				continue
 			}
-			if events != nil {
-				events <- PipelineEvent{
-					Phase:      "match",
-					Target:     filePath,
-					Message:    fmt.Sprintf("Recipe: %s", rec.Name()),
-					RecipeName: rec.Name(),
-					RecipeDesc: rec.Description(),
-				}
-			}
+			em.send(PipelineEvent{
+				Phase:      "match",
+				Target:     filePath,
+				Message:    fmt.Sprintf("Recipe: %s", rec.Name()),
+				RecipeName: rec.Name(),
+				RecipeDesc: rec.Description(),
+			})
 
 			// Emit tools event with full list before install
-			if events != nil {
-				events <- PipelineEvent{
-					Phase:       "tools",
-					Target:      filePath,
-					Message:     fmt.Sprintf("%d tools needed", len(rec.RequiredTools())),
-					ToolsNeeded: rec.RequiredTools(),
-				}
-			}
+			em.send(PipelineEvent{
+				Phase:       "tools",
+				Target:      filePath,
+				Message:     fmt.Sprintf("%d tools needed", len(rec.RequiredTools())),
+				ToolsNeeded: rec.RequiredTools(),
+			})
 
-			// Check runtime dependencies — auto-install if missing
-			runtimeFailed := false
-			{
-				runtimeSeen := map[tools.RuntimeKind]bool{}
-				for _, tName := range rec.RequiredTools() {
-					if runtimeFailed {
-						break
-					}
-					td, ok := tools.FindByName(tName)
-					if !ok {
-						continue
-					}
-					for _, rk := range td.RuntimeDeps {
-						if runtimeSeen[rk] {
-							continue
-						}
-						runtimeSeen[rk] = true
-						if _, err := e.tools.RuntimePath(rk); err == nil {
-							continue // already available
-						}
-						emit("runtime", filePath, fmt.Sprintf("Installing runtime %s...", rk))
-						rtCb := &tools.InstallCallbacks{
-							OnProgress: func(name string, bytesDown, bytesTotal int64) {
-								if events != nil {
-									pct := 0
-									if bytesTotal > 0 {
-										pct = int(bytesDown * 100 / bytesTotal)
-									}
-									events <- PipelineEvent{
-										Phase:   "download",
-										Target:  filePath,
-										Message: fmt.Sprintf("Downloading runtime %s... %d%%", name, pct),
-									}
-								}
-							},
-							OnExtract: func(name string) {
-								if events != nil {
-									events <- PipelineEvent{
-										Phase:   "extract",
-										Target:  filePath,
-										Message: fmt.Sprintf("Extracting runtime %s...", name),
-									}
-								}
-							},
-						}
-						if err := e.tools.InstallRuntime(rk, rtCb); err != nil {
-							emitErr("runtime", filePath, fmt.Errorf("auto-install runtime %s: %w", rk, err))
-							runtimeFailed = true
-							break
-						}
-						emit("runtime", filePath, fmt.Sprintf("Runtime %s installed", rk))
-					}
-				}
-			}
-			if runtimeFailed {
+			// Check runtime dependencies
+			if err := e.ensureRuntimeDeps(filePath, rec, em); err != nil {
 				results = append(results, TargetResult{
 					Group: group, Recon: reconResult, Recipe: rec,
 					Error: fmt.Errorf("failed to install required runtime"),
@@ -233,61 +127,12 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				continue
 			}
 
-			// Check required tools — auto-install if missing
-			needed := e.tools.ToolsNeeded(rec.RequiredTools())
-			if len(needed) > 0 {
-				// Wire download progress to pipeline events
-				installCb := &tools.InstallCallbacks{
-					OnProgress: func(tool string, bytesDown, bytesTotal int64) {
-						if events != nil {
-							pct := 0
-							if bytesTotal > 0 {
-								pct = int(bytesDown * 100 / bytesTotal)
-							}
-							events <- PipelineEvent{
-								Phase:   "download",
-								Target:  filePath,
-								Message: fmt.Sprintf("Downloading %s... %d%%", tool, pct),
-							}
-						}
-					},
-					OnExtract: func(tool string) {
-						if events != nil {
-							events <- PipelineEvent{
-								Phase:   "extract",
-								Target:  filePath,
-								Message: fmt.Sprintf("Extracting %s...", tool),
-							}
-						}
-					},
-				}
-
-				installFailed := false
-				for _, name := range needed {
-					emit("install", filePath, fmt.Sprintf("Installing %s...", name))
-					if _, err := e.tools.Install(name, installCb); err != nil {
-						emitErr("tools", filePath, fmt.Errorf("auto-install %s: %w", name, err))
-						installFailed = true
-						break
-					}
-				}
-				if installFailed {
-					results = append(results, TargetResult{
-						Group: group, Recon: reconResult, Recipe: rec,
-						Error: fmt.Errorf("failed to auto-install required tools"),
-					})
-					continue
-				}
-				// Re-check after install
-				needed = e.tools.ToolsNeeded(rec.RequiredTools())
-				if len(needed) > 0 {
-					err := fmt.Errorf("still missing after install: %v", needed)
-					emitErr("tools", filePath, err)
-					results = append(results, TargetResult{
-						Group: group, Recon: reconResult, Recipe: rec, Error: err,
-					})
-					continue
-				}
+			// Check required tools
+			if err := e.ensureTools(filePath, rec, em); err != nil {
+				results = append(results, TargetResult{
+					Group: group, Recon: reconResult, Recipe: rec, Error: err,
+				})
+				continue
 			}
 
 			// Pause check before execution
@@ -298,107 +143,8 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			}
 
 			// Execute recipe
-			targetOutput := filepath.Join(opts.Output, sanitizeName(filepath.Base(filePath)))
-			if err := os.MkdirAll(targetOutput, 0755); err != nil {
-				emitErr("execute", filePath, fmt.Errorf("create output dir: %w", err))
-				results = append(results, TargetResult{
-					Group: group, Recon: reconResult, Recipe: rec, Error: err,
-				})
-				continue
-			}
-
-			progressCh := make(chan recipe.StepProgress, 20)
-			logCh := make(chan string, 50)
-
-			// Forward progress events
-			done := make(chan struct{})
-			go func() {
-				defer close(done)
-				defer func() {
-					if r := recover(); r != nil {
-						log.Printf("progress forwarder panic: %v", r)
-					}
-				}()
-				progressOpen := true
-				logOpen := true
-				for progressOpen || logOpen {
-					select {
-					case p, ok := <-progressCh:
-						if !ok {
-							progressOpen = false
-							continue
-						}
-						if events != nil {
-							events <- PipelineEvent{
-								Phase: "execute", Target: filePath, Progress: &p,
-							}
-						}
-					case msg, ok := <-logCh:
-						if !ok {
-							logOpen = false
-							continue
-						}
-						emit("log", filePath, msg)
-					}
-				}
-			}()
-
-			rctx := &recipe.Context{
-				Target:   filePath,
-				Output:   targetOutput,
-				Progress: progressCh,
-				Log:      logCh,
-				Tools:    e.tools,
-				Ctx:      ctx,
-				Config:   &e.cfg,
-				Pause:    pauseChecker(opts.Pause),
-			}
-
-			execErr := rec.Execute(rctx)
-			close(progressCh)
-			close(logCh)
-			<-done
-
-			// Save recon.json per target
-			reconJSON, _ := json.MarshalIndent(reconResult, "", "  ")
-			os.WriteFile(filepath.Join(targetOutput, "recon.json"), reconJSON, 0644)
-
-			// Cleanup intermediates if configured and execution succeeded
-			if execErr == nil && !e.cfg.KeepIntermediates {
-				// Remove bulky original binaries (already processed)
-				os.RemoveAll(filepath.Join(targetOutput, "original"))
-				// For IL2CPP: remove DummyDll (already decompiled to src/)
-				os.RemoveAll(filepath.Join(targetOutput, "metadata", "DummyDll"))
-				// Remove raw strings.txt (structured strings.json is kept)
-				os.Remove(filepath.Join(targetOutput, "strings.txt"))
-			}
-
-			results = append(results, TargetResult{
-				Group:  group,
-				Recon:  reconResult,
-				Recipe: rec,
-				Output: targetOutput,
-				Error:  execErr,
-			})
-
-			if execErr != nil {
-				emitErr("execute", filePath, execErr)
-			} else {
-				// Emit complete
-				if events != nil {
-					events <- PipelineEvent{
-						Phase: "execute", Target: filePath, Message: "Complete",
-					}
-				}
-				// Post-execution: scan output and report stats
-				stats := scanOutputDir(targetOutput)
-				if events != nil {
-					events <- PipelineEvent{
-						Phase: "stats", Target: filePath,
-						OutputStats: stats,
-					}
-				}
-			}
+			tr := e.executeRecipe(ctx, filePath, &opts, rec, reconResult, group, em)
+			results = append(results, tr)
 		}
 	}
 
@@ -408,6 +154,259 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 	os.WriteFile(filepath.Join(opts.Output, "summary.json"), summaryJSON, 0644)
 
 	return nil
+}
+
+// classifyTarget runs recon, applies scanner group kind override, and emits events.
+func (e *Engine) classifyTarget(
+	ctx context.Context,
+	group scanner.TargetGroup,
+	filePath string,
+	em emitter,
+) (recon.Result, error) {
+	em.emit("recon", filePath, "Classifying...")
+	reconResult, err := e.Classify(ctx, filePath)
+	if err != nil {
+		em.emitErr("recon", filePath, err)
+		return reconResult, err
+	}
+
+	// Override Kind based on scanner group classification
+	switch group.Kind {
+	case scanner.GroupUnreal:
+		reconResult.Kind = recon.UnrealEngine
+	case scanner.GroupUnityMono:
+		reconResult.Kind = recon.UnityMono
+	case scanner.GroupUnityIL2CPP:
+		reconResult.Kind = recon.UnityIL2CPP
+	}
+
+	// Emit enriched recon event
+	em.send(PipelineEvent{
+		Phase:      "recon",
+		Target:     filePath,
+		Message:    reconResult.Kind.String(),
+		ReconKind:  reconResult.Kind.String(),
+		Compiler:   reconResult.Compiler,
+		Obfuscator: reconResult.Obfuscator,
+		FileSize:   reconResult.Size,
+	})
+
+	return reconResult, nil
+}
+
+// ensureRuntimeDeps installs missing runtime dependencies for a recipe.
+func (e *Engine) ensureRuntimeDeps(filePath string, rec recipe.Recipe, em emitter) error {
+	runtimeSeen := map[tools.RuntimeKind]bool{}
+	for _, tName := range rec.RequiredTools() {
+		td, ok := tools.FindByName(tName)
+		if !ok {
+			continue
+		}
+		for _, rk := range td.RuntimeDeps {
+			if runtimeSeen[rk] {
+				continue
+			}
+			runtimeSeen[rk] = true
+			if _, err := e.tools.RuntimePath(rk); err == nil {
+				continue // already available
+			}
+			em.emit("runtime", filePath, fmt.Sprintf("Installing runtime %s...", rk))
+			rtCb := &tools.InstallCallbacks{
+				OnProgress: func(name string, bytesDown, bytesTotal int64) {
+					if em.ch != nil {
+						pct := 0
+						if bytesTotal > 0 {
+							pct = int(bytesDown * 100 / bytesTotal)
+						}
+						em.send(PipelineEvent{
+							Phase:   "download",
+							Target:  filePath,
+							Message: fmt.Sprintf("Downloading runtime %s... %d%%", name, pct),
+						})
+					}
+				},
+				OnExtract: func(name string) {
+					if em.ch != nil {
+						em.send(PipelineEvent{
+							Phase:   "extract",
+							Target:  filePath,
+							Message: fmt.Sprintf("Extracting runtime %s...", name),
+						})
+					}
+				},
+			}
+			if err := e.tools.InstallRuntime(rk, rtCb); err != nil {
+				em.emitErr("runtime", filePath, fmt.Errorf("auto-install runtime %s: %w", rk, err))
+				return err
+			}
+			em.emit("runtime", filePath, fmt.Sprintf("Runtime %s installed", rk))
+		}
+	}
+	return nil
+}
+
+// ensureTools installs missing tools for a recipe.
+func (e *Engine) ensureTools(filePath string, rec recipe.Recipe, em emitter) error {
+	needed := e.tools.ToolsNeeded(rec.RequiredTools())
+	if len(needed) == 0 {
+		return nil
+	}
+
+	// Wire download progress to pipeline events
+	installCb := &tools.InstallCallbacks{
+		OnProgress: func(tool string, bytesDown, bytesTotal int64) {
+			if em.ch != nil {
+				pct := 0
+				if bytesTotal > 0 {
+					pct = int(bytesDown * 100 / bytesTotal)
+				}
+				em.send(PipelineEvent{
+					Phase:   "download",
+					Target:  filePath,
+					Message: fmt.Sprintf("Downloading %s... %d%%", tool, pct),
+				})
+			}
+		},
+		OnExtract: func(tool string) {
+			if em.ch != nil {
+				em.send(PipelineEvent{
+					Phase:   "extract",
+					Target:  filePath,
+					Message: fmt.Sprintf("Extracting %s...", tool),
+				})
+			}
+		},
+	}
+
+	installFailed := false
+	for _, name := range needed {
+		em.emit("install", filePath, fmt.Sprintf("Installing %s...", name))
+		if _, err := e.tools.Install(name, installCb); err != nil {
+			em.emitErr("tools", filePath, fmt.Errorf("auto-install %s: %w", name, err))
+			installFailed = true
+			break
+		}
+	}
+	if installFailed {
+		return fmt.Errorf("failed to auto-install required tools")
+	}
+
+	// Re-check after install
+	needed = e.tools.ToolsNeeded(rec.RequiredTools())
+	if len(needed) > 0 {
+		err := fmt.Errorf("still missing after install: %v", needed)
+		em.emitErr("tools", filePath, err)
+		return err
+	}
+	return nil
+}
+
+// executeRecipe runs the recipe, forwards progress/log events, saves recon.json.
+func (e *Engine) executeRecipe(
+	ctx context.Context,
+	filePath string,
+	opts *Options,
+	rec recipe.Recipe,
+	reconResult recon.Result,
+	group scanner.TargetGroup,
+	em emitter,
+) TargetResult {
+	targetOutput := filepath.Join(opts.Output, sanitizeName(filepath.Base(filePath)))
+	if err := os.MkdirAll(targetOutput, 0755); err != nil {
+		em.emitErr("execute", filePath, fmt.Errorf("create output dir: %w", err))
+		return TargetResult{
+			Group: group, Recon: reconResult, Recipe: rec, Error: err,
+		}
+	}
+
+	progressCh := make(chan recipe.StepProgress, 20)
+	logCh := make(chan string, 50)
+
+	// Forward progress events
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("progress forwarder panic: %v", r)
+			}
+		}()
+		progressOpen := true
+		logOpen := true
+		for progressOpen || logOpen {
+			select {
+			case p, ok := <-progressCh:
+				if !ok {
+					progressOpen = false
+					continue
+				}
+				em.send(PipelineEvent{
+					Phase: "execute", Target: filePath, Progress: &p,
+				})
+			case msg, ok := <-logCh:
+				if !ok {
+					logOpen = false
+					continue
+				}
+				em.emit("log", filePath, msg)
+			}
+		}
+	}()
+
+	rctx := &recipe.Context{
+		Target:   filePath,
+		Output:   targetOutput,
+		Progress: progressCh,
+		Log:      logCh,
+		Tools:    e.tools,
+		Ctx:      ctx,
+		Config:   &e.cfg,
+		Pause:    pauseChecker(opts.Pause),
+	}
+
+	execErr := rec.Execute(rctx)
+	close(progressCh)
+	close(logCh)
+	<-done
+
+	// Save recon.json per target
+	reconJSON, _ := json.MarshalIndent(reconResult, "", "  ")
+	os.WriteFile(filepath.Join(targetOutput, "recon.json"), reconJSON, 0644)
+
+	// Cleanup intermediates if configured and execution succeeded
+	if execErr == nil && !e.cfg.KeepIntermediates {
+		// Remove bulky original binaries (already processed)
+		os.RemoveAll(filepath.Join(targetOutput, "original"))
+		// For IL2CPP: remove DummyDll (already decompiled to src/)
+		os.RemoveAll(filepath.Join(targetOutput, "metadata", "DummyDll"))
+		// Remove raw strings.txt (structured strings.json is kept)
+		os.Remove(filepath.Join(targetOutput, "strings.txt"))
+	}
+
+	tr := TargetResult{
+		Group:  group,
+		Recon:  reconResult,
+		Recipe: rec,
+		Output: targetOutput,
+		Error:  execErr,
+	}
+
+	if execErr != nil {
+		em.emitErr("execute", filePath, execErr)
+	} else {
+		// Emit complete
+		em.send(PipelineEvent{
+			Phase: "execute", Target: filePath, Message: "Complete",
+		})
+		// Post-execution: scan output and report stats
+		stats := scanOutputDir(targetOutput)
+		em.send(PipelineEvent{
+			Phase: "stats", Target: filePath,
+			OutputStats: stats,
+		})
+	}
+
+	return tr
 }
 
 type summaryEntry struct {
