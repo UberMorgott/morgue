@@ -8,7 +8,9 @@ dist/
 !frontend/dist/.gitkeep
 /tools/
 de4dot-cex/
+diec/
 ghidra/
+ilspycmd/
 strings/
 .morgue.exe.old
 error.log
