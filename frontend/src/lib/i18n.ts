@@ -64,17 +64,25 @@ const translations: Record<string, Record<Lang, string>> = {
   // Settings — Updates
   'settings.updates': { en: 'Updates', ru: 'Обновления' },
   'settings.autoUpdateCheck': { en: 'Auto-check updates', ru: 'Автопроверка обновлений' },
+  'settings.autoUpdateCheckHint': { en: 'Periodically check for new versions of Morgue', ru: 'Периодически проверять наличие новых версий Morgue' },
   'settings.autoUpdateApp': { en: 'Auto-update application', ru: 'Автообновление приложения' },
+  'settings.autoUpdateAppHint': { en: 'Download and install app updates automatically', ru: 'Автоматически скачивать и устанавливать обновления приложения' },
   'settings.autoUpdateTools': { en: 'Auto-update tools', ru: 'Автообновление инструментов' },
+  'settings.autoUpdateToolsHint': { en: 'Keep decompilation tools up to date automatically', ru: 'Автоматически обновлять инструменты декомпиляции' },
 
   // Settings — Decompilation
   'settings.decompilation': { en: 'Decompilation', ru: 'Декомпиляция' },
   'settings.decompileProject': { en: 'Project mode (.csproj)', ru: 'Проектный режим (.csproj)' },
+  'settings.decompileProjectHint': { en: 'Output as Visual Studio project instead of loose files', ru: 'Выводить как проект Visual Studio вместо отдельных файлов' },
   'settings.generatePdb': { en: 'Generate PDB', ru: 'Генерировать PDB' },
+  'settings.generatePdbHint': { en: 'Create debug symbols for decompiled assemblies', ru: 'Создавать отладочные символы для декомпилированных сборок' },
   'settings.csharpVersion': { en: 'C# language version', ru: 'Версия C#' },
   'settings.keepIntermediates': { en: 'Keep intermediate files', ru: 'Сохранять промежуточные файлы' },
+  'settings.keepIntermediatesHint': { en: 'Preserve temp files from each pipeline step for debugging', ru: 'Сохранять временные файлы каждого шага для отладки' },
   'settings.skipSystemLibs': { en: 'Skip system libraries', ru: 'Пропускать системные библиотеки' },
+  'settings.skipSystemLibsHint': { en: 'Skip .NET framework and standard library DLLs', ru: 'Пропускать DLL-библиотеки .NET Framework и стандартной библиотеки' },
   'settings.stopOnFirstError': { en: 'Stop on first error', ru: 'Останавливаться при ошибке' },
+  'settings.stopOnFirstErrorHint': { en: 'Abort pipeline immediately when any target fails', ru: 'Прервать pipeline при первой ошибке в любом файле' },
   'settings.maxFileSize': { en: 'Max file size (MB)', ru: 'Макс. размер файла (МБ)' },
   'settings.stepTimeout': { en: 'Step timeout (min)', ru: 'Таймаут шага (мин)' },
   'settings.outputDir': { en: 'Output directory', ru: 'Папка вывода' },
@@ -82,12 +90,15 @@ const translations: Record<string, Record<Lang, string>> = {
   // Settings — Security
   'settings.security': { en: 'Security', ru: 'Безопасность' },
   'settings.allowDynamicExecution': { en: 'Allow dynamic execution', ru: 'Разрешить динамическое выполнение' },
+  'settings.allowDynamicExecutionHint': { en: 'Allow tools to execute code during decompilation (required by some deobfuscators)', ru: 'Разрешить инструментам выполнять код при декомпиляции (необходимо для некоторых деобфускаторов)' },
   'settings.sandboxWarning': { en: 'Sandbox warning', ru: 'Предупреждение о песочнице' },
+  'settings.sandboxWarningHint': { en: 'Show warning before running untrusted binaries', ru: 'Показывать предупреждение перед запуском недоверенных бинарников' },
 
   // Settings — Logging
   'settings.logging': { en: 'Logging', ru: 'Логирование' },
   'settings.logLevel': { en: 'Log level', ru: 'Уровень логов' },
   'settings.logToFile': { en: 'Log to file', ru: 'Запись в файл' },
+  'settings.logToFileHint': { en: 'Save pipeline logs to disk alongside output', ru: 'Сохранять логи pipeline на диск рядом с результатами' },
 
   // Home — pipeline inline
   'home.scanning': { en: 'Scanning for files...', ru: 'Поиск файлов...' },

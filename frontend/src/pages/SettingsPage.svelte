@@ -83,9 +83,9 @@
         <section class="settings-card glass">
           <h3 class="card-title">{t(lang, 'settings.updates')}</h3>
           <div class="card-rows">
-            <SettingsToggle label={t(lang, 'settings.autoUpdateCheck')} active={config.AutoUpdateCheck} onToggle={() => toggleField('AutoUpdateCheck')} />
-            <SettingsToggle label={t(lang, 'settings.autoUpdateApp')} active={config.AutoUpdateApp} onToggle={() => toggleField('AutoUpdateApp')} />
-            <SettingsToggle label={t(lang, 'settings.autoUpdateTools')} active={config.AutoUpdateTools} onToggle={() => toggleField('AutoUpdateTools')} />
+            <SettingsToggle label={t(lang, 'settings.autoUpdateCheck')} hint={t(lang, 'settings.autoUpdateCheckHint')} active={config.AutoUpdateCheck} onToggle={() => toggleField('AutoUpdateCheck')} />
+            <SettingsToggle label={t(lang, 'settings.autoUpdateApp')} hint={t(lang, 'settings.autoUpdateAppHint')} active={config.AutoUpdateApp} onToggle={() => toggleField('AutoUpdateApp')} />
+            <SettingsToggle label={t(lang, 'settings.autoUpdateTools')} hint={t(lang, 'settings.autoUpdateToolsHint')} active={config.AutoUpdateTools} onToggle={() => toggleField('AutoUpdateTools')} />
           </div>
         </section>
 
@@ -93,8 +93,8 @@
         <section class="settings-card glass">
           <h3 class="card-title">{t(lang, 'settings.decompilation')}</h3>
           <div class="card-rows">
-            <SettingsToggle label={t(lang, 'settings.decompileProject')} active={config.DecompileProjectMode} onToggle={() => toggleField('DecompileProjectMode')} />
-            <SettingsToggle label={t(lang, 'settings.generatePdb')} active={config.GeneratePDB} onToggle={() => toggleField('GeneratePDB')} />
+            <SettingsToggle label={t(lang, 'settings.decompileProject')} hint={t(lang, 'settings.decompileProjectHint')} active={config.DecompileProjectMode} onToggle={() => toggleField('DecompileProjectMode')} />
+            <SettingsToggle label={t(lang, 'settings.generatePdb')} hint={t(lang, 'settings.generatePdbHint')} active={config.GeneratePDB} onToggle={() => toggleField('GeneratePDB')} />
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.csharpVersion')}</span>
               <select class="setting-select" bind:value={config.CSharpLanguageVersion} onchange={onConfigChange}>
@@ -104,9 +104,9 @@
                 <option value="9">9</option>
               </select>
             </div>
-            <SettingsToggle label={t(lang, 'settings.keepIntermediates')} active={config.KeepIntermediates} onToggle={() => toggleField('KeepIntermediates')} />
-            <SettingsToggle label={t(lang, 'settings.skipSystemLibs')} active={config.SkipSystemLibs} onToggle={() => toggleField('SkipSystemLibs')} />
-            <SettingsToggle label={t(lang, 'settings.stopOnFirstError')} active={config.StopOnFirstError} onToggle={() => toggleField('StopOnFirstError')} />
+            <SettingsToggle label={t(lang, 'settings.keepIntermediates')} hint={t(lang, 'settings.keepIntermediatesHint')} active={config.KeepIntermediates} onToggle={() => toggleField('KeepIntermediates')} />
+            <SettingsToggle label={t(lang, 'settings.skipSystemLibs')} hint={t(lang, 'settings.skipSystemLibsHint')} active={config.SkipSystemLibs} onToggle={() => toggleField('SkipSystemLibs')} />
+            <SettingsToggle label={t(lang, 'settings.stopOnFirstError')} hint={t(lang, 'settings.stopOnFirstErrorHint')} active={config.StopOnFirstError} onToggle={() => toggleField('StopOnFirstError')} />
             <div class="setting-row">
               <span class="setting-label">{t(lang, 'settings.maxFileSize')}</span>
               <input class="setting-input setting-input-num" type="number" bind:value={config.MaxFileSizeMB} oninput={onConfigChange} min="0" />
@@ -139,8 +139,8 @@
         <section class="settings-card glass">
           <h3 class="card-title">{t(lang, 'settings.security')}</h3>
           <div class="card-rows">
-            <SettingsToggle label={t(lang, 'settings.allowDynamicExecution')} active={config.AllowDynamicExecution} onToggle={() => toggleField('AllowDynamicExecution')} />
-            <SettingsToggle label={t(lang, 'settings.sandboxWarning')} active={config.SandboxWarning} onToggle={() => toggleField('SandboxWarning')} />
+            <SettingsToggle label={t(lang, 'settings.allowDynamicExecution')} hint={t(lang, 'settings.allowDynamicExecutionHint')} active={config.AllowDynamicExecution} onToggle={() => toggleField('AllowDynamicExecution')} />
+            <SettingsToggle label={t(lang, 'settings.sandboxWarning')} hint={t(lang, 'settings.sandboxWarningHint')} active={config.SandboxWarning} onToggle={() => toggleField('SandboxWarning')} />
           </div>
         </section>
 
@@ -171,7 +171,7 @@
                 <option value="error">error</option>
               </select>
             </div>
-            <SettingsToggle label={t(lang, 'settings.logToFile')} active={config.LogToFile} onToggle={() => toggleField('LogToFile')} />
+            <SettingsToggle label={t(lang, 'settings.logToFile')} hint={t(lang, 'settings.logToFileHint')} active={config.LogToFile} onToggle={() => toggleField('LogToFile')} />
           </div>
         </section>
 
