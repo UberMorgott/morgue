@@ -110,7 +110,11 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 	}
 	if err != nil || exitCode != 0 {
 		// Project mode failed — retry without -p (flat .cs output, more tolerant)
-		log(fmt.Sprintf("ilspycmd project mode failed (exit %d), retrying without -p", exitCode))
+		msg := fmt.Sprintf("ilspycmd project mode failed (exit %d), retrying without -p", exitCode)
+		if result != nil && result.Stderr != "" {
+			msg += "\n" + strings.TrimSpace(result.Stderr)
+		}
+		log(msg)
 		os.RemoveAll(srcDir)
 		os.MkdirAll(srcDir, 0755)
 		result, err = util.RunCmd(ctx.Ctx, ilspyPath, []string{"-o", srcDir, ctx.Target}, "")
@@ -147,10 +151,14 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 // one by one. Returns true if at least one type was decompiled successfully.
 func perTypeFallback(ctx context.Context, ilspyPath, target, srcDir string, log func(string)) bool {
 	listResult, listErr := util.RunCmd(ctx, ilspyPath, []string{
-		"-l", "c i s d e", "--disable-updatecheck", target,
+		"-l", "cisde", "--disable-updatecheck", target,
 	}, "")
 	if listErr != nil || listResult == nil || listResult.ExitCode != 0 {
-		log("per-type fallback: failed to list types")
+		msg := fmt.Sprintf("per-type fallback: failed to list types")
+		if listResult != nil && listResult.Stderr != "" {
+			msg += "\n" + strings.TrimSpace(listResult.Stderr)
+		}
+		log(msg)
 		return false
 	}
 

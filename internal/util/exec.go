@@ -43,13 +43,21 @@ func RunCmdWithEnv(ctx context.Context, name string, args []string, dir string, 
 func runCmd(ctx context.Context, name string, args []string, dir string, env []string, stdin io.Reader) (*CmdResult, error) {
 	if strings.HasSuffix(name, ".dll") {
 		args = append([]string{name}, args...)
-		// Prefer local portable dotnet from tools base dir before falling back to PATH
+		// Resolve dotnet binary: portable → x64 system → PATH fallback.
+		// PATH often resolves to x86 dotnet which may lack required runtimes,
+		// while x64 (Program Files) typically has the latest release.
 		localDotnet := filepath.Join(BaseDir(), "runtimes", "dotnet", "dotnet.exe")
+		x64Dotnet := filepath.Join(os.Getenv("ProgramW6432"), "dotnet", "dotnet.exe")
 		if _, err := os.Stat(localDotnet); err == nil {
 			name = localDotnet
+		} else if _, err := os.Stat(x64Dotnet); err == nil {
+			name = x64Dotnet
 		} else {
 			name = "dotnet"
 		}
+		// Allow .NET to roll forward to nearest compatible runtime version.
+		// Prevents failures when tool targets e.g. net10.0 but only 10.0.x-rc is installed.
+		env = append(env, "DOTNET_ROLL_FORWARD=LatestMajor")
 	}
 
 	start := time.Now()

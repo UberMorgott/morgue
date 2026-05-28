@@ -193,7 +193,7 @@ func (m *Manager) InstallRuntime(kind RuntimeKind, cb *InstallCallbacks) error {
 	}
 }
 
-// installDotnetSDK downloads the .NET 8 SDK portable zip.
+// installDotnetSDK downloads the .NET 10 SDK portable zip.
 func (m *Manager) installDotnetSDK(cb *InstallCallbacks) error {
 	destDir := m.localRuntimeDir(RuntimeDotnet)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
@@ -201,7 +201,7 @@ func (m *Manager) installDotnetSDK(cb *InstallCallbacks) error {
 	}
 
 	zipPath := filepath.Join(m.baseDir, "runtimes", "dotnet-sdk.zip")
-	url := "https://aka.ms/dotnet/8.0/dotnet-sdk-win-x64.zip"
+	url := "https://aka.ms/dotnet/10.0/dotnet-sdk-win-x64.zip"
 
 	var progressCb func(bytesDown, bytesTotal int64)
 	if cb != nil && cb.OnProgress != nil {
