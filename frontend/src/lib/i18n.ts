@@ -229,6 +229,9 @@ const translations: Record<string, Record<Lang, string>> = {
   'execution.done': { en: 'Done', ru: 'Готово' },
   'execution.waiting': { en: 'Waiting...', ru: 'Ожидание...' },
   'execution.items': { en: 'items', ru: 'элементов' },
+  'ghidra:import': { en: 'Importing binary...', ru: 'Импорт бинарника...' },
+  'ghidra:analyze': { en: 'Analyzing code...', ru: 'Анализ кода...' },
+  'ghidra:disassemble': { en: 'Disassembling...', ru: 'Дизассемблирование...' },
 
   // Stepper
   'stepper.analysis': { en: 'Analysis', ru: 'Анализ' },

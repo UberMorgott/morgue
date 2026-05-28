@@ -295,17 +295,21 @@ func (n *Native) Execute(ctx *Context) error {
 						lastLogTime = time.Now()
 					}
 				}
-			} else if ghidraFuncCount == 0 && len(strings.TrimSpace(line)) > 0 {
-				// During analysis phase — show what Ghidra is currently doing
-				if time.Since(lastLogTime) >= time.Second {
-					status := strings.TrimSpace(line)
-					if len(status) > 80 {
-						status = status[:80]
-					}
-					// Use Name field to carry current activity — frontend shows it as step info
+			} else if ghidraFuncCount == 0 {
+				// Pre-decompilation: detect 3 phases from Ghidra output
+				lower := strings.ToLower(line)
+				var phase string
+				if strings.Contains(lower, "import") {
+					phase = "ghidra:import"
+				} else if strings.Contains(lower, "analyz") || strings.Contains(lower, "analysis") {
+					phase = "ghidra:analyze"
+				} else if strings.Contains(lower, "disassembl") {
+					phase = "ghidra:disassemble"
+				}
+				if phase != "" && time.Since(lastLogTime) >= time.Second {
 					if ctx.Progress != nil {
 						ctx.Progress <- StepProgress{
-							Step: 2, Total: total, Name: status,
+							Step: 2, Total: total, Name: phase,
 							Tool: "ghidra", Status: Running,
 						}
 					}

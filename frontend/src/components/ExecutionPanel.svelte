@@ -135,7 +135,7 @@
           {:else if state === 'running'}
             <span class="info-current font-mono">{currentTarget ? basename(currentTarget) : ''}</span>
             {#if step >= 0 && stepTotal > 0 && currentTool === tool}
-              <span class="info-step">{stepName || `${step + 1}/${stepTotal}`}</span>
+              <span class="info-step">{t(lang, stepName) || stepName}</span>
             {/if}
           {:else if state === 'done'}
             <span class="info-done">{t(lang, 'execution.done')}</span>
@@ -156,21 +156,6 @@
     {/each}
   </div>
 
-  <!-- Mini log -->
-  {#if logs.length > 0}
-    <div class="log-area font-mono mini-log" bind:this={logEl}>
-      {#each logs.slice(-5) as line}
-        {@const parsed = parseLogTool(line)}
-        <div class="log-line">
-          {#if parsed}
-            <span class="log-tool">[{parsed.tool}]</span> {parsed.text}
-          {:else}
-            {line}
-          {/if}
-        </div>
-      {/each}
-    </div>
-  {/if}
 </div>
 
 <style>
