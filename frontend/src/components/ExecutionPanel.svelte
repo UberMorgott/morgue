@@ -133,9 +133,13 @@
           {:else if state === 'ready'}
             <span class="info-ready">{t(lang, 'tools.ready')}</span>
           {:else if state === 'running'}
-            <span class="info-current font-mono">{currentTarget ? basename(currentTarget) : ''}</span>
-            {#if currentTool === tool && stepName}
-              <span class="info-step">{t(lang, stepName) || stepName}</span>
+            {#if currentTool === tool}
+              {@const isItemName = stepName && !stepName.startsWith('ghidra:')}
+              {@const ghidraLabel = stepName && stepName.startsWith('ghidra:') ? t(lang, stepName) : ''}
+              <span class="info-current font-mono">{isItemName ? stepName : (ghidraLabel || (currentTarget ? basename(currentTarget) : ''))}</span>
+              <span class="info-step">{counter && counter.count > 0 ? t(lang, 'execution.decompiling') : t(lang, 'execution.processing')}</span>
+            {:else}
+              <span class="info-current font-mono">{currentTarget ? basename(currentTarget) : ''}</span>
             {/if}
           {:else if state === 'done'}
             <span class="info-done">{t(lang, 'execution.done')}</span>
