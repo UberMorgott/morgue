@@ -1,12 +1,14 @@
 # Morgue UX Redesign — Implementation Plan
 
+> **SUPERSEDED (2026-05-28):** This implementation plan corresponds to the original UX redesign spec (`2026-05-26-morgue-ux-redesign.md`). Both the spec and this plan were superseded by the pipeline page redesign (`docs/superpowers/specs/2026-05-28-pipeline-page-redesign.md`). The current frontend uses Svelte 5 with runes (not Svelte 4), custom CSS utilities (not Tailwind CSS), and a 4-step pipeline (Analysis/Tools/Execution/Done). This document is kept for historical reference only.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Redesign Morgue frontend to a reactive single-page pipeline flow with global StatusBar progress, enhanced Tools page with version/update checking, and native directory picker in Settings.
 
 **Architecture:** Replace current multi-page flow (Home→Scan→Jobs) with Home→PipelinePage single reactive view. Enhance ToolsService with GitHub version checking. StatusBar becomes a reactive progress display for all background operations. All new text gets en/ru i18n.
 
-**Tech Stack:** Svelte 4, Tailwind CSS, Go (Wails v3 services), @wailsio/runtime Events
+**Tech Stack:** ~~Svelte 4, Tailwind CSS~~ *Actual: Svelte 5 (runes), custom CSS utilities (no framework)*, Go (Wails v3 services), @wailsio/runtime Events
 
 ---
 

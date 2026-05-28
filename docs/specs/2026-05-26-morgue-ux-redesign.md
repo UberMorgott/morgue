@@ -1,7 +1,9 @@
 # Morgue UX Redesign — Reactive Single-Page Pipeline
 
+> **SUPERSEDED (2026-05-28):** This spec was the initial UX redesign proposal. The pipeline page was further redesigned in `docs/superpowers/specs/2026-05-28-pipeline-page-redesign.md` which merges Scan+Recon into a single Analysis step (4 steps instead of 5), adds granular progress rings, composition/tools/execution panels, and obfuscation handling. The current implementation follows the newer spec. This document is kept for historical reference only.
+
 **Date:** 2026-05-26
-**Status:** Approved
+**Status:** Superseded
 
 ## Overview
 
