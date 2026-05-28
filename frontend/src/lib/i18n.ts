@@ -208,7 +208,7 @@ const translations: Record<string, Record<Lang, string>> = {
   // About page
   'sidebar.about': { en: 'About', ru: 'О программе' },
   'about.title': { en: 'About Morgue', ru: 'О программе' },
-  'about.description': { en: 'Automated binary decompilation pipeline for .NET, Delphi, Unity, Unreal Engine and native targets.', ru: 'Автоматический pipeline декомпиляции бинарных файлов для .NET, Delphi, Unity, Unreal Engine и нативных целей.' },
+  'about.description': { en: 'Automated binary decompilation pipeline for .NET, Delphi, Unity, Unreal Engine and native targets. Born from the modding community — originally built for game mod development, now a general-purpose reverse engineering toolkit.', ru: 'Автоматический pipeline декомпиляции бинарных файлов для .NET, Delphi, Unity, Unreal Engine и нативных целей. Родился из модинг-сообщества — изначально создан для разработки модов к играм, теперь универсальный инструмент реверс-инжиниринга.' },
   'about.version': { en: 'Version', ru: 'Версия' },
   'about.commit': { en: 'Commit', ru: 'Коммит' },
   'about.goVersion': { en: 'Go version', ru: 'Версия Go' },
@@ -222,6 +222,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'about.releases': { en: 'Releases', ru: 'Релизы' },
   'about.tools': { en: 'Installed tools', ru: 'Установлено инструментов' },
   'about.recipes': { en: 'Available recipes', ru: 'Доступно рецептов' },
+  'about.disclaimer': { en: 'This software is provided exclusively for research and educational purposes. The user is solely responsible for ensuring that their use complies with all applicable laws and third-party rights. Commercial use is prohibited.', ru: 'Программа предоставляется исключительно для исследовательских и образовательных целей. Пользователь несёт полную ответственность за соблюдение применимого законодательства и прав третьих лиц. Коммерческое использование запрещено.' },
 
   // Settings — Unreal Engine
   'settings.unrealEngine': { en: 'Unreal Engine', ru: 'Unreal Engine' },
