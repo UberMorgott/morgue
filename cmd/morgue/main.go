@@ -16,6 +16,7 @@ import (
 	"github.com/UberMorgott/morgue/internal/selfupdate"
 	"github.com/UberMorgott/morgue/internal/services"
 	"github.com/UberMorgott/morgue/internal/util"
+	"github.com/UberMorgott/morgue/internal/webview2"
 )
 
 //go:embed appicon.png
@@ -38,6 +39,37 @@ func main() {
 }
 
 func runGUI() {
+	// Check WebView2 availability
+	version, isLocal := webview2.CheckAvailable()
+	browserPath := ""
+
+	if version == "" {
+		switch webview2.ShowInstallDialog() {
+		case webview2.ResultClose:
+			os.Exit(0)
+		case webview2.ResultSystem:
+			if err := webview2.InstallSystem(); err != nil {
+				webview2.ShowError(fmt.Sprintf("System install failed:\n%v", err))
+				os.Exit(1)
+			}
+			// Re-check after installation
+			// Note: MORGUE_TEST_NO_WEBVIEW2=1 will cause this to always fail — unset it for real testing
+			version, isLocal = webview2.CheckAvailable()
+			if version == "" {
+				webview2.ShowError("WebView2 still not available after installation. Try restarting the application.")
+				os.Exit(1)
+			}
+		case webview2.ResultPortable:
+			if err := webview2.InstallPortable(); err != nil {
+				webview2.ShowError(fmt.Sprintf("Portable install failed:\n%v", err))
+				os.Exit(1)
+			}
+			browserPath = webview2.LocalRuntimePath()
+		}
+	} else if isLocal {
+		browserPath = webview2.LocalRuntimePath()
+	}
+
 	// Create services once — shared between Wails and HTTP API
 	toolsSvc := services.NewToolsService(Version)
 	pipelineSvc := services.NewPipelineService()
@@ -63,6 +95,7 @@ func runGUI() {
 		},
 		Windows: application.WindowsOptions{
 			WebviewUserDataPath: filepath.Join(util.BaseDir(), ".webview2"),
+			WebviewBrowserPath:  browserPath,
 		},
 		OnShutdown: func() {
 			pipelineSvc.Stop()
