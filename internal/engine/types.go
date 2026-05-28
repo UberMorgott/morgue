@@ -33,7 +33,8 @@ type PipelineEvent struct {
 	// Enriched fields for frontend
 	ReconKind   string   `json:"ReconKind,omitempty"`
 	Compiler    string   `json:"Compiler,omitempty"`
-	Obfuscator  string   `json:"Obfuscator,omitempty"`
+	Obfuscator   string   `json:"Obfuscator,omitempty"`
+	Deobfuscator string   `json:"Deobfuscator,omitempty"`
 	FileSize    int64    `json:"FileSize,omitempty"`
 	RecipeName  string   `json:"RecipeName,omitempty"`
 	RecipeDesc  string   `json:"RecipeDesc,omitempty"`
