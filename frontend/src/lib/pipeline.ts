@@ -1,7 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
 
 
-export type PipelinePhase = 'idle' | 'scan' | 'recon' | 'tools' | 'execute' | 'done' | 'error' | 'cancelled';
+export type PipelinePhase = 'idle' | 'analysis' | 'tools' | 'execute' | 'done' | 'error' | 'cancelled';
 
 export interface PipelineTarget {
   path: string;
@@ -41,6 +41,10 @@ export interface PipelineState {
   toolsInstalled: string[];  // tools that finished installing
   downloadingTool: string;   // current tool being downloaded
   downloadProgress: number;  // 0-100 or -1 for indeterminate (extracting)
+  obfuscations: Array<{ file: string; obfuscator: string; deobfuscator: string }>;
+  downloadBytes: number;       // bytes downloaded so far
+  downloadTotalBytes: number;  // total bytes to download
+  execCounters: Record<string, number>;  // per-tool Processing/Decompiling message counts
 }
 
 const initial: PipelineState = {
@@ -72,6 +76,10 @@ const initial: PipelineState = {
   toolsInstalled: [],
   downloadingTool: '',
   downloadProgress: 0,
+  obfuscations: [],
+  downloadBytes: 0,
+  downloadTotalBytes: 0,
+  execCounters: {},
 };
 
 export const pipelineState = writable<PipelineState>({ ...initial });
@@ -87,7 +95,7 @@ export function resetPipeline() {
 export function startPipeline(inputPath: string) {
   pipelineState.update(s => ({
     ...s,
-    phase: 'scan',
+    phase: 'analysis',
     paused: false,
     inputPath,
     outputPath: '',
@@ -115,6 +123,10 @@ export function startPipeline(inputPath: string) {
     toolsInstalled: [],
     downloadingTool: '',
     downloadProgress: 0,
+    obfuscations: [],
+    downloadBytes: 0,
+    downloadTotalBytes: 0,
+    execCounters: {},
   }));
 }
 
@@ -131,9 +143,8 @@ export function updateFromEvent(data: any) {
     // Phase update
     if (phase) {
       // Map engine phases to our phases
-      if (phase === 'scan') next.phase = 'scan';
-      else if (phase === 'recon' || phase === 'match') next.phase = 'recon';
-      else if (phase === 'tools' || phase === 'install') next.phase = 'tools';
+      if (phase === 'scan' || phase === 'recon' || phase === 'match') next.phase = 'analysis';
+      else if (phase === 'tools' || phase === 'install' || phase === 'download' || phase === 'extract') next.phase = 'tools';
       else if (phase === 'execute' || phase === 'log') next.phase = 'execute';
       else if (phase === 'done') {
         next.phase = 'done';
@@ -183,6 +194,18 @@ export function updateFromEvent(data: any) {
       if (d.RecipeDesc) next.recipeDesc = d.RecipeDesc;
     }
 
+    // Accumulate obfuscation detections
+    if (d.Obfuscator) {
+      const fname = target ? (target.split(/[\\/]/).pop() || target) : '';
+      if (fname && !next.obfuscations.find(o => o.file === fname && o.obfuscator === d.Obfuscator)) {
+        next.obfuscations = [...s.obfuscations, {
+          file: fname,
+          obfuscator: d.Obfuscator,
+          deobfuscator: d.Deobfuscator || '',
+        }];
+      }
+    }
+
     if (phase === 'skip' && target && message) {
       const fname = target.split(/[\\/]/).pop() || target;
       next.reconResults = [...s.reconResults, { file: fname, kind: 'Skipped', reconKind: '', compiler: '', obfuscator: '', size: 0 }];
@@ -193,6 +216,12 @@ export function updateFromEvent(data: any) {
       if (match) {
         next.downloadingTool = match[1];
         next.downloadProgress = parseInt(match[2]);
+      }
+      // Parse "X / Y MB" download size
+      const bytesMatch = message.match(/([\d.]+)\s*\/\s*([\d.]+)\s*MB/);
+      if (bytesMatch) {
+        next.downloadBytes = Math.round(parseFloat(bytesMatch[1]) * 1024 * 1024);
+        next.downloadTotalBytes = Math.round(parseFloat(bytesMatch[2]) * 1024 * 1024);
       }
     }
     if (phase === 'extract' && message) {
@@ -239,6 +268,11 @@ export function updateFromEvent(data: any) {
     if (phase === 'execute' || phase === 'log') {
       if (message) {
         next.logs = [...s.logs.slice(-19), message];
+        // Count Processing/Decompiling messages per tool
+        if (d.Tool && (message.startsWith('Processing') || message.startsWith('Decompiling'))) {
+          const tool = d.Tool;
+          next.execCounters = { ...s.execCounters, [tool]: (s.execCounters[tool] || 0) + 1 };
+        }
       }
     }
 
