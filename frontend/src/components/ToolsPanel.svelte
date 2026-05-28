@@ -45,7 +45,7 @@
   <div class="tools-list">
     {#each toolsNeeded as tool (tool)}
       {@const state = getToolState(tool)}
-      <div class="tool-item">
+      <div class="tool-item row-separator">
         <div class="tool-ring">
           {#if state === 'ready'}
             <ProgressRing value={100} variant="success" label="✓" />
@@ -83,11 +83,6 @@
     align-items: center;
     gap: 12px;
     padding: 10px 20px;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .tool-item:last-child {
-    border-bottom: none;
   }
 
   .tool-ring {

@@ -37,7 +37,7 @@
     <div class="obfuscation-section">
       {#each obfuscations as ob (ob.name)}
         {#if ob.deobfuscator}
-          <div class="obf-block obf-warning">
+          <div class="alert-block alert-warning">
             <svg class="obf-icon" width="16" height="16" viewBox="0 0 16 16">
               <path d="M8 1L1 14h14L8 1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
               <path d="M8 6v4M8 11.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -48,7 +48,7 @@
             </div>
           </div>
         {:else}
-          <div class="obf-block obf-error">
+          <div class="alert-block alert-error">
             <svg class="obf-icon" width="16" height="16" viewBox="0 0 16 16">
               <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
               <path d="M8 4.5v4M8 10.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -133,25 +133,9 @@
     border-top: 1px solid var(--border-subtle);
   }
 
-  .obf-block {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 10px 14px;
-    border-radius: var(--radius-sm);
-  }
-
-  .obf-warning {
-    background: var(--warning-dim);
-    border: 1px solid rgba(255, 204, 68, 0.2);
-    color: var(--warning);
-  }
-
-  .obf-error {
-    background: var(--error-dim);
-    border: 1px solid rgba(255, 68, 102, 0.2);
-    color: var(--error);
-  }
+  /* alert-warning text color */
+  .alert-warning { color: var(--warning); }
+  .alert-error { color: var(--error); }
 
   .obf-icon {
     flex-shrink: 0;

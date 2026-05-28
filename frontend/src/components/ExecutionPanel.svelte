@@ -66,7 +66,7 @@
       {@const done = isDone(tool)}
       {@const waiting = isWaiting(tool)}
       {@const counter = execCounters[tool]}
-      <div class="tool-row" class:waiting>
+      <div class="tool-row row-separator" class:waiting>
         <span class="tool-name font-accent">{tool}</span>
         <span class="tool-file-info">
           {#if active}
@@ -99,7 +99,7 @@
 
   <!-- Mini log -->
   {#if logs.length > 0}
-    <div class="mini-log font-mono" bind:this={logEl}>
+    <div class="log-area font-mono mini-log" bind:this={logEl}>
       {#each logs.slice(-5) as line}
         {@const parsed = parseLogTool(line)}
         <div class="log-line">
@@ -128,11 +128,7 @@
     align-items: center;
     gap: 12px;
     padding: 10px 0;
-    border-bottom: 1px solid var(--border-subtle);
     transition: opacity 0.3s;
-  }
-  .tool-row:last-child {
-    border-bottom: none;
   }
   .tool-row.waiting {
     opacity: 0.4;
@@ -219,19 +215,9 @@
     margin-top: 2px;
   }
 
-  /* Mini log */
+  /* Mini log — max-height only; base styles from global .log-area */
   .mini-log {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: var(--radius-sm);
-    padding: 8px 12px;
     max-height: 100px;
-    overflow-y: auto;
-    font-size: 0.75rem;
-    line-height: 1.6;
-    color: var(--text-muted);
-    -webkit-user-select: text;
-    user-select: text;
-    cursor: text;
   }
 
   .log-line {
