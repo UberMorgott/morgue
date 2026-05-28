@@ -287,7 +287,7 @@ func (n *Native) Execute(ctx *Context) error {
 						logTool("ghidra", fmt.Sprintf("Decompiled %d functions (%s)", ghidraFuncCount, parts[3]))
 						if ctx.Progress != nil {
 							ctx.Progress <- StepProgress{
-								Step: 2, Total: total, Name: steps[2].Name,
+								Step: 2, Total: total, Name: parts[3],
 								Tool: "ghidra", Status: Running,
 								Count: ghidraFuncCount, Unit: "functions",
 							}
