@@ -7,14 +7,12 @@
   let { lang = 'en' as Lang }: { lang?: Lang } = $props();
 
   let version = $state('...');
-  let commit = $state('...');
   let toolsInstalled = $state(0);
   let toolsTotal = $state(0);
 
   onMount(async () => {
     try {
       version = await UpdateService.GetVersion();
-      commit = await UpdateService.GetCommit();
     } catch { /* fallback to defaults */ }
 
     try {
@@ -54,16 +52,12 @@
           <span class="info-value tag">{version}</span>
         </div>
         <div class="info-row">
-          <span class="info-label">{t(lang, 'about.commit')}</span>
-          <span class="info-value mono">{commit.substring(0, 7)}</span>
-        </div>
-        <div class="info-row">
           <span class="info-label">{t(lang, 'about.platform')}</span>
           <span class="info-value mono">{navigator.platform}</span>
         </div>
         <div class="info-row">
           <span class="info-label">{t(lang, 'about.license')}</span>
-          <span class="info-value">MIT</span>
+          <span class="info-value">Non-Commercial Research</span>
         </div>
         <div class="info-row">
           <span class="info-label">{t(lang, 'about.tools')}</span>
@@ -82,6 +76,14 @@
           <div class="author-role">Developer</div>
         </div>
       </div>
+    </section>
+
+    <!-- Disclaimer -->
+    <section class="about-card glass disclaimer-card">
+      <h3 class="card-title">Disclaimer</h3>
+      <p class="disclaimer-text">
+        {t(lang, 'about.disclaimer')}
+      </p>
     </section>
 
     <!-- Links -->
@@ -281,5 +283,15 @@
     margin-left: auto;
     color: var(--text-muted);
     font-size: 12px;
+  }
+
+  /* Disclaimer */
+  .disclaimer-card {
+    border-color: rgba(255, 200, 50, 0.15);
+  }
+  .disclaimer-text {
+    font-size: clamp(11px, 1.3vw, 13px);
+    color: var(--text-muted);
+    line-height: 1.6;
   }
 </style>
