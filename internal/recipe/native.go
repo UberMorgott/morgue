@@ -270,7 +270,6 @@ func (n *Native) Execute(ctx *Context) error {
 		// Run Ghidra analyzeHeadless with streaming for real-time progress
 		logTool("ghidra", fmt.Sprintf("Running Ghidra analyzeHeadless on %s", filepath.Base(ctx.Target)))
 		ghidraFuncCount := 0
-		ghidraPhase := "analyzing"
 		lastLogTime := time.Now().Add(-2 * time.Second) // allow first log immediately
 		result, err := util.RunCmdStreaming(ctx.Ctx, analyzeHeadless, []string{
 			projDir, "MorgueProject",
@@ -297,22 +296,17 @@ func (n *Native) Execute(ctx *Context) error {
 					}
 				}
 			} else if ghidraFuncCount == 0 && len(strings.TrimSpace(line)) > 0 {
-				// During analysis phase — detect Ghidra sub-phases and show progress
-				lower := strings.ToLower(line)
-				if strings.Contains(lower, "importing") {
-					ghidraPhase = "importing"
-				} else if strings.Contains(lower, "analyz") {
-					ghidraPhase = "analyzing"
-				} else if strings.Contains(lower, "disassembl") {
-					ghidraPhase = "disassembling"
-				}
+				// During analysis phase — show what Ghidra is currently doing
 				if time.Since(lastLogTime) >= time.Second {
-					logTool("ghidra", fmt.Sprintf("[%s] %s", ghidraPhase, strings.TrimSpace(line)))
+					status := strings.TrimSpace(line)
+					if len(status) > 80 {
+						status = status[:80]
+					}
+					// Use Name field to carry current activity — frontend shows it as step info
 					if ctx.Progress != nil {
 						ctx.Progress <- StepProgress{
-							Step: 2, Total: total, Name: steps[2].Name,
+							Step: 2, Total: total, Name: status,
 							Tool: "ghidra", Status: Running,
-							Count: 0, Unit: ghidraPhase,
 						}
 					}
 					lastLogTime = time.Now()
