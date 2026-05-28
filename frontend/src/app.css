@@ -520,6 +520,18 @@ input::placeholder {
    TYPOGRAPHY
    ══════════════════════════════════════ */
 
+/* -- Typography utilities -- */
+
+/* Orbitron accent font for numbers, counters, tool names */
+.font-accent {
+  font-family: 'Orbitron', 'Play', sans-serif;
+}
+
+/* Monospace font for logs, paths, code, sizes */
+.font-mono {
+  font-family: 'Consolas', 'Courier New', monospace;
+}
+
 .section-title {
   font-family: 'Orbitron', 'Play', sans-serif;
   font-size: 1.29rem;

@@ -187,7 +187,7 @@
           <span class="status-msg">{$pipelineState.lastMessage}</span>
         {/if}
         {#if $pipelineState.startedAt > 0}
-          <span class="elapsed">{elapsed}</span>
+          <span class="elapsed font-mono">{elapsed}</span>
         {/if}
       </div>
       <div class="pipeline-controls">
@@ -217,7 +217,7 @@
   <!-- Error state -->
   {#if phase === 'error'}
     <div class="error-card glass">
-      <span class="error-text">{$pipelineState.error}</span>
+      <span class="error-text font-mono">{$pipelineState.error}</span>
     </div>
   {/if}
 </div>
@@ -259,7 +259,7 @@
   }
   .status-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 20px; }
   .status-msg { font-size: 0.78rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-  .elapsed { font-size: 0.78rem; color: var(--text-muted); font-family: 'Consolas', 'Courier New', monospace; flex-shrink: 0; }
+  .elapsed { font-size: 0.78rem; color: var(--text-muted); flex-shrink: 0; }
 
   .pipeline-controls { display: flex; gap: 8px; justify-content: flex-end; }
   .btn-sm { font-size: 0.78rem; padding: 6px 16px; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; }
@@ -274,7 +274,7 @@
 
   /* -- Error card -- */
   .error-card { padding: 14px 18px; width: 100%; border-color: rgba(255, 68, 102, 0.25) !important; }
-  .error-text { font-size: 0.82rem; color: var(--error); font-family: 'Consolas', 'Courier New', monospace; word-break: break-word; }
+  .error-text { font-size: 0.82rem; color: var(--error); word-break: break-word; }
   .cancelled-card { border-color: rgba(255, 180, 40, 0.25) !important; }
   .cancelled-text { font-size: 0.88rem; color: var(--text-secondary); font-weight: 500; }
 </style>

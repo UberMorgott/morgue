@@ -67,10 +67,10 @@
       {@const waiting = isWaiting(tool)}
       {@const counter = execCounters[tool]}
       <div class="tool-row" class:waiting>
-        <span class="tool-name">{tool}</span>
+        <span class="tool-name font-accent">{tool}</span>
         <span class="tool-file-info">
           {#if active}
-            <span class="file-current">{currentTarget ? basename(currentTarget) : ''}</span>
+            <span class="file-current font-mono">{currentTarget ? basename(currentTarget) : ''}</span>
             <span class="file-step">{t(lang, 'execution.step')} {step + 1} / {stepTotal}</span>
           {:else if done}
             <span class="file-done">{t(lang, 'execution.done')}</span>
@@ -89,7 +89,7 @@
         </span>
         <span class="tool-counter">
           {#if counter}
-            <span class="counter-value">{counter.count}</span>
+            <span class="counter-value font-accent">{counter.count}</span>
             <span class="counter-unit">{counter.unit}</span>
           {/if}
         </span>
@@ -99,7 +99,7 @@
 
   <!-- Mini log -->
   {#if logs.length > 0}
-    <div class="mini-log" bind:this={logEl}>
+    <div class="mini-log font-mono" bind:this={logEl}>
       {#each logs.slice(-5) as line}
         {@const parsed = parseLogTool(line)}
         <div class="log-line">
@@ -139,7 +139,6 @@
   }
 
   .tool-name {
-    font-family: 'Orbitron', monospace;
     font-size: 0.78rem;
     font-weight: 600;
     color: var(--accent-warm);
@@ -158,7 +157,6 @@
 
   .file-current {
     font-size: 0.82rem;
-    font-family: 'Consolas', 'Courier New', monospace;
     color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -207,7 +205,6 @@
   }
 
   .counter-value {
-    font-family: 'Orbitron', monospace;
     font-size: 1rem;
     font-weight: 700;
     color: var(--accent-bright);
@@ -229,7 +226,6 @@
     padding: 8px 12px;
     max-height: 100px;
     overflow-y: auto;
-    font-family: 'Consolas', 'Courier New', monospace;
     font-size: 0.75rem;
     line-height: 1.6;
     color: var(--text-muted);
