@@ -27,7 +27,7 @@ func (d *Delphi) Match(r *recon.Result) bool {
 
 func (d *Delphi) Steps() []StepInfo {
 	return []StepInfo{
-		{Name: "Copy original", Required: true},
+		{Name: "Copy original", Required: false},
 		{Name: "Extract strings", Required: false},
 		{Name: "IDR analysis", Required: false},
 		{Name: "Ghidra headless", Required: false},
@@ -55,16 +55,21 @@ func (d *Delphi) Execute(ctx *Context) error {
 		}
 	}
 
-	// Step 0: Copy original
-	report(0, Running, 0, nil)
-	start := time.Now()
-	origDir := filepath.Join(ctx.Output, "original")
-	os.MkdirAll(origDir, 0755)
-	if err := copyFile(ctx.Target, filepath.Join(origDir, filepath.Base(ctx.Target))); err != nil {
-		report(0, Failed, time.Since(start), err)
-		return err
+	// Step 0: Copy original (only when keeping intermediates)
+	var start time.Time
+	if ctx.Config.KeepIntermediates {
+		report(0, Running, 0, nil)
+		start = time.Now()
+		origDir := filepath.Join(ctx.Output, "original")
+		os.MkdirAll(origDir, 0755)
+		if err := copyFile(ctx.Target, filepath.Join(origDir, filepath.Base(ctx.Target))); err != nil {
+			report(0, Failed, time.Since(start), err)
+			return err
+		}
+		report(0, Success, time.Since(start), nil)
+	} else {
+		report(0, Skipped, 0, nil)
 	}
-	report(0, Success, time.Since(start), nil)
 
 	// Step 1: Extract strings
 	report(1, Running, 0, nil)

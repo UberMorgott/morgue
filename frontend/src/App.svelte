@@ -141,7 +141,7 @@
     pipelineInputPath = detail.path;
   }
 
-  async function handleBrowse() {
+  async function handleBrowseFile() {
     try {
       const file = await ReconService.PickFile();
       if (file) {
@@ -149,6 +149,17 @@
       }
     } catch (e) {
       console.error('PickFile failed:', e);
+    }
+  }
+
+  async function handleBrowseDir() {
+    try {
+      const dir = await ReconService.PickDirectory();
+      if (dir) {
+        pipelineInputPath = dir;
+      }
+    } catch (e) {
+      console.error('PickDirectory failed:', e);
     }
   }
 
@@ -175,7 +186,7 @@
     <Sidebar bind:currentPage {lang} />
     <div class="page-content">
       {#if currentPage === 'home'}
-        <HomePage {lang} inputPath={pipelineInputPath} startupBusy={$startupBusy} onselect={handleFileSelected} onbrowse={handleBrowse} onclear={handleClearFile} />
+        <HomePage {lang} inputPath={pipelineInputPath} startupBusy={$startupBusy} onselect={handleFileSelected} onbrowsefile={handleBrowseFile} onbrowsedir={handleBrowseDir} onclear={handleClearFile} />
       {:else if currentPage === 'tools'}
         <ToolsPage
           {lang}

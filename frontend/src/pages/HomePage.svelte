@@ -29,10 +29,36 @@
   let lastProcessedPath = $state('');
 
   // Accumulating panel: once a section is shown, it stays visible for the run
-  let showAnalysis = $state(false);
-  let showTools = $state(false);
-  let showExecution = $state(false);
-  let showSummary = $state(false);
+  // Restore visibility from current phase (survives tab switches)
+  const phaseOrder: PipelinePhase[] = ['analysis', 'tools', 'execute', 'done'];
+
+  function sectionsFromPhase(ph: PipelinePhase): [boolean, boolean, boolean, boolean] {
+    if (ph === 'idle') return [false, false, false, false];
+    const idx = phaseOrder.indexOf(ph);
+    const past = (i: number) => idx >= 0 ? idx >= i : false;
+    // error/cancelled: infer from accumulated state
+    if (ph === 'error' || ph === 'cancelled') {
+      const st = $pipelineState;
+      return [
+        st.reconResults.length > 0 || st.reconKind !== '',
+        st.toolsNeeded.length > 0,
+        st.step > 0 || st.logs.length > 0,
+        false,
+      ];
+    }
+    return [
+      past(0) || $pipelineState.reconResults.length > 0,
+      past(1) || $pipelineState.toolsNeeded.length > 0,
+      past(2) || $pipelineState.logs.length > 0,
+      ph === 'done',
+    ];
+  }
+
+  let [initA, initT, initE, initS] = sectionsFromPhase($pipelineState.phase);
+  let showAnalysis = $state(initA);
+  let showTools = $state(initT);
+  let showExecution = $state(initE);
+  let showSummary = $state(initS);
 
   function resetSections() {
     showAnalysis = false;
@@ -48,6 +74,9 @@
   // Elapsed time ticker
   let elapsedTimer: ReturnType<typeof setInterval> | null = null;
   let elapsed = $state('');
+
+  // Restore elapsed on mount if pipeline is running
+  if ($pipelineState.startedAt > 0) updateElapsed();
 
   function updateElapsed() {
     if ($pipelineState.startedAt > 0) {

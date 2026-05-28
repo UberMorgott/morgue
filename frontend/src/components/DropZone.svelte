@@ -1,11 +1,12 @@
 <script lang="ts">
   import { t, type Lang } from '../lib/i18n';
 
-  let { lang = 'en' as Lang, disabled = false, onselect, onbrowse }: {
+  let { lang = 'en' as Lang, disabled = false, onselect, onbrowsefile, onbrowsedir }: {
     lang?: Lang;
     disabled?: boolean;
     onselect?: (detail: { path: string }) => void;
-    onbrowse?: () => void;
+    onbrowsefile?: () => void;
+    onbrowsedir?: () => void;
   } = $props();
 
   let dragover = $state(false);
@@ -29,23 +30,16 @@
       onselect?.({ path });
     }
   }
-
-  function handleClick() {
-    if (!disabled) onbrowse?.();
-  }
 </script>
 
 <div
   class="dropzone"
   class:dragover
   class:disabled
-  role="button"
-  tabindex="0"
+  role="region"
   ondragover={handleDragOver}
   ondragleave={handleDragLeave}
   ondrop={handleDrop}
-  onclick={handleClick}
-  onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick(); } }}
 >
   <div class="dropzone-icon">
     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -55,7 +49,21 @@
     </svg>
   </div>
   <p class="dropzone-text">{t(lang, 'dropzone.text')}</p>
-  <p class="dropzone-hint">{t(lang, 'dropzone.hint')}</p>
+  <div class="dropzone-buttons">
+    <button class="browse-btn" disabled={disabled} onclick={() => onbrowsefile?.()}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+      </svg>
+      {t(lang, 'dropzone.pickFile')}
+    </button>
+    <button class="browse-btn" disabled={disabled} onclick={() => onbrowsedir?.()}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+      </svg>
+      {t(lang, 'dropzone.pickDir')}
+    </button>
+  </div>
 </div>
 
 <style>
@@ -72,7 +80,6 @@
     transition: all 0.2s;
     max-width: min(90%, 480px);
     margin: 0 auto;
-    cursor: pointer;
   }
   .dropzone:hover, .dropzone.dragover {
     border-color: var(--accent);
@@ -89,16 +96,37 @@
   .dropzone.disabled {
     opacity: 0.5;
     pointer-events: none;
-    cursor: not-allowed;
   }
   .dropzone-text {
     font-size: 15px;
     color: var(--text-primary);
     margin: 0;
   }
-  .dropzone-hint {
-    font-size: 12px;
-    color: var(--text-muted);
-    margin: 0;
+  .dropzone-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 4px;
+  }
+  .browse-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-main);
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .browse-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .browse-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 </style>
