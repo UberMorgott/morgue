@@ -29,6 +29,8 @@ const translations: Record<string, Record<Lang, string>> = {
   // DropZone
   'dropzone.text': { en: 'Drop folder or binary here', ru: 'Перетащите папку или файл сюда' },
   'dropzone.hint': { en: 'or click to select', ru: 'или нажмите для выбора' },
+  'dropzone.pickFile': { en: 'File', ru: 'Файл' },
+  'dropzone.pickDir': { en: 'Folder', ru: 'Папка' },
 
   // ScanPage
   'scan.title': { en: 'Scan Results', ru: 'Результаты сканирования' },
@@ -198,12 +200,39 @@ const translations: Record<string, Record<Lang, string>> = {
   'pipeline.toolReady': { en: 'ready', ru: 'готов' },
   'pipeline.toolInstalling': { en: 'installing...', ru: 'установка...' },
   'pipeline.toolPending': { en: 'pending', ru: 'ожидание' },
-  'pipeline.extracting': { en: 'extracting...', ru: 'распаковка...' },
+  'pipeline.downloading': { en: 'Downloading...', ru: 'Скачивание...' },
+  'pipeline.extracting': { en: 'Extracting...', ru: 'Распаковка...' },
   'pipeline.recipe': { en: 'Recipe', ru: 'Рецепт' },
   'pipeline.target': { en: 'Target', ru: 'Цель' },
   'pipeline.compiler': { en: 'Compiler:', ru: 'Компилятор:' },
   'pipeline.obfuscator': { en: 'Obfuscator:', ru: 'Обфускатор:' },
   'pipeline.size': { en: 'Size:', ru: 'Размер:' },
+
+  // Stats
+  'stats.files': { en: 'files', ru: 'файлов' },
+  'stats.size': { en: 'size', ru: 'объём' },
+  'stats.obfuscations': { en: 'obfuscations', ru: 'обфускаций' },
+
+  // Composition
+  'composition.title': { en: 'Composition', ru: 'Состав' },
+  'composition.andMore': { en: 'and {n} more', ru: 'и ещё {n}' },
+  'composition.autoApply': { en: 'will apply automatically', ru: 'применится автоматически' },
+  'composition.filesAffected': { en: 'files', ru: 'файлов' },
+  'composition.noDeobfuscator': { en: 'Deobfuscator unavailable — results will be partial', ru: 'Деобфускатор недоступен — результат будет частичным' },
+  'composition.requestSupport': { en: 'Request {name} support', ru: 'Запросить поддержку {name}' },
+
+  // Execution
+  'execution.title': { en: 'Execution', ru: 'Выполнение' },
+  'execution.step': { en: 'Step', ru: 'Шаг' },
+  'execution.done': { en: 'Done', ru: 'Готово' },
+  'execution.waiting': { en: 'Waiting...', ru: 'Ожидание...' },
+  'execution.items': { en: 'items', ru: 'элементов' },
+
+  // Stepper
+  'stepper.analysis': { en: 'Analysis', ru: 'Анализ' },
+  'stepper.tools': { en: 'Tools', ru: 'Инструменты' },
+  'stepper.execution': { en: 'Execution', ru: 'Выполнение' },
+  'stepper.done': { en: 'Done', ru: 'Готово' },
 
   // About page
   'sidebar.about': { en: 'About', ru: 'О программе' },
