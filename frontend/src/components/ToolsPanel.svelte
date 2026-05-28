@@ -39,10 +39,8 @@
   }
 </script>
 
-<div class="tools-panel glass neon-border animate-in" style="animation-delay: 0.15s;">
-  <div class="tools-header">
-    <span class="tools-title">⚙ {t(lang, 'tools.title')}</span>
-  </div>
+<div class="glass neon-border pipeline-panel animate-in" style="animation-delay: 0.15s;">
+  <h3 class="panel-title">⚙ {t(lang, 'tools.title')}</h3>
 
   <div class="tools-list">
     {#each toolsNeeded as tool (tool)}
@@ -75,26 +73,6 @@
 </div>
 
 <style>
-  .tools-panel {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .tools-header {
-    padding: 14px 20px;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .tools-title {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 0.82rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-heading);
-  }
-
   .tools-list {
     display: flex;
     flex-direction: column;

@@ -11,7 +11,7 @@
   } = $props();
 </script>
 
-<div class="stats-strip glass">
+<div class="stats-strip glass neon-border animate-in">
   <!-- Platform badge -->
   <div class="stat-item">
     <span class="tag tag-kind">{platform}</span>
@@ -60,9 +60,8 @@
     display: flex;
     align-items: center;
     gap: 16px;
-    padding: 10px 20px;
+    padding: 12px 20px;
     width: 100%;
-    animation: fade-in 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   }
 
   .stat-item {
@@ -124,8 +123,4 @@
     border-color: var(--accent);
   }
 
-  @keyframes fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
 </style>

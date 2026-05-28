@@ -172,7 +172,7 @@
 
   <!-- Summary -->
   {#if showSummary}
-    <div class="summary-wrap glass">
+    <div class="summary-wrap glass neon-border animate-in">
       <PipelineSummary {lang} state={$pipelineState} {elapsed} />
     </div>
   {/if}
