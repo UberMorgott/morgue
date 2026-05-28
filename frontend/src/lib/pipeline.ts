@@ -316,8 +316,8 @@ export function updateFromEvent(data: any) {
       // Update execCounters from StepProgress events
       const stepTool = p.Tool || d.Tool || '';
 
-      // Running: show progress for active tool
-      if (stepTool && p.Status === 'Running' && p.Count > 0 && p.Unit) {
+      // Running: show progress for active tool (accept Count=0 for phase indicators like "analyzing")
+      if (stepTool && p.Status === 'Running' && p.Unit) {
         if (stepTool === next.currentTool || stepTool === s.currentTool || !s.execCounters[stepTool]) {
           const prev = s.execCounters[stepTool] || { count: 0, unit: p.Unit, countTotal: 0, _completed: 0 };
           next.execCounters = { ...s.execCounters, ...next.execCounters, [stepTool]: {
