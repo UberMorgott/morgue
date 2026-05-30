@@ -126,17 +126,23 @@ func (d *Delphi) Execute(ctx *Context) error {
 		logTool("ghidra", fmt.Sprintf("Ghidra not available: %v", err))
 		report(3, Skipped, time.Since(start), nil, "ghidra")
 	} else {
-		ghidraOut := filepath.Join(ctx.Output, "ghidra")
-		os.MkdirAll(ghidraOut, 0755)
-		result, _ := util.RunCmd(ctx.Ctx, ghidraPath, []string{
-			ghidraOut, "MorgueProject", "-import", ctx.Target,
-			"-postScript", "ExportDecompiled.java",
-		}, "")
-		if result != nil && result.ExitCode != 0 {
-			logTool("ghidra", fmt.Sprintf("Ghidra failed: exit %d", result.ExitCode))
-			report(3, Failed, time.Since(start), fmt.Errorf("ghidra exit %d", result.ExitCode), "ghidra")
+		srcDir := filepath.Join(ctx.Output, "src")
+		funcCount, runErr := runGhidra(ctx.Ctx, ghidraPath, ctx.Target, srcDir,
+			func(msg string) { logTool("ghidra", msg) },
+			func(name string, count int) {
+				if ctx.Progress != nil {
+					ctx.Progress <- StepProgress{
+						Step: 3, Total: total, Name: name,
+						Tool: "ghidra", Status: Running,
+						Count: count, Unit: "functions",
+					}
+				}
+			},
+		)
+		if runErr != nil {
+			report(3, Failed, time.Since(start), runErr, "ghidra")
 		} else {
-			report(3, Success, time.Since(start), nil, "ghidra")
+			reportCount(3, time.Since(start), "ghidra", funcCount, "functions")
 		}
 	}
 

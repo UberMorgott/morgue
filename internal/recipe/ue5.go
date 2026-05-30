@@ -167,8 +167,38 @@ func (u *UE5) Execute(ctx *Context) error {
 	} else {
 		report(3, Running, 0, nil, "ghidra")
 		start := time.Now()
-		log("Ghidra decompilation: stub (enable in settings for full binary analysis)")
-		report(3, Skipped, time.Since(start), nil, "ghidra")
+		ghidraPath, err := ctx.Tools.Resolve("ghidra")
+		if err != nil {
+			log(fmt.Sprintf("Ghidra not available: %v — skipping decompilation", err))
+			report(3, Skipped, time.Since(start), nil, "ghidra")
+		} else {
+			nativeBin := findUEShippingExe(gameRoot)
+			if nativeBin == "" {
+				log("No UE shipping executable found under Binaries/Win64 — skipping Ghidra decompilation")
+				report(3, Skipped, time.Since(start), nil, "ghidra")
+			} else {
+				log(fmt.Sprintf("Ghidra decompiling: %s", filepath.Base(nativeBin)))
+				srcDir := filepath.Join(ctx.Output, "src")
+				funcCount, runErr := runGhidra(ctx.Ctx, ghidraPath, nativeBin, srcDir,
+					func(msg string) { log("[ghidra] " + msg) },
+					func(name string, count int) {
+						if ctx.Progress != nil {
+							ctx.Progress <- StepProgress{
+								Step: 3, Total: total, Name: name,
+								Tool: "ghidra", Status: Running,
+								Count: count, Unit: "functions",
+							}
+						}
+					},
+				)
+				if runErr != nil {
+					log(fmt.Sprintf("Ghidra decompilation failed: %v", runErr))
+					report(3, Failed, time.Since(start), runErr, "ghidra")
+				} else {
+					reportCount(3, time.Since(start), "ghidra", funcCount, "functions")
+				}
+			}
+		}
 	}
 
 	// Step 4: Name resolution (stub)
@@ -182,15 +212,24 @@ func (u *UE5) Execute(ctx *Context) error {
 		report(4, Skipped, time.Since(start), nil, "")
 	}
 
-	// Step 5: Build search indexes (stub)
+	// Step 5: Build search indexes
 	if ctx.Config != nil && !ctx.Config.UE5BuildIndexes {
 		report(5, Skipped, 0, nil, "")
 		log("Build indexes disabled in settings")
 	} else {
 		report(5, Running, 0, nil, "")
 		start := time.Now()
-		log("Build indexes: stub")
-		report(5, Skipped, time.Since(start), nil, "")
+		srcDir := filepath.Join(ctx.Output, "src")
+		if _, statErr := os.Stat(srcDir); statErr != nil {
+			log("No source to index — Ghidra produced no src/ output, skipping")
+			report(5, Skipped, time.Since(start), nil, "")
+		} else if idx, err := buildIndex(srcDir); err != nil {
+			log(fmt.Sprintf("Build indexes failed: %v", err))
+			report(5, Failed, time.Since(start), err, "")
+		} else {
+			log(fmt.Sprintf("Indexed %d source files (%d bytes) -> index.json", idx.FileCount, idx.TotalBytes))
+			reportCount(5, time.Since(start), "", idx.FileCount, "files")
+		}
 	}
 
 	// Step 6: Export hookable symbols (stub)
@@ -223,14 +262,65 @@ func findPakFiles(root string) []string {
 	return paks
 }
 
+// engineToolExes are known UE engine tool executables that should never be
+// treated as the game binary (shipped under Engine/Binaries/Win64 etc.).
+var engineToolExes = map[string]bool{
+	"crashreportclient.exe":        true,
+	"unrealcefsubprocess.exe":      true,
+	"easyanticheat_eosservice.exe": true,
+}
+
+// findUEShippingExe locates the native game binary in a UE game directory.
+// Preference order:
+//  1. <root>/**/Binaries/Win64/*-Shipping.exe
+//  2. largest non-tool .exe under a Binaries/Win64 directory
+//  3. fall back to findGameExe (largest non-tool .exe anywhere under root)
+func findUEShippingExe(root string) string {
+	var shipping, bestWin64 string
+	var bestWin64Size int64
+	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if strings.ToLower(filepath.Ext(path)) != ".exe" {
+			return nil
+		}
+		dir := filepath.ToSlash(strings.ToLower(filepath.Dir(path)))
+		if !strings.HasSuffix(dir, "binaries/win64") {
+			return nil
+		}
+		base := strings.ToLower(filepath.Base(path))
+		if engineToolExes[base] {
+			return nil
+		}
+		if strings.HasSuffix(base, "-shipping.exe") {
+			if shipping == "" {
+				shipping = path
+			}
+		} else {
+			info, infoErr := d.Info()
+			if infoErr != nil {
+				return nil
+			}
+			if info.Size() > bestWin64Size {
+				bestWin64Size = info.Size()
+				bestWin64 = path
+			}
+		}
+		return nil
+	})
+	if shipping != "" {
+		return shipping
+	}
+	if bestWin64 != "" {
+		return bestWin64
+	}
+	return findGameExe(root)
+}
+
 // findGameExe finds the main shipping executable in a UE game directory.
 // Looks for the largest .exe that isn't a known engine tool.
 func findGameExe(root string) string {
-	skipNames := map[string]bool{
-		"crashreportclient.exe":        true,
-		"unrealcefsubprocess.exe":      true,
-		"easyanticheat_eosservice.exe": true,
-	}
 	var best string
 	var bestSize int64
 
@@ -241,7 +331,7 @@ func findGameExe(root string) string {
 		if strings.ToLower(filepath.Ext(path)) != ".exe" {
 			return nil
 		}
-		if skipNames[strings.ToLower(filepath.Base(path))] {
+		if engineToolExes[strings.ToLower(filepath.Base(path))] {
 			return nil
 		}
 		info, err := d.Info()
