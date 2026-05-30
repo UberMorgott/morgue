@@ -228,8 +228,9 @@ func runGhidra(
 
 // indexEntry describes a single decompiled source file in index.json.
 type indexEntry struct {
-	Path string `json:"path"` // relative to the indexed output dir
-	Size int64  `json:"size"` // bytes
+	Path  string `json:"path"`  // relative to the indexed output dir
+	Size  int64  `json:"size"`  // bytes
+	Lines int    `json:"lines"` // newline count (via countLines)
 }
 
 // outputIndex is the structure written to <outDir>/index.json by buildIndex.
@@ -237,6 +238,7 @@ type outputIndex struct {
 	GeneratedAt string       `json:"generated_at"`
 	FileCount   int          `json:"file_count"`
 	TotalBytes  int64        `json:"total_bytes"`
+	TotalLines  int          `json:"total_lines"`
 	StringsLine int          `json:"strings_lines,omitempty"`
 	Files       []indexEntry `json:"files"`
 }
@@ -271,17 +273,25 @@ func buildIndex(outDir string) (*outputIndex, error) {
 		if relErr != nil {
 			rel = path
 		}
+		lines := countLines(path)
 		idx.Files = append(idx.Files, indexEntry{
-			Path: filepath.ToSlash(rel),
-			Size: info.Size(),
+			Path:  filepath.ToSlash(rel),
+			Size:  info.Size(),
+			Lines: lines,
 		})
 		idx.FileCount++
 		idx.TotalBytes += info.Size()
+		idx.TotalLines += lines
 		return nil
 	})
 
+	// strings.txt may sit at the indexed dir root (legacy) or in its parent
+	// (ctx.Output), since recipes write it next to src/. Prefer the local one,
+	// fall back to the parent; record line count only if one exists.
 	if stringsTxt := filepath.Join(outDir, "strings.txt"); fileExists(stringsTxt) {
 		idx.StringsLine = countLines(stringsTxt)
+	} else if parentStrings := filepath.Join(filepath.Dir(outDir), "strings.txt"); fileExists(parentStrings) {
+		idx.StringsLine = countLines(parentStrings)
 	}
 
 	data, err := json.MarshalIndent(idx, "", "  ")

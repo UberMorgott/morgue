@@ -261,6 +261,29 @@ export class Config {
              */
             this["UE5ExportHookable"] = false;
         }
+        if (!("NativeGhidraDecompile" in $$source)) {
+            /**
+             * Native pipeline step toggles
+             * @member
+             * @type {boolean}
+             */
+            this["NativeGhidraDecompile"] = false;
+        }
+        if (!("DelphiIDRAnalysis" in $$source)) {
+            /**
+             * Delphi pipeline step toggles
+             * @member
+             * @type {boolean}
+             */
+            this["DelphiIDRAnalysis"] = false;
+        }
+        if (!("DelphiGhidraDecompile" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["DelphiGhidraDecompile"] = false;
+        }
 
         Object.assign(this, $$source);
     }

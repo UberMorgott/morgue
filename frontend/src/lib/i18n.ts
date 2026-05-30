@@ -276,6 +276,18 @@ const translations: Record<string, Record<Lang, string>> = {
   'settings.ue5.buildIndexesHint': { en: 'Create cross-reference indexes (who calls what, string references, class hierarchy). Enables AI to navigate the codebase instantly.', ru: 'Создание индексов перекрёстных ссылок (кто вызывает что, ссылки на строки, иерархия классов). ИИ мгновенно навигирует по коду.' },
   'settings.ue5.exportHookable': { en: 'Export hookable symbols', ru: 'Экспорт хукаемых символов' },
   'settings.ue5.exportHookableHint': { en: 'List all functions that can be hooked from Lua/UE4SS. Essential for mod development.', ru: 'Список всех функций, которые можно хукнуть из Lua/UE4SS. Необходимо для разработки модов.' },
+
+  'settings.dotnet': { en: '.NET', ru: '.NET' },
+
+  'settings.native': { en: 'Native', ru: 'Нативные' },
+  'settings.native.ghidraDecompile': { en: 'Full Ghidra decompilation', ru: 'Полная декомпиляция Ghidra' },
+  'settings.native.ghidraDecompileHint': { en: 'Decompile the native binary to C code with Ghidra. The core of native analysis but can be slow and heavy on large binaries.', ru: 'Декомпиляция нативного бинарника в C-код через Ghidra. Основа анализа нативного кода, но может быть медленной и тяжёлой на крупных бинарниках.' },
+
+  'settings.delphi': { en: 'Delphi', ru: 'Delphi' },
+  'settings.delphi.idrAnalysis': { en: 'IDR analysis', ru: 'Анализ IDR' },
+  'settings.delphi.idrAnalysisHint': { en: 'Run Interactive Delphi Reconstructor to recover forms, classes, and unit names. Delphi-specific, gives the most readable output.', ru: 'Запуск Interactive Delphi Reconstructor для восстановления форм, классов и имён модулей. Специфично для Delphi, даёт наиболее читаемый результат.' },
+  'settings.delphi.ghidraDecompile': { en: 'Full Ghidra decompilation', ru: 'Полная декомпиляция Ghidra' },
+  'settings.delphi.ghidraDecompileHint': { en: 'Decompile the binary to C code with Ghidra as a fallback to IDR. Thorough but can be slow and heavy.', ru: 'Декомпиляция бинарника в C-код через Ghidra как дополнение к IDR. Тщательно, но может быть медленно и тяжело.' },
 };
 
 export function t(lang: Lang, key: string): string {

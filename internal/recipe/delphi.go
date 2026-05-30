@@ -31,6 +31,7 @@ func (d *Delphi) Steps() []StepInfo {
 		{Name: "Extract strings", Required: false},
 		{Name: "IDR analysis", Required: false},
 		{Name: "Ghidra headless", Required: false},
+		{Name: "Build indexes", Required: false},
 	}
 }
 
@@ -100,50 +101,76 @@ func (d *Delphi) Execute(ctx *Context) error {
 	}
 
 	// Step 2: IDR analysis
-	report(2, Running, 0, nil, "idr")
-	start = time.Now()
-	idrPath, err := ctx.Tools.Resolve("idr")
-	if err != nil {
-		logTool("idr", fmt.Sprintf("IDR not available: %v", err))
-		report(2, Skipped, time.Since(start), nil, "idr")
+	if ctx.Config != nil && !ctx.Config.DelphiIDRAnalysis {
+		report(2, Skipped, 0, nil, "idr")
+		logTool("idr", "IDR analysis disabled in settings")
 	} else {
-		idrOut := filepath.Join(ctx.Output, "idr")
-		os.MkdirAll(idrOut, 0755)
-		result, _ := util.RunCmd(ctx.Ctx, idrPath, []string{"-a", ctx.Target, "-o", idrOut}, "")
-		if result != nil && result.ExitCode != 0 {
-			logTool("idr", fmt.Sprintf("IDR failed: exit %d", result.ExitCode))
-			report(2, Failed, time.Since(start), fmt.Errorf("IDR exit %d", result.ExitCode), "idr")
+		report(2, Running, 0, nil, "idr")
+		start = time.Now()
+		idrPath, err := ctx.Tools.Resolve("idr")
+		if err != nil {
+			logTool("idr", fmt.Sprintf("IDR not available: %v", err))
+			report(2, Skipped, time.Since(start), nil, "idr")
 		} else {
-			report(2, Success, time.Since(start), nil, "idr")
+			idrOut := filepath.Join(ctx.Output, "idr")
+			os.MkdirAll(idrOut, 0755)
+			result, _ := util.RunCmd(ctx.Ctx, idrPath, []string{"-a", ctx.Target, "-o", idrOut}, "")
+			if result != nil && result.ExitCode != 0 {
+				logTool("idr", fmt.Sprintf("IDR failed: exit %d", result.ExitCode))
+				report(2, Failed, time.Since(start), fmt.Errorf("IDR exit %d", result.ExitCode), "idr")
+			} else {
+				report(2, Success, time.Since(start), nil, "idr")
+			}
 		}
 	}
 
 	// Step 3: Ghidra headless
-	report(3, Running, 0, nil, "ghidra")
-	start = time.Now()
-	ghidraPath, err := ctx.Tools.Resolve("ghidra")
-	if err != nil {
-		logTool("ghidra", fmt.Sprintf("Ghidra not available: %v", err))
-		report(3, Skipped, time.Since(start), nil, "ghidra")
+	if ctx.Config != nil && !ctx.Config.DelphiGhidraDecompile {
+		report(3, Skipped, 0, nil, "ghidra")
+		logTool("ghidra", "Ghidra decompilation disabled in settings")
 	} else {
-		srcDir := filepath.Join(ctx.Output, "src")
-		funcCount, runErr := runGhidra(ctx.Ctx, ghidraPath, ctx.Target, srcDir,
-			func(msg string) { logTool("ghidra", msg) },
-			func(name string, count int) {
-				if ctx.Progress != nil {
-					ctx.Progress <- StepProgress{
-						Step: 3, Total: total, Name: name,
-						Tool: "ghidra", Status: Running,
-						Count: count, Unit: "functions",
-					}
-				}
-			},
-		)
-		if runErr != nil {
-			report(3, Failed, time.Since(start), runErr, "ghidra")
+		report(3, Running, 0, nil, "ghidra")
+		start = time.Now()
+		ghidraPath, err := ctx.Tools.Resolve("ghidra")
+		if err != nil {
+			logTool("ghidra", fmt.Sprintf("Ghidra not available: %v", err))
+			report(3, Skipped, time.Since(start), nil, "ghidra")
 		} else {
-			reportCount(3, time.Since(start), "ghidra", funcCount, "functions")
+			srcDir := filepath.Join(ctx.Output, "src")
+			funcCount, runErr := runGhidra(ctx.Ctx, ghidraPath, ctx.Target, srcDir,
+				func(msg string) { logTool("ghidra", msg) },
+				func(name string, count int) {
+					if ctx.Progress != nil {
+						ctx.Progress <- StepProgress{
+							Step: 3, Total: total, Name: name,
+							Tool: "ghidra", Status: Running,
+							Count: count, Unit: "functions",
+						}
+					}
+				},
+			)
+			if runErr != nil {
+				report(3, Failed, time.Since(start), runErr, "ghidra")
+			} else {
+				reportCount(3, time.Since(start), "ghidra", funcCount, "functions")
+			}
 		}
+	}
+
+	// Step 4: Build indexes
+	report(4, Running, 0, nil, "")
+	start = time.Now()
+	logTool("ghidra", "Building indexes for decompiled output")
+	srcDir := filepath.Join(ctx.Output, "src")
+	if _, statErr := os.Stat(srcDir); statErr != nil {
+		logTool("ghidra", "No source to index — Ghidra produced no src/ output, skipping")
+		report(4, Skipped, time.Since(start), nil, "")
+	} else if idx, err := buildIndex(srcDir); err != nil {
+		logTool("ghidra", fmt.Sprintf("Build indexes failed: %v", err))
+		report(4, Failed, time.Since(start), err, "")
+	} else {
+		logTool("ghidra", fmt.Sprintf("Indexed %d source files (%d bytes) -> index.json", idx.FileCount, idx.TotalBytes))
+		reportCount(4, time.Since(start), "", idx.FileCount, "files")
 	}
 
 	return nil

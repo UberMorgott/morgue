@@ -93,18 +93,6 @@
         <section class="settings-card glass">
           <h3 class="card-title">{t(lang, 'settings.decompilation')}</h3>
           <div class="card-rows">
-            <SettingsToggle label={t(lang, 'settings.decompileProject')} hint={t(lang, 'settings.decompileProjectHint')} active={config.DecompileProjectMode} onToggle={() => toggleField('DecompileProjectMode')} />
-            <SettingsToggle label={t(lang, 'settings.generatePdb')} hint={t(lang, 'settings.generatePdbHint')} active={config.GeneratePDB} onToggle={() => toggleField('GeneratePDB')} />
-            <div class="setting-row">
-              <span class="setting-label">{t(lang, 'settings.csharpVersion')}</span>
-              <select class="setting-select" bind:value={config.CSharpLanguageVersion} onchange={onConfigChange}>
-                <option value="Auto">Auto</option>
-                <option value="Latest">Latest</option>
-                <option value="11">11</option>
-                <option value="10">10</option>
-                <option value="9">9</option>
-              </select>
-            </div>
             <SettingsToggle label={t(lang, 'settings.keepIntermediates')} hint={t(lang, 'settings.keepIntermediatesHint')} active={config.KeepIntermediates} onToggle={() => toggleField('KeepIntermediates')} />
             <SettingsToggle label={t(lang, 'settings.skipSystemLibs')} hint={t(lang, 'settings.skipSystemLibsHint')} active={config.SkipSystemLibs} onToggle={() => toggleField('SkipSystemLibs')} />
             <SettingsToggle label={t(lang, 'settings.stopOnFirstError')} hint={t(lang, 'settings.stopOnFirstErrorHint')} active={config.StopOnFirstError} onToggle={() => toggleField('StopOnFirstError')} />
@@ -156,6 +144,42 @@
             <SettingsToggle label={t(lang, 'settings.ue5.nameResolution')} hint={t(lang, 'settings.ue5.nameResolutionHint')} active={config.UE5NameResolution} onToggle={() => toggleField('UE5NameResolution')} />
             <SettingsToggle label={t(lang, 'settings.ue5.buildIndexes')} hint={t(lang, 'settings.ue5.buildIndexesHint')} active={config.UE5BuildIndexes} onToggle={() => toggleField('UE5BuildIndexes')} />
             <SettingsToggle label={t(lang, 'settings.ue5.exportHookable')} hint={t(lang, 'settings.ue5.exportHookableHint')} active={config.UE5ExportHookable} onToggle={() => toggleField('UE5ExportHookable')} />
+          </div>
+        </section>
+
+        <!-- Section: .NET -->
+        <section class="settings-card glass">
+          <h3 class="card-title">{t(lang, 'settings.dotnet')}</h3>
+          <div class="card-rows">
+            <SettingsToggle label={t(lang, 'settings.decompileProject')} hint={t(lang, 'settings.decompileProjectHint')} active={config.DecompileProjectMode} onToggle={() => toggleField('DecompileProjectMode')} />
+            <SettingsToggle label={t(lang, 'settings.generatePdb')} hint={t(lang, 'settings.generatePdbHint')} active={config.GeneratePDB} onToggle={() => toggleField('GeneratePDB')} />
+            <div class="setting-row">
+              <span class="setting-label">{t(lang, 'settings.csharpVersion')}</span>
+              <select class="setting-select" bind:value={config.CSharpLanguageVersion} onchange={onConfigChange}>
+                <option value="Auto">Auto</option>
+                <option value="Latest">Latest</option>
+                <option value="11">11</option>
+                <option value="10">10</option>
+                <option value="9">9</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section: Native -->
+        <section class="settings-card glass">
+          <h3 class="card-title">{t(lang, 'settings.native')}</h3>
+          <div class="card-rows">
+            <SettingsToggle label={t(lang, 'settings.native.ghidraDecompile')} hint={t(lang, 'settings.native.ghidraDecompileHint')} active={config.NativeGhidraDecompile} onToggle={() => toggleField('NativeGhidraDecompile')} />
+          </div>
+        </section>
+
+        <!-- Section: Delphi -->
+        <section class="settings-card glass">
+          <h3 class="card-title">{t(lang, 'settings.delphi')}</h3>
+          <div class="card-rows">
+            <SettingsToggle label={t(lang, 'settings.delphi.idrAnalysis')} hint={t(lang, 'settings.delphi.idrAnalysisHint')} active={config.DelphiIDRAnalysis} onToggle={() => toggleField('DelphiIDRAnalysis')} />
+            <SettingsToggle label={t(lang, 'settings.delphi.ghidraDecompile')} hint={t(lang, 'settings.delphi.ghidraDecompileHint')} active={config.DelphiGhidraDecompile} onToggle={() => toggleField('DelphiGhidraDecompile')} />
           </div>
         </section>
 
