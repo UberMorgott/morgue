@@ -196,6 +196,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'settings.copyButton': { en: 'Copy AI Instructions', ru: 'Скопировать инструкции' },
   'settings.copied': { en: 'Copied!', ru: 'Скопировано!' },
   'settings.copyFailed': { en: 'Clipboard unavailable — copy manually', ru: 'Буфер недоступен — скопируйте вручную' },
+  'settings.copyError': { en: 'Failed to load instructions — try again', ru: 'Не удалось загрузить инструкции — попробуйте снова' },
   'settings.close': { en: 'Close', ru: 'Закрыть' },
 
   // Pipeline progress

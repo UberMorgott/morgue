@@ -77,6 +77,7 @@ func runGUI() {
 	configSvc := &services.ConfigService{}
 	reconSvc := &services.ReconService{}
 	updateSvc := &services.UpdateService{Version: Version, Commit: Commit}
+	instructionsSvc := &services.InstructionsService{}
 
 	// Declare apiSrv early so OnShutdown closure can capture it
 	var apiSrv *api.Server
@@ -90,6 +91,7 @@ func runGUI() {
 			application.NewService(toolsSvc),
 			application.NewService(configSvc),
 			application.NewService(updateSvc),
+			application.NewService(instructionsSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(morgue.Assets),

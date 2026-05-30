@@ -5,4 +5,5 @@ export {
   ToolsService,
   ConfigService,
   UpdateService,
+  InstructionsService,
 } from '../../bindings/github.com/UberMorgott/morgue/internal/services/index.js';
