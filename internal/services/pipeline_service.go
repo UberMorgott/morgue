@@ -89,7 +89,12 @@ func (s *PipelineService) Run(input, output string) error {
 		for ev := range events {
 			s.mu.Lock()
 			s.status.Phase = ev.Phase
-			s.status.Target = ev.Target
+			// Preserve the last non-empty Target. The engine's deferred final
+			// "done" event carries an empty Target, which would otherwise blank
+			// out the terminal status; only overwrite when the event names one.
+			if ev.Target != "" {
+				s.status.Target = ev.Target
+			}
 			s.status.FilesTotal = ev.FilesTotal
 			s.status.FilesProcessed = ev.FilesProcessed
 			if ev.Progress != nil {
@@ -198,6 +203,12 @@ func (s *PipelineService) finishStatus(runErr error) {
 	s.status.Running = false
 	s.status.Paused = false
 	s.status.Phase = phase
+	// On success, mark the stepper fully complete (the engine's final "done"
+	// event carries no Progress, so the last real event left StepIndex one short
+	// of StepTotal). On error, leave StepIndex where it failed.
+	if runErr == nil && s.status.StepTotal > 0 {
+		s.status.StepIndex = s.status.StepTotal
+	}
 	s.cancel = nil
 	s.pause = nil
 }

@@ -254,14 +254,21 @@ func runGhidra(
 
 	log(fmt.Sprintf("Ghidra decompiled to %s (%d bytes)", outputFile, info.Size()))
 
-	// Parse function count from Ghidra script output
+	// Parse function count (and failure count) from the script's final summary
+	// line: "Morgue: Decompiled <count> functions, <errors> errors -> <path>".
 	funcCount = 0
+	errCount := 0
 	if result != nil {
 		for _, line := range strings.Split(result.Stdout, "\n") {
-			if n, scanErr := fmt.Sscanf(line, "Morgue: Decompiled %d functions", &funcCount); n == 1 && scanErr == nil {
+			// n counts successfully scanned verbs; the script always prints both
+			// counts, but tolerate a truncated line by accepting n >= 1.
+			if n, _ := fmt.Sscanf(line, "Morgue: Decompiled %d functions, %d errors", &funcCount, &errCount); n >= 1 {
 				break
 			}
 		}
+	}
+	if errCount > 0 {
+		log(fmt.Sprintf("Ghidra: %d functions decompiled, %d failed", funcCount, errCount))
 	}
 	return funcCount, nil
 }
