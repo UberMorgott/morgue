@@ -130,6 +130,10 @@ func (u *UE5) Execute(ctx *Context) error {
 					// Count only what THIS dir produced into its own outDir.
 					dirProduced := countFilesRecursive(outDir)
 					producedThisRun += dirProduced
+					if multi && dirProduced == 0 {
+						log(fmt.Sprintf("no assets extracted from %s (empty/patch container) — removing empty root", dir))
+						os.RemoveAll(outDir)
+					}
 					switch {
 					case runErr != nil:
 						lastErr = runErr.Error()
