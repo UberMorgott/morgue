@@ -277,10 +277,13 @@ func (e *Engine) classifyTarget(
 	switch group.Kind {
 	case scanner.GroupUnreal:
 		reconResult.Kind = recon.UnrealEngine
+		reconResult.Fallback = false
 	case scanner.GroupUnityMono:
 		reconResult.Kind = recon.UnityMono
+		reconResult.Fallback = false
 	case scanner.GroupUnityIL2CPP:
 		reconResult.Kind = recon.UnityIL2CPP
+		reconResult.Fallback = false
 	}
 
 	// Emit enriched recon event
