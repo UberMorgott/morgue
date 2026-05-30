@@ -74,7 +74,13 @@ func (s *PipelineService) Run(input, output string) error {
 	pauseGate := s.pause
 	s.mu.Unlock()
 
+	// drained is closed once the drainer goroutine has fully consumed every
+	// event (including the engine's final "done" event). We must not reset the
+	// status until then, otherwise a late "done" event would overwrite the
+	// terminal status and leave it stale (running:false but phase:"done").
+	drained := make(chan struct{})
 	go func() {
+		defer close(drained)
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("pipeline event drainer panic: %v", r)
@@ -106,7 +112,11 @@ func (s *PipelineService) Run(input, output string) error {
 	}
 
 	err = eng.Run(ctx, opts, events)
-	s.resetStatus()
+	// Close the channel so the drainer exits (otherwise it leaks), then wait
+	// for it to finish so no in-flight event can clobber the terminal status.
+	close(events)
+	<-drained
+	s.finishStatus(err)
 	return err
 }
 
@@ -166,6 +176,28 @@ func (s *PipelineService) resetStatus() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.status = PipelineStatus{}
+	s.cancel = nil
+	s.pause = nil
+}
+
+// finishStatus records the terminal state of a completed run so external
+// consumers (HTTP /api/run/status, SSE clients, CLI) see a clear, non-running
+// terminal phase instead of a stale "done" left over from the last drained
+// event. Called only after the event drainer has fully exited, so this is the
+// last write to s.status for the run and cannot be clobbered.
+func (s *PipelineService) finishStatus(runErr error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	phase := "done"
+	if runErr != nil {
+		phase = "error"
+	}
+	// Preserve Target/FilesProcessed/FilesTotal from the final drained event so
+	// the terminal status still describes what was processed; just flip the
+	// running flags and pin the terminal phase.
+	s.status.Running = false
+	s.status.Paused = false
+	s.status.Phase = phase
 	s.cancel = nil
 	s.pause = nil
 }
