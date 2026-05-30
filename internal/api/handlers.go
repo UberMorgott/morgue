@@ -149,13 +149,16 @@ type updateSettingsRequest struct {
 
 // settingsAllowlist defines which config keys may be modified via the API.
 var settingsAllowlist = map[string]bool{
-	"MaxFileSizeMB":          true,
-	"SkipSystemLibs":         true,
-	"GeneratePDB":            true,
-	"AutoUpdateCheck":        true,
-	"DefaultOutputDir":       true,
+	"MaxFileSizeMB":         true,
+	"SkipSystemLibs":        true,
+	"GeneratePDB":           true,
+	"AutoUpdateCheck":       true,
+	"DefaultOutputDir":      true,
 	"UE5GhidraDecompile":    true,
-	"AllowDynamicExecution":  true,
+	"NativeGhidraDecompile": true,
+	"DelphiIDRAnalysis":     true,
+	"DelphiGhidraDecompile": true,
+	"AllowDynamicExecution": true,
 }
 
 func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {

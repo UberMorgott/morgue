@@ -33,6 +33,7 @@ func (d *DotnetGeneric) Steps() []StepInfo {
 		{Name: "Copy original", Required: false},
 		{Name: "Extract strings", Required: false},
 		{Name: "Decompile", Required: true},
+		{Name: "Build indexes", Required: false},
 	}
 }
 
@@ -182,6 +183,21 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 	}
 	csCount := countFilesWithExt(srcDir, ".cs")
 	reportCount(2, time.Since(start), "ilspycmd", csCount, "types")
+
+	// Step 3: Build indexes
+	report(3, Running, 0, nil, "")
+	start = time.Now()
+	logTool("ilspycmd", "Building indexes for decompiled output")
+	if _, statErr := os.Stat(srcDir); statErr != nil {
+		logTool("ilspycmd", "No source to index — ilspycmd produced no src/ output, skipping")
+		report(3, Skipped, time.Since(start), nil, "")
+	} else if idx, err := buildIndex(srcDir); err != nil {
+		logTool("ilspycmd", fmt.Sprintf("Build indexes failed: %v", err))
+		report(3, Failed, time.Since(start), err, "")
+	} else {
+		logTool("ilspycmd", fmt.Sprintf("Indexed %d source files (%d bytes) -> index.json", idx.FileCount, idx.TotalBytes))
+		reportCount(3, time.Since(start), "", idx.FileCount, "files")
+	}
 
 	return nil
 }

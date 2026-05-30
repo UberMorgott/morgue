@@ -46,6 +46,13 @@ type Config struct {
 	UE5NameResolution  bool `json:"UE5NameResolution" yaml:"ue5_name_resolution"`
 	UE5BuildIndexes    bool `json:"UE5BuildIndexes" yaml:"ue5_build_indexes"`
 	UE5ExportHookable  bool `json:"UE5ExportHookable" yaml:"ue5_export_hookable"`
+
+	// Native pipeline step toggles
+	NativeGhidraDecompile bool `json:"NativeGhidraDecompile" yaml:"native_ghidra_decompile"`
+
+	// Delphi pipeline step toggles
+	DelphiIDRAnalysis     bool `json:"DelphiIDRAnalysis" yaml:"delphi_idr_analysis"`
+	DelphiGhidraDecompile bool `json:"DelphiGhidraDecompile" yaml:"delphi_ghidra_decompile"`
 }
 
 // Default returns a Config with sensible defaults.
@@ -74,6 +81,11 @@ func Default() Config {
 		UE5NameResolution:  true,
 		UE5BuildIndexes:    true,
 		UE5ExportHookable:  true,
+
+		NativeGhidraDecompile: true,
+
+		DelphiIDRAnalysis:     true,
+		DelphiGhidraDecompile: true,
 	}
 }
 

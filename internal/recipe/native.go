@@ -29,6 +29,7 @@ func (n *Native) Steps() []StepInfo {
 		{Name: "Copy original", Required: false},
 		{Name: "Extract strings", Required: false},
 		{Name: "Decompile with Ghidra", Required: true},
+		{Name: "Build indexes", Required: false},
 	}
 }
 
@@ -133,7 +134,10 @@ func (n *Native) Execute(ctx *Context) error {
 	}
 
 	// Step 2: Decompile with Ghidra
-	if doGhidra {
+	if doGhidra && ctx.Config != nil && !ctx.Config.NativeGhidraDecompile {
+		report(2, Skipped, 0, nil, "ghidra")
+		logTool("ghidra", "Ghidra decompilation disabled in settings")
+	} else if doGhidra {
 		report(2, Running, 0, nil, "ghidra")
 		start = time.Now()
 		ghidraPath, err := ctx.Tools.Resolve("ghidra")
@@ -160,6 +164,22 @@ func (n *Native) Execute(ctx *Context) error {
 			return err
 		}
 		reportCount(2, time.Since(start), "ghidra", funcCount, "functions")
+	}
+
+	// Step 3: Build indexes
+	report(3, Running, 0, nil, "")
+	start = time.Now()
+	logTool("ghidra", "Building indexes for decompiled output")
+	srcDir := filepath.Join(ctx.Output, "src")
+	if _, statErr := os.Stat(srcDir); statErr != nil {
+		logTool("ghidra", "No source to index — Ghidra produced no src/ output, skipping")
+		report(3, Skipped, time.Since(start), nil, "")
+	} else if idx, err := buildIndex(srcDir); err != nil {
+		logTool("ghidra", fmt.Sprintf("Build indexes failed: %v", err))
+		report(3, Failed, time.Since(start), err, "")
+	} else {
+		logTool("ghidra", fmt.Sprintf("Indexed %d source files (%d bytes) -> index.json", idx.FileCount, idx.TotalBytes))
+		reportCount(3, time.Since(start), "", idx.FileCount, "files")
 	}
 
 	return nil

@@ -33,6 +33,7 @@ func (i *IL2CPP) Steps() []StepInfo {
 		{Name: "Extract metadata", Required: true},
 		{Name: "Decompile metadata assemblies", Required: true},
 		{Name: "Extract strings", Required: false},
+		{Name: "Build indexes", Required: false},
 	}
 }
 
@@ -314,6 +315,21 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
 		strCount := countLines(stringsOut)
 		reportCount(3, time.Since(start), "strings", strCount, "strings")
+	}
+
+	// Step 4: Build indexes
+	report(4, Running, 0, nil, "")
+	start = time.Now()
+	logTool("ilspycmd", "Building indexes for decompiled output")
+	if _, statErr := os.Stat(srcDir); statErr != nil {
+		logTool("ilspycmd", "No source to index — ilspycmd produced no src/ output, skipping")
+		report(4, Skipped, time.Since(start), nil, "")
+	} else if idx, err := buildIndex(srcDir); err != nil {
+		logTool("ilspycmd", fmt.Sprintf("Build indexes failed: %v", err))
+		report(4, Failed, time.Since(start), err, "")
+	} else {
+		logTool("ilspycmd", fmt.Sprintf("Indexed %d source files (%d bytes) -> index.json", idx.FileCount, idx.TotalBytes))
+		reportCount(4, time.Since(start), "", idx.FileCount, "files")
 	}
 
 	return nil
