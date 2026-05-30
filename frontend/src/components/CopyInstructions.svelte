@@ -1,14 +1,16 @@
 <script lang="ts">
   import { Clipboard } from '@wailsio/runtime';
+  import { InstructionsService } from '../lib/api';
   import { t, type Lang } from '../lib/i18n';
 
   let { lang = 'en' as Lang }: { lang?: Lang } = $props();
 
   const API_BASE = 'http://127.0.0.1:19876';
 
-  type Status = 'idle' | 'loading' | 'copied' | 'fallback';
+  type Status = 'idle' | 'loading' | 'copied' | 'fallback' | 'error';
   let status = $state<Status>('idle');
   let fallbackText = $state('');
+  let resetTimer: ReturnType<typeof setTimeout> | undefined;
 
   async function copyToClipboard(text: string): Promise<boolean> {
     // 1. Wails runtime clipboard
@@ -44,23 +46,38 @@
     return false;
   }
 
+  async function fetchInstructions(): Promise<string> {
+    // 1. Native Wails binding (no HTTP dependency)
+    try {
+      const text = await InstructionsService.Get();
+      if (text) return text;
+    } catch (e) {
+      console.warn('Instructions binding unavailable, falling back to HTTP:', e);
+    }
+
+    // 2. HTTP fallback (also serves CLI/external clients)
+    const res = await fetch(`${API_BASE}/api/instructions`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.text();
+  }
+
   async function copyInstructions() {
+    clearTimeout(resetTimer);
     status = 'loading';
     let text: string;
     try {
-      const res = await fetch(`${API_BASE}/api/instructions`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      text = await res.text();
+      text = await fetchInstructions();
     } catch (e) {
-      console.error('Failed to fetch instructions:', e);
-      status = 'idle';
+      console.error('Failed to retrieve instructions:', e);
+      status = 'error';
+      resetTimer = setTimeout(() => (status = 'idle'), 4000);
       return;
     }
 
     const ok = await copyToClipboard(text);
     if (ok) {
       status = 'copied';
-      setTimeout(() => (status = 'idle'), 2000);
+      resetTimer = setTimeout(() => (status = 'idle'), 2000);
     } else {
       fallbackText = text;
       status = 'fallback';
@@ -73,11 +90,18 @@
   }
 </script>
 
-<button class="copy-btn" onclick={copyInstructions} disabled={status === 'loading'}>
+<button
+  class="copy-btn"
+  class:copy-btn-error={status === 'error'}
+  onclick={copyInstructions}
+  disabled={status === 'loading'}
+>
   {#if status === 'copied'}
     {t(lang, 'settings.copied')}
   {:else if status === 'loading'}
     ...
+  {:else if status === 'error'}
+    {t(lang, 'settings.copyError')}
   {:else}
     {t(lang, 'settings.copyButton')}
   {/if}
@@ -119,6 +143,10 @@
   .copy-btn:disabled {
     opacity: 0.6;
     cursor: wait;
+  }
+  .copy-btn-error {
+    border-color: var(--error);
+    color: var(--error);
   }
 
   .fallback-overlay {
