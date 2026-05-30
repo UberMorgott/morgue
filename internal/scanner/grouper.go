@@ -169,9 +169,40 @@ func findUnreal(pakFiles []string) []TargetGroup {
 		rootFiles[root] = append(rootFiles[root], f)
 	}
 
+	// Collapse server/nested duplicate roots (e.g. a packaged WindowsServer build
+	// nested under Builds/) so a single game yields ONE Unreal target. Containers
+	// from dropped roots are folded into the surviving ancestor root when one
+	// exists, so they still count toward the representative pick.
+	roots := make([]string, 0, len(rootFiles))
+	for root := range rootFiles {
+		roots = append(roots, root)
+	}
+	kept := dedupeUnrealRoots(roots)
+	keptSet := map[string]bool{}
+	for _, r := range kept {
+		keptSet[r] = true
+	}
+	for _, dropped := range roots {
+		if keptSet[dropped] {
+			continue
+		}
+		// Re-home a dropped root's containers onto the deepest kept ancestor, if any.
+		// (Server-under-Builds roots usually have no kept ancestor, so their
+		// containers are simply discarded — that's the intended dedup.)
+		var bestAncestor string
+		for _, k := range kept {
+			if isAncestorRoot(k, dropped) && len(k) > len(bestAncestor) {
+				bestAncestor = k
+			}
+		}
+		if bestAncestor != "" {
+			rootFiles[bestAncestor] = append(rootFiles[bestAncestor], rootFiles[dropped]...)
+		}
+	}
+
 	var groups []TargetGroup
-	for root, fs := range rootFiles {
-		rep := representativePak(fs)
+	for _, root := range kept {
+		rep := representativePak(rootFiles[root])
 		if rep == "" {
 			continue
 		}
@@ -182,6 +213,115 @@ func findUnreal(pakFiles []string) []TargetGroup {
 		})
 	}
 	return groups
+}
+
+// dedupeUnrealRoots collapses server/nested duplicate Unreal roots so a single
+// game yields ONE target, using conservative path-component rules:
+//
+//  1. If at least one root has a "Builds" path segment (full component,
+//     case-insensitive — e.g. ...\R5\Builds\WindowsServer\...) AND at least one
+//     root does NOT, drop every root under a Builds/ segment. A packaged server
+//     build is treated as a duplicate of the client game, not a separate game.
+//  2. Among the survivors, if one root is an ancestor of another (its path
+//     components are a prefix of the other's), keep the shallowest ancestor and
+//     drop the descendants.
+//
+// Anything left after that is treated as a genuinely separate game and KEPT
+// (we intentionally do NOT over-collapse unrelated games). Comparison uses
+// cleaned, separator-split path components with case-insensitive matching for
+// Windows semantics — never naive substring Contains (so a dir literally named
+// "Rebuilds" is not mistaken for a "Builds" segment).
+func dedupeUnrealRoots(roots []string) []string {
+	if len(roots) <= 1 {
+		return roots
+	}
+
+	hasBuilds := false
+	hasNonBuilds := false
+	for _, r := range roots {
+		if hasBuildsSegment(r) {
+			hasBuilds = true
+		} else {
+			hasNonBuilds = true
+		}
+	}
+
+	// Rule 1: drop Builds/-nested roots only when a non-Builds root also exists.
+	var afterBuilds []string
+	if hasBuilds && hasNonBuilds {
+		for _, r := range roots {
+			if !hasBuildsSegment(r) {
+				afterBuilds = append(afterBuilds, r)
+			}
+		}
+	} else {
+		afterBuilds = append(afterBuilds, roots...)
+	}
+
+	// Rule 2: drop descendants when an ancestor root is also present.
+	var kept []string
+	for _, r := range afterBuilds {
+		isDescendant := false
+		for _, other := range afterBuilds {
+			if other == r {
+				continue
+			}
+			if isAncestorRoot(other, r) {
+				isDescendant = true
+				break
+			}
+		}
+		if !isDescendant {
+			kept = append(kept, r)
+		}
+	}
+	return kept
+}
+
+// pathComponents returns the cleaned, separator-split components of a path
+// (drive/volume name included as the first component on Windows).
+func pathComponents(p string) []string {
+	cleaned := filepath.Clean(p)
+	vol := filepath.VolumeName(cleaned)
+	rest := cleaned[len(vol):]
+	rest = strings.Trim(rest, `\/`)
+	var parts []string
+	if vol != "" {
+		parts = append(parts, vol)
+	}
+	if rest != "" {
+		parts = append(parts, strings.FieldsFunc(rest, func(r rune) bool {
+			return r == '\\' || r == '/'
+		})...)
+	}
+	return parts
+}
+
+// hasBuildsSegment reports whether any full path component equals "Builds"
+// (case-insensitive). Component-based so "Rebuilds" or "BuildsX" never match.
+func hasBuildsSegment(p string) bool {
+	for _, c := range pathComponents(p) {
+		if strings.EqualFold(c, "Builds") {
+			return true
+		}
+	}
+	return false
+}
+
+// isAncestorRoot reports whether ancestor is a strict path-component prefix of
+// descendant (ancestor != descendant). Case-insensitive per Windows semantics.
+func isAncestorRoot(ancestor, descendant string) bool {
+	a := pathComponents(ancestor)
+	d := pathComponents(descendant)
+	if len(a) >= len(d) {
+		return false
+	}
+	for i := range a {
+		if !strings.EqualFold(a[i], d[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // representativePak picks one file to stand in for the whole pak set.

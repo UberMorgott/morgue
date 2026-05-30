@@ -122,6 +122,94 @@ func TestScanUnrealPaksOnly(t *testing.T) {
 	}
 }
 
+func sameRootSet(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, g := range got {
+		seen[filepath.Clean(g)] = true
+	}
+	for _, w := range want {
+		if !seen[filepath.Clean(w)] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestDedupeUnrealRoots(t *testing.T) {
+	tests := []struct {
+		name  string
+		roots []string
+		want  []string
+	}{
+		{
+			name: "client paks + nested WindowsServer build under Builds -> keep client only",
+			roots: []string{
+				`X:\Games\R5\R5\Content\Paks`,
+				`X:\Games\R5\R5\Builds\WindowsServer\R5\Content\Paks`,
+			},
+			want: []string{`X:\Games\R5\R5\Content\Paks`},
+		},
+		{
+			name: "two genuinely separate games (no Builds, neither ancestor) -> keep both",
+			roots: []string{
+				`X:\Games\GameA\Content\Paks`,
+				`X:\Games\GameB\Content\Paks`,
+			},
+			want: []string{
+				`X:\Games\GameA\Content\Paks`,
+				`X:\Games\GameB\Content\Paks`,
+			},
+		},
+		{
+			name: "ancestor + descendant -> keep ancestor only",
+			roots: []string{
+				`X:\Games\Foo`,
+				`X:\Games\Foo\Content\Paks`,
+			},
+			want: []string{`X:\Games\Foo`},
+		},
+		{
+			name:  "single root unchanged",
+			roots: []string{`X:\Games\Foo\Content\Paks`},
+			want:  []string{`X:\Games\Foo\Content\Paks`},
+		},
+		{
+			name: "Builds segment matched as component, not substring (Rebuilds kept)",
+			roots: []string{
+				`X:\Games\Foo\Rebuilds\Content\Paks`,
+				`X:\Games\Bar\Content\Paks`,
+			},
+			want: []string{
+				`X:\Games\Foo\Rebuilds\Content\Paks`,
+				`X:\Games\Bar\Content\Paks`,
+			},
+		},
+		{
+			name: "all roots under Builds (no non-Builds) -> keep all (conservative)",
+			roots: []string{
+				`X:\A\Builds\WindowsServer\Content\Paks`,
+				`X:\B\Builds\WindowsServer\Content\Paks`,
+			},
+			want: []string{
+				`X:\A\Builds\WindowsServer\Content\Paks`,
+				`X:\B\Builds\WindowsServer\Content\Paks`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := dedupeUnrealRoots(tt.roots)
+			if !sameRootSet(got, tt.want) {
+				t.Errorf("dedupeUnrealRoots(%v) = %v, want %v", tt.roots, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestScanEmpty(t *testing.T) {
 	dir := t.TempDir()
 	result, err := Scan(dir)
