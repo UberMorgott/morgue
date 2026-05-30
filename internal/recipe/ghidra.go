@@ -10,8 +10,24 @@ import (
 	"strings"
 	"time"
 
+	"github.com/UberMorgott/morgue/internal/tools"
 	"github.com/UberMorgott/morgue/internal/util"
 )
+
+// resolveGhidraJava returns the Java executable Ghidra should use, preferring
+// the managed JDK under <BaseDir>/runtimes/java and falling back to system java.
+// Returns "" if no Java can be resolved (caller proceeds with the inherited
+// environment, matching prior behavior). m may be nil.
+func resolveGhidraJava(m *tools.Manager) string {
+	if m == nil {
+		return ""
+	}
+	javaPath, err := m.RuntimePath(tools.RuntimeJava)
+	if err != nil {
+		return ""
+	}
+	return javaPath
+}
 
 // ghidraExportScript is a Java GhidraScript that decompiles all functions to C.
 // Ghidra 12+ removed Jython; .py scripts require PyGhidra (CPython+JPype).
@@ -96,6 +112,15 @@ public class MorgueExport extends GhidraScript {
 // ghidraToolPath is the path resolved from the tools manager (ghidraRun.bat);
 // the function locates support/analyzeHeadless relative to it.
 //
+// javaPath is the Java executable resolved from the runtime manager
+// (managed JDK under <BaseDir>/runtimes/java preferred, else system java). It is
+// used to point Ghidra's launch script at the correct JVM by setting JAVA_HOME
+// and prepending its bin/ dir to PATH for the analyzeHeadless child process.
+// Ghidra's .bat scripts only search the ambient PATH/JAVA_HOME for Java, so on a
+// clean machine without system Java this is what lets Ghidra find the managed JDK.
+// May be empty (e.g. resolution failed) — in that case the process inherits the
+// unmodified environment, preserving prior behavior.
+//
 // onLog receives human-readable log lines (already tagged "ghidra"-style by the
 // caller's logTool). onPhase reports progress as decompilation proceeds: name is
 // either a phase marker ("ghidra:import" / "ghidra:analyze" / "ghidra:disassemble")
@@ -103,7 +128,7 @@ public class MorgueExport extends GhidraScript {
 // decompilation begins). Both callbacks may be nil.
 func runGhidra(
 	ctx context.Context,
-	ghidraToolPath, binaryPath, outDir string,
+	ghidraToolPath, javaPath, binaryPath, outDir string,
 	onLog func(msg string),
 	onPhase func(name string, count int),
 ) (funcCount int, err error) {
@@ -111,6 +136,21 @@ func runGhidra(
 		if onLog != nil {
 			onLog(msg)
 		}
+	}
+
+	// Build the environment for analyzeHeadless. Ghidra's launch scripts find
+	// Java via JAVA_HOME / the ambient PATH only, so point them at the resolved
+	// JVM (managed JDK preferred, else system). javaPath is <home>/bin/java[.exe];
+	// JAVA_HOME = its grandparent (the JDK/JRE home, i.e. parent of bin/).
+	var ghidraEnv []string
+	if javaPath != "" {
+		javaBin := filepath.Dir(javaPath)      // <home>/bin
+		javaHome := filepath.Dir(javaBin)      // <home>
+		ghidraEnv = append(ghidraEnv,
+			"JAVA_HOME="+javaHome,
+			"PATH="+javaBin+string(os.PathListSeparator)+os.Getenv("PATH"),
+		)
+		log(fmt.Sprintf("Using Java at %s (JAVA_HOME=%s)", javaPath, javaHome))
 	}
 
 	// ghidraToolPath points to ghidraRun.bat; we need support/analyzeHeadless
@@ -153,7 +193,7 @@ func runGhidra(
 	ghidraPhaseIdx := 0 // 0=import, 1=analyze, 2=disassemble — only moves forward
 	ghidraPhases := []string{"ghidra:import", "ghidra:analyze", "ghidra:disassemble"}
 	lastLogTime := time.Now().Add(-2 * time.Second) // allow first log immediately
-	result, runErr := util.RunCmdStreaming(ctx, analyzeHeadless, []string{
+	result, runErr := util.RunCmdStreamingEnv(ctx, ghidraEnv, analyzeHeadless, []string{
 		projDir, "MorgueProject",
 		"-import", binaryPath,
 		"-postScript", scriptPath, outputFile,

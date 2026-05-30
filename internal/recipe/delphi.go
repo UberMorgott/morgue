@@ -134,7 +134,7 @@ func (d *Delphi) Execute(ctx *Context) error {
 			report(3, Skipped, time.Since(start), nil, "ghidra")
 		} else {
 			srcDir := filepath.Join(ctx.Output, "src")
-			funcCount, runErr := runGhidra(ctx.Ctx, ghidraPath, ctx.Target, srcDir,
+			funcCount, runErr := runGhidra(ctx.Ctx, ghidraPath, resolveGhidraJava(ctx.Tools), ctx.Target, srcDir,
 				func(msg string) { logTool("ghidra", msg) },
 				func(name string, count int) {
 					if ctx.Progress != nil {
