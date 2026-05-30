@@ -236,7 +236,16 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 	report(9, Running, 0, nil, "")
 	start = time.Now()
 	logTool("ilspycmd", "Building indexes for decompiled output")
-	report(9, Skipped, time.Since(start), nil, "") // placeholder
+	if _, statErr := os.Stat(srcDir); statErr != nil {
+		logTool("ilspycmd", "No source to index — ilspycmd produced no src/ output, skipping")
+		report(9, Skipped, time.Since(start), nil, "")
+	} else if idx, err := buildIndex(srcDir); err != nil {
+		logTool("ilspycmd", fmt.Sprintf("Build indexes failed: %v", err))
+		report(9, Failed, time.Since(start), err, "")
+	} else {
+		logTool("ilspycmd", fmt.Sprintf("Indexed %d source files (%d bytes) -> index.json", idx.FileCount, idx.TotalBytes))
+		reportCount(9, time.Since(start), "", idx.FileCount, "files")
+	}
 
 	return nil
 }
