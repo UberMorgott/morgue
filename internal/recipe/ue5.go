@@ -87,31 +87,84 @@ func (u *UE5) Execute(ctx *Context) error {
 		if err != nil {
 			log(fmt.Sprintf("retoc not available: %v — skipping PAK extraction", err))
 			report(0, Skipped, time.Since(start), nil, "retoc")
-		} else if len(pakFiles) == 0 {
-			log("No .pak/.utoc files found — skipping extraction")
-			report(0, Skipped, time.Since(start), nil, "retoc")
 		} else {
-			extractDir := filepath.Join(ctx.Output, "extracted")
-			os.MkdirAll(extractDir, 0755)
-			failCount := 0
-			successCount := 0
-			for _, pak := range pakFiles {
-				log(fmt.Sprintf("Extracting: %s", filepath.Base(pak)))
-				result, runErr := util.RunCmd(ctx.Ctx, retocPath, []string{"extract", pak, "-o", extractDir}, "")
-				if runErr != nil {
-					log(fmt.Sprintf("retoc failed on %s: %v", filepath.Base(pak), runErr))
-					failCount++
-				} else if result != nil && result.ExitCode != 0 {
-					log(fmt.Sprintf("retoc exit %d on %s: %s", result.ExitCode, filepath.Base(pak), result.Stderr))
-					failCount++
-				} else {
-					successCount++
-				}
-			}
-			if failCount == len(pakFiles) {
-				report(0, Failed, time.Since(start), fmt.Errorf("all %d PAK extractions failed", failCount), "retoc")
+			// retoc to-legacy operates on IoStore .utoc containers (Zen->Legacy
+			// .uasset/.uexp). It must be pointed at the DIRECTORY containing the
+			// .utoc files, not an individual .utoc: a per-container .utoc lacks the
+			// base game's global ScriptObjects chunk (in global.utoc, which lives
+			// in the same dir), so a directory input lets retoc resolve it.
+			tocDirs := utocDirs(pakFiles)
+			if len(tocDirs) == 0 {
+				log("No .utoc IoStore containers found — skipping extraction (retoc to-legacy requires .utoc)")
+				report(0, Skipped, time.Since(start), nil, "retoc")
 			} else {
-				reportCount(0, time.Since(start), "retoc", successCount, "paks")
+				// extractDir is always the recipe's own output subdir (never a
+				// source dir), so clearing it can't touch the game files. Clear it
+				// up front so stale assets from a prior run can't fake a success.
+				extractDir := filepath.Join(ctx.Output, "extracted")
+				os.RemoveAll(extractDir)
+				os.MkdirAll(extractDir, 0755)
+
+				okDirs := 0
+				failedDirs := 0
+				producedThisRun := 0 // counted per-dir for THIS run only
+				cancelled := false
+				var lastErr string
+				multi := len(tocDirs) > 1
+				for i, dir := range tocDirs {
+					if ctx.Ctx != nil && ctx.Ctx.Err() != nil {
+						cancelled = true
+						break
+					}
+					// When multiple source dirs exist, give each its own subdir so
+					// assets from different paks don't collide.
+					outDir := extractDir
+					if multi {
+						outDir = filepath.Join(extractDir, fmt.Sprintf("%02d_%s", i, filepath.Base(dir)))
+						os.MkdirAll(outDir, 0755)
+					}
+					log(fmt.Sprintf("Converting (to-legacy): %s", dir))
+					result, runErr := util.RunCmdStreaming(ctx.Ctx, retocPath,
+						[]string{"to-legacy", dir, outDir}, "",
+						func(line string) { log("[retoc] " + line) })
+					// Count only what THIS dir produced into its own outDir.
+					dirProduced := countFilesRecursive(outDir)
+					producedThisRun += dirProduced
+					switch {
+					case runErr != nil:
+						lastErr = runErr.Error()
+						log(fmt.Sprintf("retoc failed on %s: %v", dir, runErr))
+						failedDirs++
+					case result != nil && result.ExitCode != 0:
+						lastErr = strings.TrimSpace(result.Stderr)
+						log(fmt.Sprintf("retoc exit %d on %s: %s", result.ExitCode, dir, lastErr))
+						// A non-zero exit that still produced files (e.g. retoc
+						// panics on one asset after extracting others) counts as a
+						// per-dir failure, but the produced files are kept below.
+						failedDirs++
+					default:
+						okDirs++
+					}
+				}
+				switch {
+				case cancelled:
+					report(0, Failed, time.Since(start), ctx.Ctx.Err(), "retoc")
+					log("PAK extraction cancelled")
+				case failedDirs == 0:
+					// All directories converted cleanly.
+					log(fmt.Sprintf("Converted %d dir(s), %d asset file(s) produced", okDirs, producedThisRun))
+					reportCount(0, time.Since(start), "retoc", producedThisRun, "files")
+				case producedThisRun > 0:
+					// Partial success: some dir(s) errored/panicked but files were
+					// still produced this run. Keep them; surface the failure count.
+					log(fmt.Sprintf("retoc: %d of %d dir(s) failed but %d asset file(s) were produced — keeping them. Last error: %s",
+						failedDirs, len(tocDirs), producedThisRun, lastErr))
+					reportCount(0, time.Since(start), "retoc", producedThisRun, "files")
+				default:
+					report(0, Failed, time.Since(start),
+						fmt.Errorf("retoc to-legacy failed, 0 files produced (%d of %d dir(s) failed): %s",
+							failedDirs, len(tocDirs), lastErr), "retoc")
+				}
 			}
 		}
 	}
@@ -244,6 +297,54 @@ func (u *UE5) Execute(ctx *Context) error {
 	}
 
 	return nil
+}
+
+// utocDirs returns the unique parent directories that contain at least one
+// .utoc IoStore container, derived from the discovered pak/IoStore files.
+// retoc to-legacy must be pointed at the directory (not an individual .utoc)
+// so it can resolve the global ScriptObjects container (global.utoc) that
+// lives alongside the per-mod/per-chunk .utoc files. The result is
+// de-duplicated and order-stable.
+func utocDirs(files []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, f := range files {
+		var toc string
+		switch strings.ToLower(filepath.Ext(f)) {
+		case ".utoc":
+			toc = f
+		case ".pak":
+			// A .pak may have a sibling .utoc with the same basename.
+			cand := f[:len(f)-len(filepath.Ext(f))] + ".utoc"
+			if _, err := os.Stat(cand); err == nil {
+				toc = cand
+			}
+		}
+		if toc == "" {
+			continue
+		}
+		dir := filepath.Dir(toc)
+		if !seen[dir] {
+			seen[dir] = true
+			out = append(out, dir)
+		}
+	}
+	return out
+}
+
+// countFilesRecursive counts regular files under root (0 if root is absent).
+func countFilesRecursive(root string) int {
+	n := 0
+	filepath.WalkDir(root, func(_ string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !d.IsDir() {
+			n++
+		}
+		return nil
+	})
+	return n
 }
 
 // findPakFiles recursively finds .pak and .utoc files under root.

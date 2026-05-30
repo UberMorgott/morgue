@@ -56,7 +56,7 @@ func TestGroupFiles(t *testing.T) {
 		t.Fatalf("Scan() error: %v", err)
 	}
 
-	groups := groupFiles(result.Files)
+	groups := groupFiles(result.Files, nil)
 
 	var hasIL2CPP, hasMono, hasStandalone bool
 	for _, g := range groups {
@@ -78,6 +78,47 @@ func TestGroupFiles(t *testing.T) {
 	}
 	if !hasStandalone {
 		t.Error("Missing Standalone group")
+	}
+}
+
+func TestScanUnrealPaksOnly(t *testing.T) {
+	root := t.TempDir()
+	// Bare mod/paks folder: pak + IoStore containers, no game structure.
+	for _, name := range []string{"Foo_P.pak", "Foo_P.utoc", "Foo_P.ucas"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("fake"), 0644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	result, err := Scan(root)
+	if err != nil {
+		t.Fatalf("Scan() error: %v", err)
+	}
+
+	// Pak/IoStore files must NOT pollute the generic binary list.
+	if len(result.Files) != 0 {
+		t.Errorf("Scan() Files = %d, want 0 (paks are tracked separately)", len(result.Files))
+	}
+
+	// Exactly one Unreal group, collapsed to a single representative target.
+	var unreal []TargetGroup
+	for _, g := range result.Groups {
+		if g.Kind == GroupUnreal {
+			unreal = append(unreal, g)
+		}
+	}
+	if len(unreal) != 1 {
+		t.Fatalf("got %d GroupUnreal groups, want exactly 1", len(unreal))
+	}
+	if len(result.Groups) != 1 {
+		t.Errorf("got %d total groups, want 1 (no standalone from paks)", len(result.Groups))
+	}
+	if got := len(unreal[0].Files); got != 1 {
+		t.Fatalf("Unreal group has %d files, want exactly 1 (single-target collapse)", got)
+	}
+	// Representative prefers the .pak container.
+	if rep := filepath.Base(unreal[0].Files[0]); rep != "Foo_P.pak" {
+		t.Errorf("representative = %q, want Foo_P.pak", rep)
 	}
 }
 

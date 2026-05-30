@@ -7,31 +7,25 @@ import (
 )
 
 // groupFiles classifies discovered files into logical groups.
-// Priority: Unity IL2CPP > Unity Mono > Standalone.
-func groupFiles(files []string) []TargetGroup {
+// Priority: Unreal > Unity IL2CPP > Unity Mono > Standalone.
+// pakFiles are Unreal pak/IoStore containers discovered separately; they never
+// enter the standalone fallback and collapse into a single Unreal target.
+func groupFiles(files []string, pakFiles []string) []TargetGroup {
 	var groups []TargetGroup
 	claimed := map[string]bool{}
+
+	// Pass 0: Unreal Engine. Collapse all pak/IoStore containers into a single
+	// representative target so the ue5 recipe runs exactly once for the whole
+	// pak set (it walks up from the target to the game root and finds all paks).
+	for _, g := range findUnreal(pakFiles) {
+		groups = append(groups, g)
+	}
 
 	// Pass 1: find Unity IL2CPP groups
 	for _, g := range findUnityIL2CPP(files) {
 		groups = append(groups, g)
 		for _, f := range g.Files {
 			claimed[f] = true
-		}
-	}
-
-	// Pass 1.5: find Unreal Engine groups
-	for _, g := range findUnreal(files) {
-		var unclaimed []string
-		for _, f := range g.Files {
-			if !claimed[f] {
-				unclaimed = append(unclaimed, f)
-				claimed[f] = true
-			}
-		}
-		if len(unclaimed) > 0 {
-			g.Files = unclaimed
-			groups = append(groups, g)
 		}
 	}
 
@@ -139,13 +133,25 @@ func isUnder(path, dir string) bool {
 	return !strings.HasPrefix(rel, "..")
 }
 
-// findUnreal detects Unreal Engine game layouts.
+// findUnreal detects Unreal Engine game layouts from pak/IoStore containers.
 // Markers: .pak files in */Content/Paks/, .utoc/.ucas IoStore containers.
-func findUnreal(files []string) []TargetGroup {
+//
+// It collapses each detected pak set into a SINGLE representative target so the
+// ue5 recipe runs exactly once per game/mod (the recipe walks up from the
+// target to the game root and re-discovers every pak). The representative is
+// the largest pak file under the resolved root; if a game-root structure
+// (Content/ + Binaries|Engine) is found the representative still resolves up to
+// it via ue5's own walk. For a bare mod/paks folder the root is the paks dir
+// itself, so the paks are extracted in place.
+func findUnreal(pakFiles []string) []TargetGroup {
+	if len(pakFiles) == 0 {
+		return nil
+	}
+
 	pakDirs := map[string]bool{}
-	for _, f := range files {
+	for _, f := range pakFiles {
 		ext := strings.ToLower(filepath.Ext(f))
-		if ext == ".pak" || ext == ".utoc" {
+		if unrealExtensions[ext] {
 			pakDirs[filepath.Dir(f)] = true
 		}
 	}
@@ -153,31 +159,55 @@ func findUnreal(files []string) []TargetGroup {
 		return nil
 	}
 
-	roots := map[string]bool{}
-	for dir := range pakDirs {
-		root := findUnrealRoot(dir)
-		if root != "" {
-			roots[root] = true
+	// Resolve each pak dir to a game/mod root, then bucket the containers by root.
+	rootFiles := map[string][]string{}
+	for _, f := range pakFiles {
+		root := findUnrealRoot(filepath.Dir(f))
+		if root == "" {
+			root = filepath.Dir(f)
 		}
+		rootFiles[root] = append(rootFiles[root], f)
 	}
 
 	var groups []TargetGroup
-	for root := range roots {
-		var gf []string
-		for _, f := range files {
-			if isUnder(f, root) {
-				gf = append(gf, f)
-			}
+	for root, fs := range rootFiles {
+		rep := representativePak(fs)
+		if rep == "" {
+			continue
 		}
-		if len(gf) > 0 {
-			groups = append(groups, TargetGroup{
-				Kind:  GroupUnreal,
-				Root:  root,
-				Files: gf,
-			})
-		}
+		groups = append(groups, TargetGroup{
+			Kind:  GroupUnreal,
+			Root:  root,
+			Files: []string{rep}, // single target -> ue5 runs once
+		})
 	}
 	return groups
+}
+
+// representativePak picks one file to stand in for the whole pak set.
+// Prefers the largest .pak (the main container) so ue5 starts from a real pak;
+// falls back to the largest container of any pak/IoStore extension.
+func representativePak(files []string) string {
+	var bestPak, bestAny string
+	var bestPakSize, bestAnySize int64 = -1, -1
+	for _, f := range files {
+		var size int64
+		if info, err := os.Stat(f); err == nil {
+			size = info.Size()
+		}
+		if size > bestAnySize {
+			bestAnySize = size
+			bestAny = f
+		}
+		if strings.ToLower(filepath.Ext(f)) == ".pak" && size > bestPakSize {
+			bestPakSize = size
+			bestPak = f
+		}
+	}
+	if bestPak != "" {
+		return bestPak
+	}
+	return bestAny
 }
 
 // findUnrealRoot walks up from a directory containing .pak/.utoc files

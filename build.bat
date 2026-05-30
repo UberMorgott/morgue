@@ -35,11 +35,15 @@ echo.
 :: --- Step 1: Regenerate Wails bindings ---
 echo [1/4] Regenerating Wails bindings...
 if exist "%ROOT%frontend\bindings" rmdir /s /q "%ROOT%frontend\bindings"
+:: Must run from module root so ./... resolves to the Go packages
+pushd "%ROOT%"
 wails3 generate bindings -d "%TEMP%\morgue-bindings" ./...
 if errorlevel 1 (
     echo ERROR: bindings generation failed
+    popd
     exit /b 1
 )
+popd
 xcopy /e /i /q /y "%TEMP%\morgue-bindings" "%ROOT%frontend\bindings" >nul
 rmdir /s /q "%TEMP%\morgue-bindings"
 echo       Bindings OK
@@ -83,11 +87,14 @@ echo [4/4] Building morgue.exe...
 if not exist "%DIST%" mkdir "%DIST%"
 if exist "%DIST%\morgue.exe" del /f "%DIST%\morgue.exe"
 
+pushd "%ROOT%"
 go build -ldflags "-s -w -X main.Version=%VERSION% -X main.Commit=%COMMIT%" -o "%DIST%\morgue.exe" ./cmd/morgue
 if errorlevel 1 (
     echo ERROR: go build failed
+    popd
     exit /b 1
 )
+popd
 echo       Binary OK
 echo.
 

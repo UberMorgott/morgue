@@ -48,11 +48,18 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 		em.emitErr("scan", opts.Input, err)
 		return fmt.Errorf("scan: %w", err)
 	}
+	// Count target files across all groups. This includes Unreal pak groups,
+	// which are collapsed to a single representative file and are NOT part of
+	// scanResult.Files (so a paks-only dir still reports a non-zero total).
+	targetFiles := 0
+	for _, g := range scanResult.Groups {
+		targetFiles += len(g.Files)
+	}
 	em.send(PipelineEvent{
 		Phase:      "scan",
 		Target:     opts.Input,
-		Message:    fmt.Sprintf("Found %d files in %d groups", len(scanResult.Files), len(scanResult.Groups)),
-		FilesTotal: len(scanResult.Files),
+		Message:    fmt.Sprintf("Found %d files in %d groups", targetFiles, len(scanResult.Groups)),
+		FilesTotal: targetFiles,
 	})
 
 	var results []TargetResult
