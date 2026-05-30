@@ -134,10 +134,10 @@
             <span class="info-ready">{t(lang, 'tools.ready')}</span>
           {:else if state === 'running'}
             {#if currentTool === tool}
-              {@const isItemName = stepName && !stepName.startsWith('ghidra:')}
-              {@const ghidraLabel = stepName && stepName.startsWith('ghidra:') ? t(lang, stepName) : ''}
-              <span class="info-current font-mono">{isItemName ? stepName : (ghidraLabel || (currentTarget ? basename(currentTarget) : ''))}</span>
-              <span class="info-step">{counter && counter.count > 0 ? t(lang, 'execution.decompiling') : t(lang, 'execution.processing')}</span>
+              {@const isFnName = stepName && !stepName.startsWith('ghidra:')}
+              {@const isPhase = stepName && stepName.startsWith('ghidra:')}
+              <span class="info-current font-mono">{currentTarget ? basename(currentTarget) : ''}</span>
+              <span class="info-step font-mono">{isFnName ? stepName : isPhase ? t(lang, stepName) : t(lang, counter && counter.count > 0 ? 'execution.decompiling' : 'execution.processing')}</span>
             {:else}
               <span class="info-current font-mono">{currentTarget ? basename(currentTarget) : ''}</span>
             {/if}
@@ -209,6 +209,9 @@
     font-size: 0.72rem;
     color: var(--text-muted);
     letter-spacing: 0.3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .info-active {
