@@ -16,9 +16,10 @@
     type PipelinePhase,
   } from '../lib/pipeline';
 
-  let { lang = 'en' as Lang, inputPath = '', startupBusy = false, onselect, onbrowsefile, onbrowsedir, onclear }: {
+  let { lang = 'en' as Lang, inputPath = '', outputPath = '', startupBusy = false, onselect, onbrowsefile, onbrowsedir, onclear }: {
     lang?: Lang;
     inputPath?: string;
+    outputPath?: string;
     startupBusy?: boolean;
     onselect?: (detail: { path: string }) => void;
     onbrowsefile?: () => void;
@@ -218,7 +219,7 @@
         // Continue — pipeline will handle errors
       }
 
-      await PipelineService.Run(inputPath, '');
+      await PipelineService.Run(inputPath, outputPath);
 
     } catch (e: any) {
       const currentPhase = $pipelineState.phase;
