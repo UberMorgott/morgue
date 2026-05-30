@@ -248,42 +248,96 @@ var sourceExts = map[string]bool{
 	".c": true, ".h": true, ".cpp": true, ".cs": true,
 }
 
+// assetExts are the extracted-asset file extensions the UE index catalogs in
+// addition to source. These are binary game assets (not source), so their
+// "lines" count is meaningless and recorded as 0.
+var assetExts = map[string]bool{
+	".uasset": true, ".uexp": true, ".umap": true, ".ubulk": true,
+	".uptnl": true, ".ufont": true, ".bin": true, ".locres": true,
+}
+
 // buildIndex walks outDir, writes <outDir>/index.json listing every decompiled
 // source file (path relative to outDir, size) plus aggregate counts. If a
 // strings.txt exists at the root of outDir, its line count is recorded too.
 // Returns the populated index for the caller to log/report.
 func buildIndex(outDir string) (*outputIndex, error) {
+	return buildIndexWith(outDir, nil, sourceExts)
+}
+
+// buildUEIndex builds an index that catalogs BOTH decompiled source under
+// srcDir (if any) and extracted game assets under extractedDir (if any). The
+// index.json is written to outDir (= ctx.Output) so it sits alongside both
+// src/ and extracted/ rather than inside an empty src/. Source files keep their
+// line counts; binary assets record 0 lines. Paths are relative to outDir.
+func buildUEIndex(outDir, srcDir, extractedDir string) (*outputIndex, error) {
+	exts := map[string]bool{}
+	for e := range sourceExts {
+		exts[e] = true
+	}
+	for e := range assetExts {
+		exts[e] = true
+	}
+	var roots []string
+	if srcDir != "" {
+		roots = append(roots, srcDir)
+	}
+	if extractedDir != "" {
+		roots = append(roots, extractedDir)
+	}
+	return buildIndexWith(outDir, roots, exts)
+}
+
+// buildIndexWith is the shared implementation. It walks each root in roots
+// (defaulting to outDir itself when roots is empty), catalogs files whose
+// extension is in exts, writes <outDir>/index.json, and returns the index.
+// Line counts are only computed for source extensions; binary assets get 0.
+func buildIndexWith(outDir string, roots []string, exts map[string]bool) (*outputIndex, error) {
 	idx := &outputIndex{
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		Files:       []indexEntry{},
 	}
+	if len(roots) == 0 {
+		roots = []string{outDir}
+	}
 
-	filepath.WalkDir(outDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+	seen := map[string]bool{}
+	for _, root := range roots {
+		filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			ext := strings.ToLower(filepath.Ext(path))
+			if !exts[ext] {
+				return nil
+			}
+			rel, relErr := filepath.Rel(outDir, path)
+			if relErr != nil {
+				rel = path
+			}
+			rel = filepath.ToSlash(rel)
+			if seen[rel] {
+				return nil
+			}
+			seen[rel] = true
+			info, infoErr := d.Info()
+			if infoErr != nil {
+				return nil
+			}
+			lines := 0
+			if sourceExts[ext] {
+				lines = countLines(path)
+			}
+			idx.Files = append(idx.Files, indexEntry{
+				Path:  rel,
+				Size:  info.Size(),
+				Lines: lines,
+			})
+			idx.FileCount++
+			idx.TotalBytes += info.Size()
+			idx.TotalLines += lines
 			return nil
-		}
-		if !sourceExts[strings.ToLower(filepath.Ext(path))] {
-			return nil
-		}
-		info, infoErr := d.Info()
-		if infoErr != nil {
-			return nil
-		}
-		rel, relErr := filepath.Rel(outDir, path)
-		if relErr != nil {
-			rel = path
-		}
-		lines := countLines(path)
-		idx.Files = append(idx.Files, indexEntry{
-			Path:  filepath.ToSlash(rel),
-			Size:  info.Size(),
-			Lines: lines,
 		})
-		idx.FileCount++
-		idx.TotalBytes += info.Size()
-		idx.TotalLines += lines
-		return nil
-	})
+	}
 
 	// strings.txt may sit at the indexed dir root (legacy) or in its parent
 	// (ctx.Output), since recipes write it next to src/. Prefer the local one,

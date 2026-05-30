@@ -493,10 +493,11 @@ func (e *Engine) executeRecipe(
 	reconJSON, _ := json.MarshalIndent(reconResult, "", "  ")
 	os.WriteFile(filepath.Join(targetOutput, "recon.json"), reconJSON, 0644)
 
-	// Cleanup intermediates if configured and execution succeeded
+	// Cleanup intermediates if configured and execution succeeded.
+	// NOTE: original/ is intentionally NOT removed here — recipes always
+	// persist a single copy of the target binary for reproducibility, and
+	// keeping it consistent across all recipes is worth the small disk cost.
 	if execErr == nil && !e.cfg.KeepIntermediates {
-		// Remove bulky original binaries (already processed)
-		os.RemoveAll(filepath.Join(targetOutput, "original"))
 		// For IL2CPP: remove DummyDll (already decompiled to src/)
 		os.RemoveAll(filepath.Join(targetOutput, "metadata", "DummyDll"))
 		// Remove raw strings.txt (structured strings.json is kept)
@@ -627,8 +628,8 @@ func (e *Engine) executeRecipeWithFilter(
 		reconJSON, _ := json.MarshalIndent(reconResult, "", "  ")
 		os.WriteFile(filepath.Join(targetOutput, "recon.json"), reconJSON, 0644)
 
+		// original/ intentionally kept (see note in executeRecipe cleanup).
 		if execErr == nil && !e.cfg.KeepIntermediates {
-			os.RemoveAll(filepath.Join(targetOutput, "original"))
 			os.Remove(filepath.Join(targetOutput, "strings.txt"))
 		}
 

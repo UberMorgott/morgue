@@ -209,6 +209,102 @@ func TestBuildIndexEmptyDir(t *testing.T) {
 	}
 }
 
+// TestBuildUEIndexCatalogsAssets verifies the UE index catalogs BOTH decompiled
+// source under src/ and extracted game assets under extracted/, writes
+// index.json to the outDir root (not inside src/), records 0 lines for binary
+// assets, keeps line counts for source, and uses forward-slash relative paths.
+func TestBuildUEIndexCatalogsAssets(t *testing.T) {
+	out := t.TempDir()
+	srcDir := filepath.Join(out, "src")
+	extractedDir := filepath.Join(out, "extracted")
+	if err := os.MkdirAll(filepath.Join(srcDir, "deep"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(extractedDir, "Game", "Content"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	srcContent := []byte("void f(){}\n") // 1 newline
+	if err := os.WriteFile(filepath.Join(srcDir, "deep", "a.c"), srcContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+	assetContent := []byte("BINARYDATA")
+	if err := os.WriteFile(filepath.Join(extractedDir, "Game", "Content", "Mesh.uasset"), assetContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(extractedDir, "Game", "Content", "Mesh.uexp"), assetContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+	// A non-cataloged file that must be ignored.
+	if err := os.WriteFile(filepath.Join(extractedDir, "readme.md"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	idx, err := buildUEIndex(out, srcDir, extractedDir)
+	if err != nil {
+		t.Fatalf("buildUEIndex error: %v", err)
+	}
+
+	if idx.FileCount != 3 {
+		t.Errorf("FileCount = %d, want 3 (a.c + 2 assets, readme.md ignored)", idx.FileCount)
+	}
+	wantBytes := int64(len(srcContent) + 2*len(assetContent))
+	if idx.TotalBytes != wantBytes {
+		t.Errorf("TotalBytes = %d, want %d", idx.TotalBytes, wantBytes)
+	}
+	// Only the source file contributes lines; assets record 0.
+	if idx.TotalLines != 1 {
+		t.Errorf("TotalLines = %d, want 1 (only a.c)", idx.TotalLines)
+	}
+
+	byPath := map[string]indexEntry{}
+	for _, e := range idx.Files {
+		if strings.Contains(e.Path, "\\") {
+			t.Errorf("entry path %q contains a backslash", e.Path)
+		}
+		byPath[e.Path] = e
+	}
+	if e, ok := byPath["src/deep/a.c"]; !ok {
+		t.Errorf("missing src entry; got %+v", idx.Files)
+	} else if e.Lines != 1 {
+		t.Errorf("src a.c Lines = %d, want 1", e.Lines)
+	}
+	if e, ok := byPath["extracted/Game/Content/Mesh.uasset"]; !ok {
+		t.Errorf("missing .uasset entry; got %+v", idx.Files)
+	} else if e.Lines != 0 {
+		t.Errorf(".uasset Lines = %d, want 0 (binary asset)", e.Lines)
+	}
+	if _, ok := byPath["extracted/Game/Content/Mesh.uexp"]; !ok {
+		t.Errorf("missing .uexp entry; got %+v", idx.Files)
+	}
+
+	// index.json must be written at outDir root, not inside src/.
+	if _, statErr := os.Stat(filepath.Join(out, "index.json")); statErr != nil {
+		t.Errorf("index.json not written to outDir root: %v", statErr)
+	}
+}
+
+// TestBuildUEIndexExtractedOnly verifies a paks-only UE target (no src/) still
+// produces a non-empty index from extracted assets alone.
+func TestBuildUEIndexExtractedOnly(t *testing.T) {
+	out := t.TempDir()
+	extractedDir := filepath.Join(out, "extracted")
+	if err := os.MkdirAll(extractedDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(extractedDir, "Level.umap"), []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	idx, err := buildUEIndex(out, "", extractedDir)
+	if err != nil {
+		t.Fatalf("buildUEIndex error: %v", err)
+	}
+	if idx.FileCount != 1 {
+		t.Errorf("FileCount = %d, want 1 (.umap)", idx.FileCount)
+	}
+}
+
 // TestBuildIndexNonExistentDir documents buildIndex's real contract for a
 // non-existent srcDir: WalkDir's error short-circuits the walk callback (no
 // panic), so buildIndex returns an empty index with no error and still writes

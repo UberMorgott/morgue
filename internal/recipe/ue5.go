@@ -273,15 +273,33 @@ func (u *UE5) Execute(ctx *Context) error {
 		report(5, Running, 0, nil, "")
 		start := time.Now()
 		srcDir := filepath.Join(ctx.Output, "src")
-		if _, statErr := os.Stat(srcDir); statErr != nil {
-			log("No source to index — Ghidra produced no src/ output, skipping")
+		extractedDir := filepath.Join(ctx.Output, "extracted")
+		_, srcErr := os.Stat(srcDir)
+		_, extErr := os.Stat(extractedDir)
+		hasSrc := srcErr == nil
+		hasExtracted := extErr == nil
+		if !hasSrc && !hasExtracted {
+			log("Nothing to index — no src/ decompilation and no extracted/ assets, skipping")
 			report(5, Skipped, time.Since(start), nil, "")
-		} else if idx, err := buildIndex(srcDir); err != nil {
-			log(fmt.Sprintf("Build indexes failed: %v", err))
-			report(5, Failed, time.Since(start), err, "")
 		} else {
-			log(fmt.Sprintf("Indexed %d source files (%d bytes) -> index.json", idx.FileCount, idx.TotalBytes))
-			reportCount(5, time.Since(start), "", idx.FileCount, "files")
+			// Index both decompiled source and extracted game assets so an AI
+			// consumer can navigate paks-only UE targets (empty/absent src/).
+			// index.json is written to ctx.Output (alongside src/ and extracted/).
+			indexSrc := ""
+			if hasSrc {
+				indexSrc = srcDir
+			}
+			indexExtracted := ""
+			if hasExtracted {
+				indexExtracted = extractedDir
+			}
+			if idx, err := buildUEIndex(ctx.Output, indexSrc, indexExtracted); err != nil {
+				log(fmt.Sprintf("Build indexes failed: %v", err))
+				report(5, Failed, time.Since(start), err, "")
+			} else {
+				log(fmt.Sprintf("Indexed %d file(s) (%d bytes) [src+assets] -> index.json", idx.FileCount, idx.TotalBytes))
+				reportCount(5, time.Since(start), "", idx.FileCount, "files")
+			}
 		}
 	}
 

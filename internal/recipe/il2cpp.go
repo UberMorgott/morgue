@@ -96,29 +96,27 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		}
 	}
 
-	// Step 0: Copy originals (only when keeping intermediates)
+	// Step 0: Copy originals. Always persisted (a single copy of the target +
+	// metadata is cheap and valuable for reproducibility) — kept consistent
+	// across recipes.
 	var start time.Time
-	if ctx.Config.KeepIntermediates {
-		report(0, Running, 0, nil, "")
-		start = time.Now()
-		origDir := filepath.Join(ctx.Output, "original")
-		if err := os.MkdirAll(origDir, 0755); err != nil {
-			report(0, Failed, time.Since(start), err, "")
-			return err
-		}
-		if err := copyFile(ctx.Target, filepath.Join(origDir, filepath.Base(ctx.Target))); err != nil {
-			report(0, Failed, time.Since(start), err, "")
-			return err
-		}
-		if err := copyFile(metadataPath, filepath.Join(origDir, filepath.Base(metadataPath))); err != nil {
-			report(0, Failed, time.Since(start), err, "")
-			return err
-		}
-		log(fmt.Sprintf("Copied GameAssembly.dll and %s", filepath.Base(metadataPath)))
-		report(0, Success, time.Since(start), nil, "")
-	} else {
-		report(0, Skipped, 0, nil, "")
+	report(0, Running, 0, nil, "")
+	start = time.Now()
+	origDir := filepath.Join(ctx.Output, "original")
+	if err := os.MkdirAll(origDir, 0755); err != nil {
+		report(0, Failed, time.Since(start), err, "")
+		return err
 	}
+	if err := copyFile(ctx.Target, filepath.Join(origDir, filepath.Base(ctx.Target))); err != nil {
+		report(0, Failed, time.Since(start), err, "")
+		return err
+	}
+	if err := copyFile(metadataPath, filepath.Join(origDir, filepath.Base(metadataPath))); err != nil {
+		report(0, Failed, time.Since(start), err, "")
+		return err
+	}
+	log(fmt.Sprintf("Copied GameAssembly.dll and %s", filepath.Base(metadataPath)))
+	report(0, Success, time.Since(start), nil, "")
 
 	// Step 1: Extract metadata with Il2CppDumper
 	report(1, Running, 0, nil, "il2cppdumper")
