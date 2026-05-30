@@ -145,7 +145,7 @@ func (n *Native) Execute(ctx *Context) error {
 		}
 
 		srcDir := filepath.Join(ctx.Output, "src")
-		funcCount, err := runGhidra(ctx.Ctx, ghidraPath, ctx.Target, srcDir,
+		funcCount, err := runGhidra(ctx.Ctx, ghidraPath, resolveGhidraJava(ctx.Tools), ctx.Target, srcDir,
 			func(msg string) { logTool("ghidra", msg) },
 			func(name string, count int) {
 				if ctx.Progress != nil {

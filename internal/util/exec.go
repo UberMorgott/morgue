@@ -52,6 +52,13 @@ func RunCmdStreamingWithStdin(ctx context.Context, name string, args []string, d
 	return runCmdStreaming(ctx, name, args, dir, nil, stdin, onLine)
 }
 
+// RunCmdStreamingEnv is like RunCmdStreaming but with extra environment variables.
+// env is a list of "KEY=VALUE" strings appended to the current environment
+// (os.Environ()); later entries override earlier ones for the same key.
+func RunCmdStreamingEnv(ctx context.Context, env []string, name string, args []string, dir string, onLine func(line string)) (*CmdResult, error) {
+	return runCmdStreaming(ctx, name, args, dir, env, nil, onLine)
+}
+
 func runCmdStreaming(ctx context.Context, name string, args []string, dir string, env []string, stdin io.Reader, onLine func(line string)) (*CmdResult, error) {
 	if strings.HasSuffix(name, ".dll") {
 		args = append([]string{name}, args...)

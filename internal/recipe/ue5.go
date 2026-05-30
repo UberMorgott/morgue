@@ -232,7 +232,7 @@ func (u *UE5) Execute(ctx *Context) error {
 			} else {
 				log(fmt.Sprintf("Ghidra decompiling: %s", filepath.Base(nativeBin)))
 				srcDir := filepath.Join(ctx.Output, "src")
-				funcCount, runErr := runGhidra(ctx.Ctx, ghidraPath, nativeBin, srcDir,
+				funcCount, runErr := runGhidra(ctx.Ctx, ghidraPath, resolveGhidraJava(ctx.Tools), nativeBin, srcDir,
 					func(msg string) { log("[ghidra] " + msg) },
 					func(name string, count int) {
 						if ctx.Progress != nil {
