@@ -68,25 +68,23 @@ func (n *Native) Execute(ctx *Context) error {
 	runStrings := ctx.StepFilter == "" || ctx.StepFilter == "strings"
 	doGhidra := ctx.StepFilter == "" || ctx.StepFilter == "ghidra"
 
-	// Step 0: Copy original (only when keeping intermediates)
+	// Step 0: Copy original. Always persisted (a single copy of the target is
+	// cheap and valuable for reproducibility) — kept consistent across all
+	// recipes. Runs in the strings phase under batch mode.
 	var start time.Time
 	if runStrings {
-		if ctx.Config.KeepIntermediates {
-			report(0, Running, 0, nil, "")
-			start = time.Now()
-			origDir := filepath.Join(ctx.Output, "original")
-			if err := os.MkdirAll(origDir, 0755); err != nil {
-				report(0, Failed, time.Since(start), err, "")
-				return err
-			}
-			if err := copyFile(ctx.Target, filepath.Join(origDir, filepath.Base(ctx.Target))); err != nil {
-				report(0, Failed, time.Since(start), err, "")
-				return err
-			}
-			report(0, Success, time.Since(start), nil, "")
-		} else {
-			report(0, Skipped, 0, nil, "")
+		report(0, Running, 0, nil, "")
+		start = time.Now()
+		origDir := filepath.Join(ctx.Output, "original")
+		if err := os.MkdirAll(origDir, 0755); err != nil {
+			report(0, Failed, time.Since(start), err, "")
+			return err
 		}
+		if err := copyFile(ctx.Target, filepath.Join(origDir, filepath.Base(ctx.Target))); err != nil {
+			report(0, Failed, time.Since(start), err, "")
+			return err
+		}
+		report(0, Success, time.Since(start), nil, "")
 	}
 
 	// Step 1: Extract strings

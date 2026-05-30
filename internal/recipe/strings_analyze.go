@@ -25,7 +25,13 @@ type StringsAnalysis struct {
 }
 
 var (
-	reURL         = regexp.MustCompile(`(?i)^https?://|://`)
+	reURL = regexp.MustCompile(`(?i)^https?://|://`)
+	// reURLToken extracts a single URL token from a line. It stops at the first
+	// whitespace, quote, angle bracket, or closing bracket/paren. This matters
+	// for Go binaries whose read-only string table has no NUL separators, so
+	// adjacent strings glue together into one line — without bounding the token
+	// we would store a multi-string blob as one bogus URL.
+	reURLToken    = regexp.MustCompile(`(?i)https?://[^\s"'<>)\]}` + "`" + `]+`)
 	rePath        = regexp.MustCompile(`(?i)^[A-Z]:\\|[/\\][a-zA-Z0-9_.+-]+[/\\]`)
 	reError       = regexp.MustCompile(`(?i)(error|exception|fail|invalid|cannot|unable)`)
 	reConfigKV    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.]*\s*=\s*.+`)
@@ -75,9 +81,18 @@ func doAnalyzeStrings(stringsFile, outputFile string) error {
 
 		categorized := false
 
-		// URLs
+		// URLs — extract bounded URL token(s) rather than the whole (possibly
+		// glued) line. A line may contain multiple URLs (Go string-table glue);
+		// emit each separately. Fall back to the raw line only for the "://"
+		// scheme-relative case that reURLToken (http/https only) won't catch.
 		if reURL.MatchString(line) {
-			urlSet[line] = true
+			if toks := reURLToken.FindAllString(line, -1); len(toks) > 0 {
+				for _, u := range toks {
+					urlSet[strings.TrimRight(u, ".,;:")] = true
+				}
+			} else {
+				urlSet[line] = true
+			}
 			categorized = true
 		}
 
