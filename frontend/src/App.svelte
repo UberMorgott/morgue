@@ -16,6 +16,7 @@
 
   let currentPage = $state('home');
   let pipelineInputPath = $state('');
+  let pipelineOutputPath = $state('');
 
   let lang: Lang = $state($currentLang);
   // Keep lang in sync with store
@@ -79,6 +80,7 @@
                 if (!path) break;
                 resetPipeline();
                 pipelineInputPath = path;
+                pipelineOutputPath = cmd.output || '';
                 currentPage = 'home';
                 await tick();
                 apiRunSeq.update(n => n + 1);
@@ -139,6 +141,7 @@
 
   function handleFileSelected(detail: { path: string }) {
     pipelineInputPath = detail.path;
+    pipelineOutputPath = '';
   }
 
   async function handleBrowseFile() {
@@ -146,6 +149,7 @@
       const file = await ReconService.PickFile();
       if (file) {
         pipelineInputPath = file;
+        pipelineOutputPath = '';
       }
     } catch (e) {
       console.error('PickFile failed:', e);
@@ -157,6 +161,7 @@
       const dir = await ReconService.PickDirectory();
       if (dir) {
         pipelineInputPath = dir;
+        pipelineOutputPath = '';
       }
     } catch (e) {
       console.error('PickDirectory failed:', e);
@@ -165,6 +170,7 @@
 
   function handleClearFile() {
     pipelineInputPath = '';
+    pipelineOutputPath = '';
   }
 
   async function handleAppUpdate() {
@@ -186,7 +192,7 @@
     <Sidebar bind:currentPage {lang} />
     <div class="page-content">
       {#if currentPage === 'home'}
-        <HomePage {lang} inputPath={pipelineInputPath} startupBusy={$startupBusy} onselect={handleFileSelected} onbrowsefile={handleBrowseFile} onbrowsedir={handleBrowseDir} onclear={handleClearFile} />
+        <HomePage {lang} inputPath={pipelineInputPath} outputPath={pipelineOutputPath} startupBusy={$startupBusy} onselect={handleFileSelected} onbrowsefile={handleBrowseFile} onbrowsedir={handleBrowseDir} onclear={handleClearFile} />
       {:else if currentPage === 'tools'}
         <ToolsPage
           {lang}
