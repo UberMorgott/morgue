@@ -1,6 +1,7 @@
 package recipe
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,46 @@ import (
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/util"
 )
+
+// nameResolution is the structure written to <ctx.Output>/name_resolution.json
+// by the UE5 name-resolution step (F5). It surfaces the offline-recoverable
+// symbol stats (from F2's Ghidra symbols.json) plus .usmap detection. It does
+// NOT claim full address->UObject resolution (which needs runtime data).
+type nameResolution struct {
+	SymbolsSource string  `json:"symbols_source"`
+	Named         int     `json:"named"`
+	Total         int     `json:"total"`
+	NamedPct      float64 `json:"named_pct"`
+	ClassesCount  int     `json:"classes_count"`
+	USmapFound    bool    `json:"usmap_found"`
+	USmapPath     string  `json:"usmap_path"`
+}
+
+// findUsmap returns the path of the first .usmap mapping file found under any
+// of the given roots (bounded WalkDir, like findPakFiles). Empty roots and
+// missing dirs are skipped. Returns "" if none found.
+func findUsmap(roots ...string) string {
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		var found string
+		filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			if strings.ToLower(filepath.Ext(path)) == ".usmap" {
+				found = path
+				return filepath.SkipAll
+			}
+			return nil
+		})
+		if found != "" {
+			return found
+		}
+	}
+	return ""
+}
 
 // UE5 handles Unreal Engine 5 game analysis.
 type UE5 struct{}
@@ -253,6 +294,15 @@ func (u *UE5) Execute(ctx *Context) error {
 					report(3, Failed, time.Since(start), runErr, "ghidra")
 				} else {
 					reportCount(3, time.Since(start), "ghidra", funcCount, "functions")
+					// Split combined .c into per-function files + symbols.json
+					// (F1/F2). Guarded by the 'combined .c exists' check inside
+					// the helper; logged-not-fatal.
+					if res, splitErr := splitAndIndexDecompiledC(srcDir, nativeBin); splitErr != nil {
+						log(fmt.Sprintf("[ghidra] Function split failed (combined .c kept): %v", splitErr))
+					} else if res != nil {
+						log(fmt.Sprintf("[ghidra] Split %d functions (%d named, %.1f%%) -> functions/ + symbols.json",
+							res.FunctionCount, res.NamedCount, res.NamedPct))
+					}
 				}
 			}
 		}
@@ -265,8 +315,48 @@ func (u *UE5) Execute(ctx *Context) error {
 	} else {
 		report(4, Running, 0, nil, "")
 		start := time.Now()
-		log("Name resolution: stub (requires SDK dump output)")
-		report(4, Skipped, time.Since(start), nil, "")
+		// Offline name resolution (F5). True address->UObject-method resolution
+		// needs runtime SDK/RTTI data we do NOT produce offline. What we CAN do
+		// offline: surface the demangled symbol stats produced by F2's Ghidra
+		// pass (symbols.json) and detect any .usmap mapping file for future use.
+		srcDir := filepath.Join(ctx.Output, "src")
+		symbolsPath := filepath.Join(srcDir, "symbols.json")
+		usmapPath := findUsmap(gameRoot, filepath.Join(ctx.Output, "extracted"))
+
+		if !fileExists(symbolsPath) && usmapPath == "" {
+			log("Name resolution: no symbols.json and no .usmap found — skipping " +
+				"(full address->UObject resolution requires runtime data unavailable offline)")
+			report(4, Skipped, time.Since(start), nil, "")
+		} else {
+			nr := nameResolution{
+				USmapFound: usmapPath != "",
+				USmapPath:  filepath.ToSlash(usmapPath),
+			}
+			named := 0
+			if fileExists(symbolsPath) {
+				if data, rerr := os.ReadFile(symbolsPath); rerr == nil {
+					var sm symbolMap
+					if json.Unmarshal(data, &sm) == nil {
+						nr.SymbolsSource = "ghidra"
+						nr.Named = sm.Counts.Named
+						nr.Total = sm.Counts.Total
+						nr.NamedPct = sm.Counts.NamedPct
+						nr.ClassesCount = len(sm.Classes)
+						named = sm.Counts.Named
+						log(fmt.Sprintf("Applied %d demangled symbols (named_pct=%.1f%%, %d classes) from Ghidra",
+							sm.Counts.Named, sm.Counts.NamedPct, len(sm.Classes)))
+					}
+				}
+			}
+			if usmapPath != "" {
+				log(fmt.Sprintf("Found .usmap mapping file: %s (full parse out of scope for v1, recorded only)", usmapPath))
+			}
+			log("Note: full address->UObject method resolution requires runtime data unavailable offline")
+			if data, merr := json.MarshalIndent(&nr, "", "  "); merr == nil {
+				os.WriteFile(filepath.Join(ctx.Output, "name_resolution.json"), data, 0644)
+			}
+			reportCount(4, time.Since(start), "", named, "symbols")
+		}
 	}
 
 	// Step 5: Build search indexes

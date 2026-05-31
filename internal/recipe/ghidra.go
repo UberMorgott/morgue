@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -146,8 +147,8 @@ func runGhidra(
 	// JAVA_HOME = its grandparent (the JDK/JRE home, i.e. parent of bin/).
 	var ghidraEnv []string
 	if javaPath != "" {
-		javaBin := filepath.Dir(javaPath)      // <home>/bin
-		javaHome := filepath.Dir(javaBin)      // <home>
+		javaBin := filepath.Dir(javaPath) // <home>/bin
+		javaHome := filepath.Dir(javaBin) // <home>
 		ghidraEnv = append(ghidraEnv,
 			"JAVA_HOME="+javaHome,
 			"PATH="+javaBin+string(os.PathListSeparator)+os.Getenv("PATH"),
@@ -162,10 +163,7 @@ func runGhidra(
 	if os.Getenv("GHIDRA_HEADLESS_MAXMEM") == "" && os.Getenv("GHIDRA_MAXMEM") == "" {
 		if totalBytes := util.TotalPhysicalMemoryBytes(); totalBytes > 0 {
 			totalGB := int(totalBytes / (1024 * 1024 * 1024))
-			heapGB := totalGB * 70 / 100
-			if heapGB > totalGB-3 {
-				heapGB = totalGB - 3
-			}
+			heapGB := min(totalGB*70/100, totalGB-3)
 			if heapGB < 2 {
 				heapGB = 2
 			}
@@ -295,7 +293,7 @@ func runGhidra(
 	funcCount = 0
 	errCount := 0
 	if result != nil {
-		for _, line := range strings.Split(result.Stdout, "\n") {
+		for line := range strings.SplitSeq(result.Stdout, "\n") {
 			// n counts successfully scanned verbs; the script always prints both
 			// counts, but tolerate a truncated line by accepting n >= 1.
 			if n, _ := fmt.Sscanf(line, "Morgue: Decompiled %d functions, %d errors", &funcCount, &errCount); n >= 1 {
@@ -367,6 +365,20 @@ func buildUEIndex(outDir, srcDir, extractedDir string) (*outputIndex, error) {
 	if extractedDir != "" {
 		roots = append(roots, extractedDir)
 	}
+
+	// F4: emit Go-native .uasset semantics (assets_index.json + assets.ndjson)
+	// from the extracted package tree. Logged-not-fatal (like analyzeStrings):
+	// a parser hiccup must never fail the index build. Side-effect only — the
+	// outputIndex shape (asserted by ghidra_test.go) is untouched.
+	if extractedDir != "" {
+		if ai, err := buildAssetsIndex(outDir, extractedDir); err != nil {
+			log.Printf("uasset index: %v", err)
+		} else if ai != nil {
+			log.Printf("uasset index: parsed %d assets (%d failed), %d names -> assets_index.json",
+				ai.AssetsParsed, ai.AssetsFailed, ai.TotalNames)
+		}
+	}
+
 	return buildIndexWith(outDir, roots, exts)
 }
 
