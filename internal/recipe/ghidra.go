@@ -91,6 +91,8 @@ public class MorgueExport extends GhidraScript {
                 f.println();
                 errors++;
             }
+            // Flush periodically so a JVM OOM mid-run still leaves a usable partial .c
+            if ((count + errors) % 200 == 0) { f.flush(); }
         }
 
         f.println();
@@ -247,7 +249,22 @@ func runGhidra(
 	// Verify output file exists and is non-empty
 	info, statErr := os.Stat(outputFile)
 	if statErr != nil || info.Size() == 0 {
-		execErr := fmt.Errorf("ghidra produced no output at %s", outputFile)
+		// analyzeHeadless can exit 0 even when the postScript dies (e.g. a JVM
+		// OutOfMemoryError on a huge binary): import/analyze already succeeded,
+		// so the exit==0 check above passes. Surface the captured stderr so the
+		// real cause is visible instead of a bare "no output".
+		diag := ""
+		if result != nil && result.Stderr != "" {
+			s := result.Stderr
+			if len(s) > 1200 {
+				s = s[len(s)-1200:]
+				if i := strings.IndexByte(s, '\n'); i >= 0 {
+					s = s[i+1:]
+				}
+			}
+			diag = "; ghidra stderr (tail): " + s
+		}
+		execErr := fmt.Errorf("ghidra produced no output at %s%s", outputFile, diag)
 		log(execErr.Error())
 		return 0, execErr
 	}
