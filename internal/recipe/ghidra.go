@@ -155,6 +155,25 @@ func runGhidra(
 		log(fmt.Sprintf("Using Java at %s (JAVA_HOME=%s)", javaPath, javaHome))
 	}
 
+	// Ghidra's headless launcher forces a 2G heap, which OOMs on large binaries
+	// (a ~278MB binary needs tens of GB just for auto-analysis). When the user
+	// has not set a heap override, scale one to ~70% of physical RAM, leaving
+	// headroom for the OS and flooring at the 2G default.
+	if os.Getenv("GHIDRA_HEADLESS_MAXMEM") == "" && os.Getenv("GHIDRA_MAXMEM") == "" {
+		if totalBytes := util.TotalPhysicalMemoryBytes(); totalBytes > 0 {
+			totalGB := int(totalBytes / (1024 * 1024 * 1024))
+			heapGB := totalGB * 70 / 100
+			if heapGB > totalGB-3 {
+				heapGB = totalGB - 3
+			}
+			if heapGB < 2 {
+				heapGB = 2
+			}
+			ghidraEnv = append(ghidraEnv, fmt.Sprintf("GHIDRA_HEADLESS_MAXMEM=%dG", heapGB))
+			log(fmt.Sprintf("Ghidra heap set to %dG (of %dG physical RAM)", heapGB, totalGB))
+		}
+	}
+
 	// ghidraToolPath points to ghidraRun.bat; we need support/analyzeHeadless
 	ghidraDir := filepath.Dir(ghidraToolPath)
 	analyzeHeadless := filepath.Join(ghidraDir, "support", "analyzeHeadless")
