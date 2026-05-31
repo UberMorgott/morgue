@@ -162,6 +162,17 @@ func (n *Native) Execute(ctx *Context) error {
 			return err
 		}
 		reportCount(2, time.Since(start), "ghidra", funcCount, "functions")
+
+		// Split the combined .c into per-function files + emit functions_index.json
+		// + symbols.json (F1/F2). Additive, streaming; failure is logged-not-fatal
+		// so the working decompile path never regresses.
+		if res, splitErr := splitAndIndexDecompiledC(srcDir, ctx.Target); splitErr != nil {
+			logTool("ghidra", fmt.Sprintf("Function split failed (combined .c kept): %v", splitErr))
+		} else if res != nil {
+			logTool("ghidra", fmt.Sprintf("Split %d functions (%d named, %.1f%%) -> functions/ + symbols.json",
+				res.FunctionCount, res.NamedCount, res.NamedPct))
+			reportCount(2, time.Since(start), "ghidra", res.FunctionCount, "functions")
+		}
 	}
 
 	// Step 3: Build indexes

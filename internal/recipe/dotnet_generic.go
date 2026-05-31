@@ -206,7 +206,7 @@ func perTypeFallback(ctx context.Context, ilspyPath, target, srcDir string, log 
 		"-l", "cisde", "--disable-updatecheck", target,
 	}, "")
 	if listErr != nil || listResult == nil || listResult.ExitCode != 0 {
-		msg := fmt.Sprintf("per-type fallback: failed to list types")
+		msg := "per-type fallback: failed to list types"
 		if listResult != nil && listResult.Stderr != "" {
 			msg += "\n" + strings.TrimSpace(listResult.Stderr)
 		}
