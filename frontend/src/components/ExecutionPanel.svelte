@@ -43,6 +43,17 @@
 
   type ToolState = 'checking' | 'downloading' | 'installing' | 'ready' | 'running' | 'done';
 
+  // Show a row for every tool that participated: the planned tools plus any tool
+  // that emitted a counter but isn't in the planned list (e.g. cfxextract, which
+  // is built on demand for ConfuserEx embedded-assembly extraction).
+  let displayTools = $derived.by(() => {
+    const list = [...toolsNeeded];
+    for (const k of Object.keys(execCounters)) {
+      if (k && !list.includes(k)) list.push(k);
+    }
+    return list;
+  });
+
   let logEl: HTMLDivElement | null = $state(null);
 
   // Auto-scroll log
@@ -103,7 +114,7 @@
   <h3 class="panel-title">{panelIcon} {panelTitle}</h3>
 
   <div class="tool-grid">
-    {#each toolsNeeded as tool (tool)}
+    {#each displayTools as tool (tool)}
       {@const state = getToolState(tool)}
       {@const counter = execCounters[tool]}
       {@const ringValue =

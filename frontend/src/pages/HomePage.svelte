@@ -5,7 +5,7 @@
   import PipelineHistory from '../components/PipelineHistory.svelte';
   import { t, type Lang } from '../lib/i18n';
   import { PipelineService, ToolsService } from '../lib/api';
-  import { apiRunSeq } from '../lib/stores';
+  import { apiRunSeq, lastRunPath, lastApiRunSeq } from '../lib/stores';
 
   import {
     pipelineState,
@@ -26,8 +26,6 @@
     onbrowsedir?: () => void;
     onclear?: () => void;
   } = $props();
-
-  let lastProcessedPath = $state('');
 
   // Accumulating panel: once a section is shown, it stays visible for the run
   // Restore visibility from current phase (survives tab switches)
@@ -104,25 +102,26 @@
 
   // Clear guard when inputPath is reset
   $effect(() => {
-    if (!inputPath) lastProcessedPath = '';
+    if (!inputPath) $lastRunPath = '';
   });
 
-  // Auto-start pipeline when inputPath changes
+  // Auto-start pipeline when inputPath changes. Guard persists in a store so
+  // navigating away from Home and back does NOT re-trigger the run.
   $effect(() => {
-    if (inputPath && inputPath !== lastProcessedPath && !running && !startupBusy && phase === 'idle') {
-      lastProcessedPath = inputPath;
+    if (inputPath && inputPath !== $lastRunPath && !running && !startupBusy && phase === 'idle') {
+      $lastRunPath = inputPath;
       runPipeline();
     }
   });
 
-  // API run signal
-  let prevApiRunSeq = 0;
+  // API run signal. lastApiRunSeq persists in a store so a remount (returning
+  // to Home) does not re-fire an already-processed run command.
   $effect(() => {
-    if ($apiRunSeq > prevApiRunSeq) {
-      prevApiRunSeq = $apiRunSeq;
+    if ($apiRunSeq > $lastApiRunSeq) {
+      $lastApiRunSeq = $apiRunSeq;
       if (inputPath) {
         resetSections();
-        lastProcessedPath = inputPath;
+        $lastRunPath = inputPath;
         runPipeline();
       }
     }
@@ -162,7 +161,7 @@
   function handleClear() {
     resetPipeline();
     resetSections();
-    lastProcessedPath = '';
+    $lastRunPath = '';
     if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
     elapsed = '';
     onclear?.();
@@ -194,7 +193,7 @@
       try {
         const status = await PipelineService.GetStatus();
         if (status && status.running) {
-          lastProcessedPath = inputPath;
+          $lastRunPath = inputPath;
         }
       } catch (e) { console.error('pipeline status check failed:', e); }
     }
