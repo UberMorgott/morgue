@@ -135,10 +135,20 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 	}
 
 	// Emit ONE aggregated tools event with all unique tools in execution order.
+	// A recipe may expose DisplayTools() to list tools it runs that are not
+	// downloadable RequiredTools (e.g. the built-on-demand cfxextract), so the
+	// UI shows every participating tool up front instead of popping one in
+	// mid-run. Downloads still use RequiredTools only (see ensureTools).
 	allToolsSeen := map[string]bool{}
 	var allTools []string
 	for _, t := range tasks {
-		for _, name := range t.recipe.RequiredTools() {
+		toolsForDisplay := t.recipe.RequiredTools()
+		if dp, ok := t.recipe.(interface{ DisplayTools() []string }); ok {
+			if dt := dp.DisplayTools(); len(dt) > 0 {
+				toolsForDisplay = dt
+			}
+		}
+		for _, name := range toolsForDisplay {
 			if !allToolsSeen[name] {
 				allToolsSeen[name] = true
 				allTools = append(allTools, name)

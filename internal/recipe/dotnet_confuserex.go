@@ -51,6 +51,14 @@ func (d *DotnetConfuserEx) RequiredTools() []string {
 	return []string{"ilspycmd", "strings", "de4dot-cex"}
 }
 
+// DisplayTools lists the tools this recipe runs, in execution order, for the UI.
+// Includes cfxextract (built on demand, not a downloadable RequiredTool) so the
+// panel shows all participating tools from the start rather than adding one
+// mid-run. de4dot-cex runs twice (steps 1-2) but is shown once.
+func (d *DotnetConfuserEx) DisplayTools() []string {
+	return []string{"de4dot-cex", "strings", "cfxextract", "ilspycmd"}
+}
+
 func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 	steps := d.Steps()
 	total := len(steps)
