@@ -111,9 +111,10 @@ func (s *PipelineService) Run(input, output string) error {
 	}()
 
 	opts := engine.Options{
-		Input:  input,
-		Output: output,
-		Pause:  pauseGate,
+		Input:        input,
+		Output:       output,
+		Pause:        pauseGate,
+		AllowDynamic: cfg.AllowDynamicExecution,
 	}
 
 	err = eng.Run(ctx, opts, events)
