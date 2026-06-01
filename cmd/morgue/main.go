@@ -206,7 +206,7 @@ func runCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringP("output", "o", "./decompiled", "Output directory")
+	cmd.Flags().StringP("output", "o", "", "Output directory (default: <binary dir>/output)")
 	cmd.Flags().Bool("watch", false, "Show TUI progress in stderr")
 	cmd.Flags().BoolP("quiet", "q", false, "Suppress stderr output, only emit JSON to stdout")
 	cmd.Flags().String("recipe", "", "Force specific recipe")
