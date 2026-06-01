@@ -66,6 +66,7 @@ type Result struct {
 	Packed             bool     `json:"packed,omitempty"`
 	EmbeddedSuspected  bool     `json:"embedded_suspected,omitempty"`
 	EmbeddedSignals    []string `json:"embedded_signals,omitempty"`
+	EmbeddedParts      []string `json:"embedded_parts,omitempty"`
 	Fallback           bool     `json:"fallback,omitempty"`
 }
 
