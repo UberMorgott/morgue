@@ -31,13 +31,15 @@ func (d *DotnetConfuserEx) Match(r *recon.Result) bool {
 }
 
 func (d *DotnetConfuserEx) Steps() []StepInfo {
+	// de4dot-cex performs the full ConfuserEx deobfuscation (anti-tamper, string
+	// decryption, control-flow, proxy-call removal, renaming), so the standalone
+	// NoFuserEx / AntiTamperKiller / proxy-remover passes are redundant and were
+	// dropped (they are also broken headless: NoFuserEx needs a real console and
+	// the AntiTamperKiller package ships without its runtimeconfig).
 	return []StepInfo{
 		{Name: "Copy original", Required: false},
-		{Name: "NoFuserEx fast-path", Required: false},
-		{Name: "Unpack", Required: false},
 		{Name: "String decrypt", Required: false},
 		{Name: "Control flow + rename", Required: false},
-		{Name: "Proxy removal", Required: false},
 		{Name: "Extract strings", Required: false},
 		{Name: "Extract embedded", Required: false},
 		{Name: "Decompile", Required: true},
@@ -46,7 +48,7 @@ func (d *DotnetConfuserEx) Steps() []StepInfo {
 }
 
 func (d *DotnetConfuserEx) RequiredTools() []string {
-	return []string{"ilspycmd", "strings", "de4dot-cex", "nofuserex", "confuserex-killer", "proxycall-remover"}
+	return []string{"ilspycmd", "strings", "de4dot-cex"}
 }
 
 func (d *DotnetConfuserEx) Execute(ctx *Context) error {
@@ -95,32 +97,8 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 	}
 	report(0, Success, time.Since(start), nil, "")
 
-	// Step 1: NoFuserEx fast-path (anti-tamper removal)
-	current = d.runToolStep(ctx, 1, current, interDir, "nofuserex", func(toolPath, input, output string) error {
-		r, err := util.RunCmd(ctx.Ctx, toolPath, []string{input, "-o", output}, "")
-		if err != nil {
-			return err
-		}
-		if r.ExitCode != 0 {
-			return fmt.Errorf("nofuserex exit %d: %s", r.ExitCode, r.Stderr)
-		}
-		return nil
-	}, report, logTool)
-
-	// Step 2: Unpack (resource/constant unpacking)
-	current = d.runToolStep(ctx, 2, current, interDir, "confuserex-killer", func(toolPath, input, output string) error {
-		r, err := util.RunCmd(ctx.Ctx, toolPath, []string{input, "-o", output}, "")
-		if err != nil {
-			return err
-		}
-		if r.ExitCode != 0 {
-			return fmt.Errorf("unpacker exit %d: %s", r.ExitCode, r.Stderr)
-		}
-		return nil
-	}, report, logTool)
-
-	// Step 3: String decrypt (de4dot-cex --strtyp delegate)
-	current = d.runToolStep(ctx, 3, current, interDir, "de4dot-cex", func(toolPath, input, output string) error {
+	// Step 1: String decrypt (de4dot-cex --strtyp delegate)
+	current = d.runToolStep(ctx, 1, current, interDir, "de4dot-cex", func(toolPath, input, output string) error {
 		r, err := util.RunCmd(ctx.Ctx, toolPath, []string{input, "--strtyp", "delegate", "-o", output}, "")
 		if err != nil {
 			return err
@@ -131,8 +109,8 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 		return nil
 	}, report, logTool)
 
-	// Step 4: Control flow + rename (de4dot-cex second pass)
-	current = d.runToolStep(ctx, 4, current, interDir, "de4dot-cex", func(toolPath, input, output string) error {
+	// Step 2: Control flow + rename (de4dot-cex second pass)
+	current = d.runToolStep(ctx, 2, current, interDir, "de4dot-cex", func(toolPath, input, output string) error {
 		r, err := util.RunCmd(ctx.Ctx, toolPath, []string{input, "--un-name", "!^<", "-o", output}, "")
 		if err != nil {
 			return err
@@ -143,25 +121,13 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 		return nil
 	}, report, logTool)
 
-	// Step 5: Proxy removal
-	current = d.runToolStep(ctx, 5, current, interDir, "proxycall-remover", func(toolPath, input, output string) error {
-		r, err := util.RunCmd(ctx.Ctx, toolPath, []string{input, "-o", output}, "")
-		if err != nil {
-			return err
-		}
-		if r.ExitCode != 0 {
-			return fmt.Errorf("proxycall-remover exit %d: %s", r.ExitCode, r.Stderr)
-		}
-		return nil
-	}, report, logTool)
-
-	// Step 6: Extract strings
-	report(6, Running, 0, nil, "strings")
+	// Step 3: Extract strings
+	report(3, Running, 0, nil, "strings")
 	start = time.Now()
 	stringsPath, err := ctx.Tools.Resolve("strings")
 	if err != nil {
 		logTool("strings", fmt.Sprintf("strings tool not available: %v", err))
-		report(6, Skipped, time.Since(start), nil, "strings")
+		report(3, Skipped, time.Since(start), nil, "strings")
 	} else {
 		stringsOut := filepath.Join(ctx.Output, "strings.txt")
 		strLineCount := 0
@@ -176,7 +142,7 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 			if time.Since(strLastProgress) >= time.Second {
 				if ctx.Progress != nil {
 					ctx.Progress <- StepProgress{
-						Step: 6, Total: total, Name: steps[6].Name,
+						Step: 3, Total: total, Name: steps[3].Name,
 						Tool: "strings", Status: Running,
 						Count: strLineCount, Unit: "strings",
 					}
@@ -190,10 +156,10 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 		// Analyze and structure strings
 		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
 		strCount := countLines(stringsOut)
-		reportCount(6, time.Since(start), "strings", strCount, "strings")
+		reportCount(3, time.Since(start), "strings", strCount, "strings")
 	}
 
-	// Step 7: Extract embedded ConfuserEx resources.
+	// Step 4: Extract embedded ConfuserEx resources.
 	//
 	// The embedded assemblies live in a custom-encrypted ConfuserEx resource and
 	// can only be decrypted by the target's own <Module> cctor at runtime. We load
@@ -201,27 +167,27 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 	// which can break anti-tamper/cctor), force its module cctor, and capture the
 	// decrypted bytes via a Harmony prefix on Assembly.Load. This EXECUTES TARGET
 	// CODE, so it is gated behind --allow-dynamic.
-	report(7, Running, 0, nil, "cfxextract")
+	report(4, Running, 0, nil, "cfxextract")
 	start = time.Now()
 	if !ctx.AllowDynamic {
 		logTool("cfxextract", "embedded extraction requires --allow-dynamic (executes target code); skipping")
-		report(7, Skipped, time.Since(start), nil, "cfxextract")
+		report(4, Skipped, time.Since(start), nil, "cfxextract")
 	} else {
 		count, err := d.extractEmbedded(ctx, logTool)
 		if err != nil {
 			logTool("cfxextract", fmt.Sprintf("embedded extraction skipped: %v", err))
-			report(7, Skipped, time.Since(start), nil, "cfxextract")
+			report(4, Skipped, time.Since(start), nil, "cfxextract")
 		} else {
-			reportCount(7, time.Since(start), "cfxextract", count, "assemblies")
+			reportCount(4, time.Since(start), "cfxextract", count, "assemblies")
 		}
 	}
 
-	// Step 8: Decompile
-	report(8, Running, 0, nil, "ilspycmd")
+	// Step 5: Decompile
+	report(5, Running, 0, nil, "ilspycmd")
 	start = time.Now()
 	ilspyPath, err := ctx.Tools.Resolve("ilspycmd")
 	if err != nil {
-		report(8, Failed, time.Since(start), err, "ilspycmd")
+		report(5, Failed, time.Since(start), err, "ilspycmd")
 		return fmt.Errorf("ilspycmd not available: %w", err)
 	}
 	srcDir := filepath.Join(ctx.Output, "src")
@@ -242,25 +208,25 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 			stderr = result.Stderr
 		}
 		execErr := fmt.Errorf("ilspycmd failed (exit %d): %s", exitCode, stderr)
-		report(8, Failed, time.Since(start), execErr, "ilspycmd")
+		report(5, Failed, time.Since(start), execErr, "ilspycmd")
 		return execErr
 	}
 	csCount := countFilesWithExt(srcDir, ".cs")
-	reportCount(8, time.Since(start), "ilspycmd", csCount, "types")
+	reportCount(5, time.Since(start), "ilspycmd", csCount, "types")
 
-	// Step 9: Build indexes
-	report(9, Running, 0, nil, "")
+	// Step 6: Build indexes
+	report(6, Running, 0, nil, "")
 	start = time.Now()
 	logTool("ilspycmd", "Building indexes for decompiled output")
 	if _, statErr := os.Stat(srcDir); statErr != nil {
 		logTool("ilspycmd", "No source to index — ilspycmd produced no src/ output, skipping")
-		report(9, Skipped, time.Since(start), nil, "")
+		report(6, Skipped, time.Since(start), nil, "")
 	} else if idx, err := buildIndex(srcDir); err != nil {
 		logTool("ilspycmd", fmt.Sprintf("Build indexes failed: %v", err))
-		report(9, Failed, time.Since(start), err, "")
+		report(6, Failed, time.Since(start), err, "")
 	} else {
 		logTool("ilspycmd", fmt.Sprintf("Indexed %d source files (%d bytes) -> index.json", idx.FileCount, idx.TotalBytes))
-		reportCount(9, time.Since(start), "", idx.FileCount, "files")
+		reportCount(6, time.Since(start), "", idx.FileCount, "files")
 	}
 
 	return nil
