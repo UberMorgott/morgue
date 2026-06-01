@@ -93,6 +93,65 @@ func TestDetectEmbeddedSignals(t *testing.T) {
 	}
 }
 
+func TestIsMangledName(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"a", true},        // single lowercase — renamer
+		{"ab", true},       // two lowercase — renamer
+		{"a`1", true},        // mangled generic (arity stripped before check)
+		{"", true}, // private-use-area unicode — renamer
+		{"Id", false},      // two chars but not all-lowercase
+		{"To", false},      // capitalized
+		{"GetUserAsync", false},
+		{"<Module>", false},
+		{"WebMapController", false},
+	}
+	for _, tt := range tests {
+		if got := isMangledName(tt.name); got != tt.want {
+			t.Errorf("isMangledName(%q) = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestMangledTypeRatio(t *testing.T) {
+	clean := []string{"<Module>", "UserService", "OrderController", "AuthHandler", "TokenStore"}
+	if ratio, total := mangledTypeRatio(clean); ratio >= mangledTypeThreshold {
+		t.Errorf("clean assembly flagged: ratio=%.2f total=%d", ratio, total)
+	}
+	obf := []string{"<Module>", "a", "b", "c", "aa", "ab", "ac", "ba", "UserService"}
+	if ratio, total := mangledTypeRatio(obf); ratio < mangledTypeThreshold {
+		t.Errorf("obfuscated assembly missed: ratio=%.2f total=%d", ratio, total)
+	}
+}
+
+func TestEnrichConfuserExFromMangling(t *testing.T) {
+	// Managed assembly with mostly-mangled type names and no name-string marker
+	// (ConfuserEx Resources protection strips its own name) must still be flagged.
+	r := &Result{Kind: Managed}
+	typeNames := make([]string, 0, 40)
+	typeNames = append(typeNames, "<Module>", "PublicApi")
+	for c := 'a'; c <= 'z'; c++ {
+		typeNames = append(typeNames, string(c), string(c)+"a")
+	}
+	EnrichWithHeuristics(r, nil, nil, nil, nil, typeNames)
+	if r.Obfuscator != "ConfuserEx" {
+		t.Errorf("Obfuscator = %q, want ConfuserEx", r.Obfuscator)
+	}
+
+	// Clean managed assembly must not be flagged.
+	clean := &Result{Kind: Managed}
+	cleanNames := []string{"<Module>", "UserService", "OrderController", "AuthHandler",
+		"TokenStore", "DbContext", "MapController", "ReportService", "BillingJob",
+		"SchemaUploader", "AccountManager", "SessionStore", "CacheLayer", "HttpClientFactory",
+		"ConfigLoader", "EventBus", "QueueWorker", "MetricsCollector", "HealthCheck", "Startup", "Program"}
+	EnrichWithHeuristics(clean, nil, nil, nil, nil, cleanNames)
+	if clean.Obfuscator != "" {
+		t.Errorf("clean Obfuscator = %q, want empty", clean.Obfuscator)
+	}
+}
+
 func TestDetectObfuscatorFeatures(t *testing.T) {
 	tests := []struct {
 		name    string

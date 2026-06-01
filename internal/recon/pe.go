@@ -103,8 +103,15 @@ func Classify(ctx context.Context, path string) (Result, error) {
 	// Extract printable strings for heuristic analysis
 	strs := extractStrings(fileData, 6)
 
+	// .NET TypeDef names for renamer-obfuscation detection. Present only for
+	// managed binaries with parsed CLR metadata.
+	var typeNames []string
+	if f.HasCLR {
+		typeNames = clrTypeNames(f)
+	}
+
 	// Enrich with heuristics
-	EnrichWithHeuristics(&r, sectionNames, importNames, strs, fileData)
+	EnrichWithHeuristics(&r, sectionNames, importNames, strs, fileData, typeNames)
 
 	return r, nil
 }
@@ -148,6 +155,41 @@ func classifyNativeCompiler(f *peparser.File) string {
 	}
 
 	return ""
+}
+
+// clrTypeNames returns the TypeDef (own type) names from a managed PE's metadata,
+// resolved from the #Strings heap. Used for renamer-obfuscation detection.
+func clrTypeNames(f *peparser.File) []string {
+	heap := f.CLR.MetadataStreams["#Strings"]
+	if len(heap) == 0 {
+		return nil
+	}
+	tbl := f.CLR.MetadataTables[peparser.TypeDef]
+	if tbl == nil {
+		return nil
+	}
+	rows, ok := tbl.Content.([]peparser.TypeDefTableRow)
+	if !ok {
+		return nil
+	}
+	names := make([]string, 0, len(rows))
+	for _, row := range rows {
+		names = append(names, heapStringAt(heap, row.TypeName))
+	}
+	return names
+}
+
+// heapStringAt reads a null-terminated UTF-8 string at the given offset into a
+// metadata heap. Returns "" if the offset is out of range.
+func heapStringAt(heap []byte, off uint32) string {
+	if int(off) >= len(heap) {
+		return ""
+	}
+	end := off
+	for int(end) < len(heap) && heap[end] != 0 {
+		end++
+	}
+	return string(heap[off:end])
 }
 
 // clrVersion extracts the CLR runtime version string.
