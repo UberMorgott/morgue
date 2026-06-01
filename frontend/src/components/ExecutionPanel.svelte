@@ -21,6 +21,8 @@
     downloadTotalBytes = 0,
     lastMessage = '',
     execCounters = {} as Record<string, { count: number; unit: string; countTotal: number }>,
+    toolStatus = {} as Record<string, 'success' | 'skipped' | 'failed'>,
+    toolOrder = {} as Record<string, number>,
   }: {
     lang: Lang;
     phase?: PipelinePhase;
@@ -39,19 +41,23 @@
     downloadTotalBytes?: number;
     lastMessage?: string;
     execCounters?: Record<string, { count: number; unit: string; countTotal: number }>;
+    toolStatus?: Record<string, 'success' | 'skipped' | 'failed'>;
+    toolOrder?: Record<string, number>;
   } = $props();
 
-  type ToolState = 'checking' | 'downloading' | 'installing' | 'ready' | 'running' | 'done';
+  type ToolState = 'checking' | 'downloading' | 'installing' | 'ready' | 'running' | 'done' | 'skipped' | 'failed';
 
   // Show a row for every tool that participated: the planned tools plus any tool
-  // that emitted a counter but isn't in the planned list (e.g. cfxextract, which
-  // is built on demand for ConfuserEx embedded-assembly extraction).
+  // that emitted a counter or a final status but isn't in the planned list
+  // (e.g. cfxextract, built on demand for ConfuserEx embedded-assembly extraction).
   let displayTools = $derived.by(() => {
     const list = [...toolsNeeded];
-    for (const k of Object.keys(execCounters)) {
+    for (const k of [...Object.keys(execCounters), ...Object.keys(toolStatus)]) {
       if (k && !list.includes(k)) list.push(k);
     }
-    return list;
+    // Order by the step a tool first ran at, so the list matches execution order
+    // (RequiredTools order does not). Tools not yet seen keep their tail position.
+    return list.sort((a, b) => (toolOrder[a] ?? 999) - (toolOrder[b] ?? 999));
   });
 
   let logEl: HTMLDivElement | null = $state(null);
@@ -78,6 +84,11 @@
   function getToolState(tool: string): ToolState {
     // Active tool = running
     if (currentTool === tool) return 'running';
+    // Final outcome from the backend wins over the implicit "ready" fallback.
+    const outcome = toolStatus[tool];
+    if (outcome === 'failed') return 'failed';
+    if (outcome === 'skipped') return 'skipped';
+    if (outcome === 'success') return 'done';
     // Tool with counter data = done (counter only goes up via accumulation)
     if (tool in execCounters) return 'done';
 
@@ -118,17 +129,20 @@
       {@const state = getToolState(tool)}
       {@const counter = execCounters[tool]}
       {@const ringValue =
-        state === 'done' ? 100
-        : state === 'ready' ? 100
+        state === 'done' || state === 'ready' || state === 'failed' || state === 'skipped' ? 100
         : state === 'running' && counter && counter.countTotal > 0
           ? Math.round((counter.count / counter.countTotal) * 100)
           : state === 'downloading' ? downloadProgress
         : -1}
       {@const ringVariant =
-        state === 'done' ? 'success' : state === 'ready' ? 'accent' : 'accent'}
+        state === 'done' ? 'success'
+        : state === 'failed' ? 'error'
+        : 'accent'}
       {@const ringLabel =
         state === 'done' ? '✓'
         : state === 'ready' ? '✓'
+        : state === 'failed' ? '✕'
+        : state === 'skipped' ? '–'
         : ringValue >= 0 ? `${ringValue}%`
         : ''}
       {@const dimmed = state === 'checking'}
@@ -154,6 +168,10 @@
             {/if}
           {:else if state === 'done'}
             <span class="info-done">{t(lang, 'execution.done')}</span>
+          {:else if state === 'skipped'}
+            <span class="info-muted">{t(lang, 'execution.skipped')}</span>
+          {:else if state === 'failed'}
+            <span class="info-failed">{t(lang, 'execution.failed')}</span>
           {/if}
         </span>
         <span class="tool-counter">
@@ -249,6 +267,12 @@
   .info-done {
     font-size: 0.82rem;
     color: var(--success);
+    font-weight: 500;
+  }
+
+  .info-failed {
+    font-size: 0.82rem;
+    color: var(--error);
     font-weight: 500;
   }
 

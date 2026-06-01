@@ -45,6 +45,8 @@ export interface PipelineState {
   downloadBytes: number;       // bytes downloaded so far
   downloadTotalBytes: number;  // total bytes to download
   execCounters: Record<string, { count: number; unit: string; countTotal: number; _completed?: number; _done?: boolean }>;  // per-tool progress counters
+  toolStatus: Record<string, 'success' | 'skipped' | 'failed'>;  // per-tool final outcome
+  toolOrder: Record<string, number>;  // per-tool first step index, for display ordering
   currentTool: string;  // tool currently executing
 }
 
@@ -81,6 +83,8 @@ const initial: PipelineState = {
   downloadBytes: 0,
   downloadTotalBytes: 0,
   execCounters: {},
+  toolStatus: {},
+  toolOrder: {},
   currentTool: '',
 };
 
@@ -129,6 +133,8 @@ export function startPipeline(inputPath: string) {
     downloadBytes: 0,
     downloadTotalBytes: 0,
     execCounters: {},
+  toolStatus: {},
+  toolOrder: {},
     currentTool: '',
   }));
 }
@@ -322,6 +328,15 @@ export function updateFromEvent(data: any) {
       // Update execCounters from StepProgress events
       const stepTool = p.Tool || d.Tool || '';
 
+      // Record the first step index each tool appears at, so the UI can list
+      // tools in execution order instead of the recipe's RequiredTools order.
+      if (stepTool && typeof p.Step === 'number') {
+        const prevOrder = next.toolOrder[stepTool] ?? s.toolOrder[stepTool];
+        if (prevOrder === undefined || p.Step < prevOrder) {
+          next.toolOrder = { ...(next.toolOrder || s.toolOrder), [stepTool]: p.Step };
+        }
+      }
+
       // Running: show progress for active tool (accept Count=0 for phase indicators like "analyzing")
       if (stepTool && p.Status === 'Running' && p.Unit) {
         if (stepTool === next.currentTool || stepTool === s.currentTool || !s.execCounters[stepTool]) {
@@ -338,13 +353,22 @@ export function updateFromEvent(data: any) {
       // Completion: update counter (shown when tool is not active)
       if (stepTool && (p.Status === 'Success' || p.Status === 'Skipped' || p.Status === 'Failed')) {
         const prev = next.execCounters[stepTool] || s.execCounters[stepTool] || { count: 0, unit: '', countTotal: 0, _completed: 0 };
-        const completed = (prev._completed || 0) + (p.Count > 0 ? p.Count : 0);
+        // Sizes (KB) are absolute and replace; item counts accumulate. This keeps
+        // a tool that runs across multiple steps (e.g. de4dot) from summing sizes.
+        const isSize = (p.Unit || prev.unit) === 'KB';
+        const completed = isSize
+          ? (p.Count > 0 ? p.Count : (prev._completed || 0))
+          : (prev._completed || 0) + (p.Count > 0 ? p.Count : 0);
         next.execCounters = { ...next.execCounters, [stepTool]: {
           count: completed,
           unit: p.Unit || prev.unit || '',
           countTotal: 0,
           _completed: completed,
         }};
+        // Record the tool's final outcome so the UI can show skipped/failed
+        // instead of a misleading success checkmark.
+        const outcome = p.Status === 'Success' ? 'success' : p.Status === 'Skipped' ? 'skipped' : 'failed';
+        next.toolStatus = { ...(next.toolStatus || s.toolStatus), [stepTool]: outcome };
       }
     }
 
