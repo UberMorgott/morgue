@@ -171,6 +171,8 @@
           downloadTotalBytes={$pipelineState.downloadTotalBytes}
           lastMessage={$pipelineState.lastMessage}
           execCounters={$pipelineState.execCounters}
+          toolStatus={$pipelineState.toolStatus}
+          toolOrder={$pipelineState.toolOrder}
         />
       {/if}
     </div>

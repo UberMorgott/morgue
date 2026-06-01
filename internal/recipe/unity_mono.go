@@ -130,9 +130,10 @@ func (u *UnityMono) Execute(ctx *Context) error {
 	os.MkdirAll(srcDir, 0755)
 	ilspyArgs := []string{"-p", "-o", srcDir, ctx.Target}
 	if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
-		ilspyArgs = append(ilspyArgs, "--language-version", ctx.Config.CSharpLanguageVersion)
+		ilspyArgs = append(ilspyArgs, "--languageversion", ctx.Config.CSharpLanguageVersion)
 	}
-	result, err := util.RunCmd(ctx.Ctx, ilspyPath, ilspyArgs, "")
+	ilspyBin, ilspyRun := dotnetExec(ctx.Ctx, ilspyPath, ilspyArgs)
+	result, err := util.RunCmd(ctx.Ctx, ilspyBin, ilspyRun, "")
 	exitCode := -1
 	if result != nil {
 		exitCode = result.ExitCode
@@ -148,9 +149,10 @@ func (u *UnityMono) Execute(ctx *Context) error {
 		os.MkdirAll(srcDir, 0755)
 		retryArgs := []string{"-o", srcDir, ctx.Target}
 		if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
-			retryArgs = append(retryArgs, "--language-version", ctx.Config.CSharpLanguageVersion)
+			retryArgs = append(retryArgs, "--languageversion", ctx.Config.CSharpLanguageVersion)
 		}
-		result, err = util.RunCmd(ctx.Ctx, ilspyPath, retryArgs, "")
+		urb, ura := dotnetExec(ctx.Ctx, ilspyPath, retryArgs)
+		result, err = util.RunCmd(ctx.Ctx, urb, ura, "")
 		exitCode = -1
 		if result != nil {
 			exitCode = result.ExitCode

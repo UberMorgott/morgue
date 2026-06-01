@@ -230,6 +230,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'execution.title': { en: 'Execution', ru: 'Выполнение' },
   'execution.step': { en: 'Step', ru: 'Шаг' },
   'execution.done': { en: 'Done', ru: 'Готово' },
+  'execution.skipped': { en: 'Skipped (not installed)', ru: 'Пропущен (не установлен)' },
+  'execution.failed': { en: 'Failed', ru: 'Ошибка' },
   'execution.waiting': { en: 'Waiting...', ru: 'Ожидание...' },
   'execution.items': { en: 'items', ru: 'элементов' },
   'execution.decompiling': { en: 'Decompiling', ru: 'Декомпиляция' },

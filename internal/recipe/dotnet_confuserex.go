@@ -228,9 +228,10 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 	os.MkdirAll(srcDir, 0755)
 	ilspyArgs := []string{"-p", "-o", srcDir, current}
 	if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
-		ilspyArgs = append(ilspyArgs, "--language-version", ctx.Config.CSharpLanguageVersion)
+		ilspyArgs = append(ilspyArgs, "--languageversion", ctx.Config.CSharpLanguageVersion)
 	}
-	result, runErr := util.RunCmd(ctx.Ctx, ilspyPath, ilspyArgs, "")
+	ilspyBin, ilspyRun := dotnetExec(ctx.Ctx, ilspyPath, ilspyArgs)
+	result, runErr := util.RunCmd(ctx.Ctx, ilspyBin, ilspyRun, "")
 	exitCode := -1
 	if result != nil {
 		exitCode = result.ExitCode
@@ -281,22 +282,50 @@ func (d *DotnetConfuserEx) runToolStep(
 		report(stepIdx, Skipped, time.Since(start), nil, toolName)
 		return current
 	}
+	// Resolve can hand back the expected install path even when the tool was
+	// never downloaded. Treat a missing binary as Skipped (not installed), not
+	// Failed — these are best-effort passes that fall back to the previous stage.
+	if _, statErr := os.Stat(toolPath); statErr != nil {
+		logTool(toolName, fmt.Sprintf("%s not installed — skipping", toolName))
+		report(stepIdx, Skipped, time.Since(start), nil, toolName)
+		return current
+	}
 
 	output := filepath.Join(interDir, fmt.Sprintf("step%d_%s%s", stepIdx, toolName, filepath.Ext(current)))
 	if err := run(toolPath, current, output); err != nil {
-		logTool(toolName, fmt.Sprintf("%s failed: %v — using previous stage", toolName, err))
-		report(stepIdx, Failed, time.Since(start), err, toolName)
+		// These are best-effort passes (anti-tamper, proxy removal, ...) that may
+		// not support every binary. A failure is non-fatal — fall back to the
+		// previous stage and report Skipped rather than a hard (red) Failed.
+		logTool(toolName, fmt.Sprintf("%s did not apply: %v — using previous stage", toolName, err))
+		report(stepIdx, Skipped, time.Since(start), nil, toolName)
 		return current // fallback: keep using previous stage
 	}
 
 	// Verify output exists
-	if _, err := os.Stat(output); err != nil {
+	fi, err := os.Stat(output)
+	if err != nil {
 		logTool(toolName, fmt.Sprintf("%s produced no output — using previous stage", toolName))
-		report(stepIdx, Failed, time.Since(start), err, toolName)
+		report(stepIdx, Skipped, time.Since(start), nil, toolName)
 		return current
 	}
 
-	report(stepIdx, Success, time.Since(start), nil, toolName)
+	// Report success with the output size (KB) as a stat. Deobfuscation passes
+	// have no natural item count, so this gives them a number next to their
+	// indicator instead of a bare checkmark.
+	if ctx.Progress != nil {
+		steps := d.Steps()
+		name := toolName
+		if stepIdx < len(steps) {
+			name = steps[stepIdx].Name
+		}
+		ctx.Progress <- StepProgress{
+			Step: stepIdx, Total: len(steps), Name: name,
+			Tool: toolName, Status: Success, Duration: time.Since(start),
+			Count: int(fi.Size() / 1024), Unit: "KB",
+		}
+	} else {
+		report(stepIdx, Success, time.Since(start), nil, toolName)
+	}
 	return output
 }
 

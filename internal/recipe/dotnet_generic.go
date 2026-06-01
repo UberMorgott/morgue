@@ -133,9 +133,10 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 	os.MkdirAll(srcDir, 0755)
 	ilspyArgs := []string{"-p", "-o", srcDir, ctx.Target}
 	if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
-		ilspyArgs = append(ilspyArgs, "--language-version", ctx.Config.CSharpLanguageVersion)
+		ilspyArgs = append(ilspyArgs, "--languageversion", ctx.Config.CSharpLanguageVersion)
 	}
-	result, err := util.RunCmd(ctx.Ctx, ilspyPath, ilspyArgs, "")
+	ilspyBin, ilspyRun := dotnetExec(ctx.Ctx, ilspyPath, ilspyArgs)
+	result, err := util.RunCmd(ctx.Ctx, ilspyBin, ilspyRun, "")
 	exitCode := -1
 	if result != nil {
 		exitCode = result.ExitCode
@@ -151,9 +152,10 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 		os.MkdirAll(srcDir, 0755)
 		retryArgs := []string{"-o", srcDir, ctx.Target}
 		if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
-			retryArgs = append(retryArgs, "--language-version", ctx.Config.CSharpLanguageVersion)
+			retryArgs = append(retryArgs, "--languageversion", ctx.Config.CSharpLanguageVersion)
 		}
-		result, err = util.RunCmd(ctx.Ctx, ilspyPath, retryArgs, "")
+		rb, ra := dotnetExec(ctx.Ctx, ilspyPath, retryArgs)
+		result, err = util.RunCmd(ctx.Ctx, rb, ra, "")
 		exitCode = -1
 		if result != nil {
 			exitCode = result.ExitCode
@@ -202,9 +204,8 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 // perTypeFallback enumerates all types in an assembly and decompiles them
 // one by one. Returns true if at least one type was decompiled successfully.
 func perTypeFallback(ctx context.Context, ilspyPath, target, srcDir string, log func(string)) bool {
-	listResult, listErr := util.RunCmd(ctx, ilspyPath, []string{
-		"-l", "cisde", "--disable-updatecheck", target,
-	}, "")
+	lb, la := dotnetExec(ctx, ilspyPath, []string{"-l", "cisde", "--disable-updatecheck", target})
+	listResult, listErr := util.RunCmd(ctx, lb, la, "")
 	if listErr != nil || listResult == nil || listResult.ExitCode != 0 {
 		msg := "per-type fallback: failed to list types"
 		if listResult != nil && listResult.Stderr != "" {
@@ -227,9 +228,8 @@ func perTypeFallback(ctx context.Context, ilspyPath, target, srcDir string, log 
 	succeeded := 0
 	failed := 0
 	for _, typeName := range types {
-		typeResult, _ := util.RunCmd(ctx, ilspyPath, []string{
-			"-t", typeName, "-o", srcDir, "--disable-updatecheck", target,
-		}, "")
+		tb, ta := dotnetExec(ctx, ilspyPath, []string{"-t", typeName, "-o", srcDir, "--disable-updatecheck", target})
+		typeResult, _ := util.RunCmd(ctx, tb, ta, "")
 		if typeResult != nil && typeResult.ExitCode == 0 {
 			succeeded++
 		} else {

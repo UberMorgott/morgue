@@ -188,7 +188,7 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 	// Build optional language-version args for ilspycmd
 	var langVerArgs []string
 	if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
-		langVerArgs = []string{"--language-version", ctx.Config.CSharpLanguageVersion}
+		langVerArgs = []string{"--languageversion", ctx.Config.CSharpLanguageVersion}
 	}
 
 	// Find all DLLs in DummyDll/, filter out system/engine libs
@@ -229,7 +229,8 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 
 		logTool("ilspycmd", fmt.Sprintf("Decompiling %s...", dllName))
 		decompArgs := append([]string{"-p", "-o", outDir, dll}, langVerArgs...)
-		res, runErr := util.RunCmd(ctx.Ctx, ilspyPath, decompArgs, "")
+		dBin, dRun := dotnetExec(ctx.Ctx, ilspyPath, decompArgs)
+		res, runErr := util.RunCmd(ctx.Ctx, dBin, dRun, "")
 
 		ec := -1
 		if res != nil {
@@ -241,7 +242,8 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 			os.RemoveAll(outDir)
 			os.MkdirAll(outDir, 0755)
 			retryArgs := append([]string{"-o", outDir, dll}, langVerArgs...)
-			res, runErr = util.RunCmd(ctx.Ctx, ilspyPath, retryArgs, "")
+			rBin, rRun := dotnetExec(ctx.Ctx, ilspyPath, retryArgs)
+			res, runErr = util.RunCmd(ctx.Ctx, rBin, rRun, "")
 			ec = -1
 			if res != nil {
 				ec = res.ExitCode
