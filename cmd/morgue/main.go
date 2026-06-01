@@ -191,15 +191,17 @@ func runCmd() *cobra.Command {
 			recipe, _ := cmd.Flags().GetString("recipe")
 			noSkip, _ := cmd.Flags().GetBool("no-skip")
 			exclude, _ := cmd.Flags().GetStringSlice("exclude")
+			allowDynamic, _ := cmd.Flags().GetBool("allow-dynamic")
 
 			return cli.Run(cli.RunOptions{
-				Target:  target,
-				Output:  output,
-				Recipe:  recipe,
-				NoSkip:  noSkip,
-				Exclude: exclude,
-				Watch:   watch,
-				Quiet:   quiet,
+				Target:       target,
+				Output:       output,
+				Recipe:       recipe,
+				NoSkip:       noSkip,
+				Exclude:      exclude,
+				Watch:        watch,
+				Quiet:        quiet,
+				AllowDynamic: allowDynamic,
 			})
 		},
 	}
@@ -210,6 +212,7 @@ func runCmd() *cobra.Command {
 	cmd.Flags().String("recipe", "", "Force specific recipe")
 	cmd.Flags().Bool("no-skip", false, "Disable auto skip-list")
 	cmd.Flags().StringSlice("exclude", nil, "Additional exclude patterns")
+	cmd.Flags().Bool("allow-dynamic", false, "Allow recipe steps that EXECUTE target code (e.g. ConfuserEx embedded-assembly extraction)")
 
 	return cmd
 }

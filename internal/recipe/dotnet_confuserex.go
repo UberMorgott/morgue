@@ -1,6 +1,7 @@
 package recipe
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -192,11 +193,28 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 		reportCount(6, time.Since(start), "strings", strCount, "strings")
 	}
 
-	// Step 7: Extract embedded (best-effort, scan for costura etc.)
-	report(7, Running, 0, nil, "")
+	// Step 7: Extract embedded ConfuserEx resources.
+	//
+	// The embedded assemblies live in a custom-encrypted ConfuserEx resource and
+	// can only be decrypted by the target's own <Module> cctor at runtime. We load
+	// the ORIGINAL target in-process (ctx.Target, NOT the de4dot-processed stage,
+	// which can break anti-tamper/cctor), force its module cctor, and capture the
+	// decrypted bytes via a Harmony prefix on Assembly.Load. This EXECUTES TARGET
+	// CODE, so it is gated behind --allow-dynamic.
+	report(7, Running, 0, nil, "cfxextract")
 	start = time.Now()
-	logTool("ilspycmd", "Embedded extraction: scanning for Costura.Fody resources")
-	report(7, Skipped, time.Since(start), nil, "") // placeholder — needs specialized logic
+	if !ctx.AllowDynamic {
+		logTool("cfxextract", "embedded extraction requires --allow-dynamic (executes target code); skipping")
+		report(7, Skipped, time.Since(start), nil, "cfxextract")
+	} else {
+		count, err := d.extractEmbedded(ctx, logTool)
+		if err != nil {
+			logTool("cfxextract", fmt.Sprintf("embedded extraction skipped: %v", err))
+			report(7, Skipped, time.Since(start), nil, "cfxextract")
+		} else {
+			reportCount(7, time.Since(start), "cfxextract", count, "assemblies")
+		}
+	}
 
 	// Step 8: Decompile
 	report(8, Running, 0, nil, "ilspycmd")
@@ -280,4 +298,151 @@ func (d *DotnetConfuserEx) runToolStep(
 
 	report(stepIdx, Success, time.Since(start), nil, toolName)
 	return output
+}
+
+// resolveDotnetSDK returns a path to a `dotnet` executable that has at least one
+// SDK installed. On this machine the PATH `dotnet` may be an x86 stub without an
+// SDK, so we probe `dotnet --list-sdks` and fall back to the canonical install at
+// C:\Program Files\dotnet\dotnet.exe. Returns "" if no SDK is found anywhere.
+func (d *DotnetConfuserEx) resolveDotnetSDK(ctx *Context) string {
+	candidates := []string{"dotnet"}
+	if pf := os.Getenv("ProgramFiles"); pf != "" {
+		candidates = append(candidates, filepath.Join(pf, "dotnet", "dotnet.exe"))
+	}
+	candidates = append(candidates, `C:\Program Files\dotnet\dotnet.exe`)
+
+	seen := map[string]bool{}
+	for _, c := range candidates {
+		if c != "dotnet" {
+			if _, err := os.Stat(c); err != nil {
+				continue
+			}
+		}
+		if seen[c] {
+			continue
+		}
+		seen[c] = true
+		r, err := util.RunCmd(ctx.Ctx, c, []string{"--list-sdks"}, "")
+		if err != nil || r == nil || r.ExitCode != 0 {
+			continue
+		}
+		if strings.TrimSpace(r.Stdout) != "" {
+			return c
+		}
+	}
+	return ""
+}
+
+// buildExtractor writes the embedded cfxextract source into a cache dir under
+// BaseDir/tools/cfxextract/ (if missing), builds it once with `dotnet build -c
+// Release`, and returns the path to the built cfxextract.dll. Subsequent runs
+// reuse the cached dll.
+func (d *DotnetConfuserEx) buildExtractor(ctx *Context, dotnet string, logTool func(string, string)) (string, error) {
+	cacheDir := util.ToolDir("cfxextract")
+	binDir := filepath.Join(cacheDir, "bin", "Release", "net8.0")
+	dll := filepath.Join(binDir, "cfxextract.dll")
+
+	// Cached build — reuse.
+	if _, err := os.Stat(dll); err == nil {
+		return dll, nil
+	}
+
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return "", fmt.Errorf("create cache dir: %w", err)
+	}
+
+	// Write embedded source (overwrite to keep it in sync with the binary).
+	for _, name := range []string{"extract.csproj", "Program.cs"} {
+		data, err := cfxExtractAssets.ReadFile("assets/cfxextract/" + name)
+		if err != nil {
+			return "", fmt.Errorf("read embedded %s: %w", name, err)
+		}
+		if err := os.WriteFile(filepath.Join(cacheDir, name), data, 0644); err != nil {
+			return "", fmt.Errorf("write %s: %w", name, err)
+		}
+	}
+
+	logTool("cfxextract", "Building embedded extractor (dotnet build -c Release, first run restores NuGet ~15s)...")
+	r, err := util.RunCmd(ctx.Ctx, dotnet, []string{"build", "-c", "Release", "extract.csproj"}, cacheDir)
+	if err != nil {
+		return "", fmt.Errorf("dotnet build: %w", err)
+	}
+	if r.ExitCode != 0 {
+		return "", fmt.Errorf("dotnet build exit %d: %s", r.ExitCode, strings.TrimSpace(r.Stderr+r.Stdout))
+	}
+	if _, err := os.Stat(dll); err != nil {
+		return "", fmt.Errorf("build produced no cfxextract.dll at %s", dll)
+	}
+	return dll, nil
+}
+
+// extractEmbedded builds (cached) and runs the cfxextract tool against the
+// ORIGINAL target, parses its stdout, writes a manifest, and returns the count
+// of extracted assemblies.
+func (d *DotnetConfuserEx) extractEmbedded(ctx *Context, logTool func(string, string)) (int, error) {
+	dotnet := d.resolveDotnetSDK(ctx)
+	if dotnet == "" {
+		return 0, fmt.Errorf("no .NET SDK found (checked PATH and C:\\Program Files\\dotnet); install the .NET 8 SDK")
+	}
+
+	dll, err := d.buildExtractor(ctx, dotnet, logTool)
+	if err != nil {
+		return 0, err
+	}
+
+	outDir := filepath.Join(ctx.Output, "extracted")
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		return 0, fmt.Errorf("create output dir: %w", err)
+	}
+
+	logTool("cfxextract", "==================== SECURITY WARNING ====================")
+	logTool("cfxextract", "Dynamic extraction EXECUTES the target's own code in-process")
+	logTool("cfxextract", "(forces its <Module> cctor to decrypt embedded assemblies).")
+	logTool("cfxextract", "Only run on binaries you trust. Enabled via --allow-dynamic.")
+	logTool("cfxextract", "=========================================================")
+
+	// CRITICAL: pass the ORIGINAL target (ctx.Target), not the de4dot-processed
+	// stage — de4dot can break the cctor/anti-tamper the decryptor relies on. The
+	// original also resolves its sibling dependencies from its own directory.
+	count := 0
+	var extracted []string
+	r, runErr := util.RunCmdStreaming(ctx.Ctx, dotnet, []string{dll, ctx.Target, outDir}, "", func(line string) {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "EXTRACTED:"):
+			rest := strings.TrimPrefix(line, "EXTRACTED:")
+			name := rest
+			if i := strings.Index(rest, " "); i >= 0 {
+				name = rest[:i]
+			}
+			extracted = append(extracted, name)
+			logTool("cfxextract", "Extracted "+name)
+		case strings.HasPrefix(line, "EXTRACT_COUNT:"):
+			fmt.Sscanf(strings.TrimPrefix(line, "EXTRACT_COUNT:"), "%d", &count)
+		case strings.HasPrefix(line, "cctor-warn:") || strings.HasPrefix(line, "parts-warn:") || strings.HasPrefix(line, "APPLICATION_PARTS:"):
+			logTool("cfxextract", line)
+		}
+	})
+	if runErr != nil {
+		return 0, fmt.Errorf("run extractor: %w", runErr)
+	}
+	if r != nil && r.ExitCode != 0 {
+		return 0, fmt.Errorf("extractor exit %d: %s", r.ExitCode, strings.TrimSpace(r.Stderr))
+	}
+	if count == 0 {
+		count = len(extracted)
+	}
+
+	manifest := map[string]any{
+		"type":            "confuserex_resources",
+		"host_assembly":   filepath.Base(ctx.Target),
+		"extracted_count": count,
+		"extracted":       extracted,
+	}
+	if data, err := json.MarshalIndent(manifest, "", "  "); err == nil {
+		os.WriteFile(filepath.Join(outDir, "embedded_manifest.json"), data, 0644)
+	}
+
+	logTool("cfxextract", fmt.Sprintf("Extracted %d embedded assemblies -> %s", count, outDir))
+	return count, nil
 }

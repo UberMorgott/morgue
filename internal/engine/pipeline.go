@@ -485,6 +485,8 @@ func (e *Engine) executeRecipe(
 		Ctx:      ctx,
 		Config:   &e.cfg,
 		Pause:    pauseChecker(opts.Pause),
+
+		AllowDynamic: opts.AllowDynamic,
 	}
 
 	execErr := rec.Execute(rctx)
@@ -611,6 +613,8 @@ func (e *Engine) executeRecipeWithFilter(
 		Config:     &e.cfg,
 		Pause:      pauseChecker(opts.Pause),
 		StepFilter: stepFilter,
+
+		AllowDynamic: opts.AllowDynamic,
 	}
 
 	execErr := rec.Execute(rctx)

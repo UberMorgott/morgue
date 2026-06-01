@@ -81,6 +81,10 @@ type Context struct {
 	// check this field and skip steps that don't match.
 	// Values: "strings", "ghidra", "" (all).
 	StepFilter string
+	// AllowDynamic opts into steps that execute target code (e.g. ConfuserEx
+	// embedded-assembly extraction via in-process cctor + Harmony capture).
+	// Off by default for safety.
+	AllowDynamic bool
 }
 
 // Recipe is the interface that all decompilation recipes must implement.
