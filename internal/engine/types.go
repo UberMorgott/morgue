@@ -139,4 +139,6 @@ type Options struct {
 	NoSkip  bool     // disable skip-list
 	Exclude []string // additional exclude patterns
 	Pause   *PauseGate
+	// AllowDynamic opts into recipe steps that execute target code.
+	AllowDynamic bool
 }

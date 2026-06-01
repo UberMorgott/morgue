@@ -22,6 +22,8 @@ type RunOptions struct {
 	Exclude []string
 	Watch   bool
 	Quiet   bool
+	// AllowDynamic opts into recipe steps that execute target code.
+	AllowDynamic bool
 }
 
 // Run executes the decompilation pipeline from CLI.
@@ -75,6 +77,8 @@ func Run(opts RunOptions) error {
 		Recipe:  opts.Recipe,
 		NoSkip:  opts.NoSkip,
 		Exclude: opts.Exclude,
+
+		AllowDynamic: opts.AllowDynamic,
 	}
 
 	if err := eng.Run(ctx, pipeOpts, events); err != nil {
