@@ -21,6 +21,28 @@
   let busy = $state(false);
   let runtimeBusy: Record<string, boolean> = $state({});
 
+  let filterInput = $state('');
+  let filterQuery = $state('');
+  let filterTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function onFilterInput(e: Event) {
+    filterInput = (e.target as HTMLInputElement).value;
+    if (filterTimer) clearTimeout(filterTimer);
+    filterTimer = setTimeout(() => {
+      filterQuery = filterInput.trim().toLowerCase();
+    }, 300);
+  }
+
+  let filteredTools = $derived(
+    filterQuery === ''
+      ? tools
+      : tools.filter(t =>
+          t.name.toLowerCase().includes(filterQuery) ||
+          (t.description || '').toLowerCase().includes(filterQuery) ||
+          (t.category || '').toLowerCase().includes(filterQuery)
+        )
+  );
+
   let cleanups: Array<() => void> = [];
   let pollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -93,6 +115,7 @@
   onDestroy(() => {
     cleanups.forEach(fn => fn());
     stopPolling();
+    if (filterTimer) clearTimeout(filterTimer);
   });
 
   async function loadRuntimes() {
@@ -258,6 +281,13 @@
   <div class="page-header">
     <h2 class="page-title">{t(lang, 'tools.title')}</h2>
     <div class="tools-actions">
+      <input
+        class="tools-filter"
+        type="text"
+        value={filterInput}
+        oninput={onFilterInput}
+        placeholder={t(lang, 'tools.filterPlaceholder')}
+        aria-label={t(lang, 'tools.filterPlaceholder')} />
       <button class="page-action-btn" onclick={forceCheckUpdates} disabled={busy || anyChecking}>{t(lang, 'tools.checkUpdates')}</button>
       {#if missingCount > 0}
         <button class="page-action-btn" onclick={downloadAll} disabled={busy}>{t(lang, 'tools.downloadAll')} ({missingCount})</button>
@@ -271,9 +301,11 @@
     <div class="tools-loading">{t(lang, 'tools.checking')}</div>
   {:else if tools.length === 0}
     <div class="tools-empty">{t(lang, 'tools.empty')}</div>
+  {:else if filteredTools.length === 0}
+    <div class="tools-empty">{t(lang, 'tools.noMatch')}</div>
   {:else}
     <div class="tools-list">
-      {#each tools as tool (tool.name)}
+      {#each filteredTools as tool (tool.name)}
         <ToolRow {lang} name={tool.name} installed={tool.installed} version={tool.version}
           latestVersion={tool.latestVersion} updateAvailable={tool.updateAvailable}
           category={tool.category} description={tool.description} {busy}
@@ -287,7 +319,8 @@
 </div>
 
 <style>
-  .tools-actions { display: flex; gap: 8px; }
+  .tools-actions { display: flex; gap: 8px; align-items: center; }
+  .tools-filter { width: 200px; }
   .tools-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
   .tools-loading { color: var(--text-muted); padding: 24px; text-align: center; }
   .tools-empty { color: var(--text-muted); padding: 24px; text-align: center; }

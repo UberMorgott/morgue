@@ -4,11 +4,17 @@ package scanner
 type GroupKind int
 
 const (
-	GroupStandalone  GroupKind = iota
+	// GroupStandalone is a single binary with no related companion files.
+	GroupStandalone GroupKind = iota
+	// GroupDotNetApp is a .NET application and its managed assemblies.
 	GroupDotNetApp
+	// GroupDelphiApp is a Delphi-compiled application.
 	GroupDelphiApp
+	// GroupUnityMono is a Unity game using the Mono scripting backend.
 	GroupUnityMono
+	// GroupUnityIL2CPP is a Unity game using the IL2CPP scripting backend.
 	GroupUnityIL2CPP
+	// GroupUnreal is an Unreal Engine application.
 	GroupUnreal
 )
 
@@ -21,6 +27,7 @@ var groupKindNames = [...]string{
 	"Unreal",
 }
 
+// String returns the human-readable name of the GroupKind.
 func (g GroupKind) String() string {
 	if int(g) < len(groupKindNames) {
 		return groupKindNames[g]
