@@ -76,6 +76,11 @@ type Context struct {
 	Ctx      context.Context
 	Config   *config.Config
 	Pause    PauseChecker
+	// Obfuscator is the recon-detected obfuscator name (e.g. "ConfuserEx" or
+	// the generic "Obfuscated"). Recipes that handle multiple obfuscators use
+	// it to pick tool flags — e.g. de4dot forced `-p crx` for ConfuserEx vs
+	// auto-detect for a generic match.
+	Obfuscator string
 	// StepFilter limits which steps a recipe executes in batch mode.
 	// Empty string means run all steps. Recipes that support batching
 	// check this field and skip steps that don't match.
