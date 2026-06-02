@@ -496,6 +496,7 @@ func (e *Engine) executeRecipe(
 		Config:   &e.cfg,
 		Pause:    pauseChecker(opts.Pause),
 
+		Obfuscator:   reconResult.Obfuscator,
 		AllowDynamic: opts.AllowDynamic,
 	}
 
@@ -624,6 +625,7 @@ func (e *Engine) executeRecipeWithFilter(
 		Pause:      pauseChecker(opts.Pause),
 		StepFilter: stepFilter,
 
+		Obfuscator:   reconResult.Obfuscator,
 		AllowDynamic: opts.AllowDynamic,
 	}
 
@@ -733,6 +735,11 @@ func resolveDeobfuscator(obfuscator string) string {
 	lower := strings.ToLower(obfuscator)
 	switch {
 	case strings.Contains(lower, "confuserex"), strings.Contains(lower, "confuser"):
+		return "de4dot"
+	case strings.Contains(lower, "obfuscated"):
+		// Generic "this is obfuscated, family unknown" — de4dot can still try its
+		// own auto-detection; if it can't identify the obfuscator it best-effort
+		// no-ops and the pipeline falls back to a plain decompile.
 		return "de4dot"
 	default:
 		return ""

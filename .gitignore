@@ -25,6 +25,7 @@ testbed/
 *.png
 !cmd/morgue/appicon.png
 bin/
+obj/
 runtimes/
 frontend/public/font-compare.html
 font-compare.html
