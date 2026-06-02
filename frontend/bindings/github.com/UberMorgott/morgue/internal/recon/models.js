@@ -100,6 +100,13 @@ export class Result {
         if (/** @type {any} */(false)) {
             /**
              * @member
+             * @type {string[] | undefined}
+             */
+            this["embedded_parts"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
              * @type {boolean | undefined}
              */
             this["fallback"] = undefined;
@@ -116,12 +123,16 @@ export class Result {
     static createFrom($$source = {}) {
         const $$createField7_0 = $$createType0;
         const $$createField10_0 = $$createType0;
+        const $$createField11_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("obfuscator_features" in $$parsedSource) {
             $$parsedSource["obfuscator_features"] = $$createField7_0($$parsedSource["obfuscator_features"]);
         }
         if ("embedded_signals" in $$parsedSource) {
             $$parsedSource["embedded_signals"] = $$createField10_0($$parsedSource["embedded_signals"]);
+        }
+        if ("embedded_parts" in $$parsedSource) {
+            $$parsedSource["embedded_parts"] = $$createField11_0($$parsedSource["embedded_parts"]);
         }
         return new Result(/** @type {Partial<Result>} */($$parsedSource));
     }

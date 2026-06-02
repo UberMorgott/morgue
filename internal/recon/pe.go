@@ -110,10 +110,28 @@ func Classify(ctx context.Context, path string) (Result, error) {
 		typeNames = clrTypeNames(f)
 	}
 
-	// Enrich with heuristics
+	// Enrich with heuristics (string markers, mangled-name ratio, embedded
+	// signals, generic-obfuscation layer).
 	EnrichWithHeuristics(&r, sectionNames, importNames, strs, fileData, typeNames)
 
+	// ConfuserEx sub-signal: refine a still-undetected (or only generically
+	// flagged) managed assembly to "ConfuserEx" when its string-decrypter stub
+	// is present. This catches marker-stripped, rename-free ConfuserEx builds
+	// that the name/string heuristics miss, and routes them to the precise
+	// de4dot `-p crx` recipe. Runs after EnrichWithHeuristics so a specific
+	// family detected from strings is not overwritten.
+	if f.HasCLR && !hasSpecificObfuscator(r.Obfuscator) && detectConfuserExStringDecrypter(f) {
+		r.Obfuscator = "ConfuserEx"
+	}
+
 	return r, nil
+}
+
+// hasSpecificObfuscator reports whether r.Obfuscator already names a concrete
+// obfuscator family (anything other than empty or the generic "Obfuscated"
+// placeholder set by the generic-obfuscation layer).
+func hasSpecificObfuscator(obf string) bool {
+	return obf != "" && obf != GenericObfuscated
 }
 
 // classifyByExtension provides a best-guess Kind based on file extension.
