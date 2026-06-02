@@ -6,6 +6,12 @@ import (
 	"unicode"
 )
 
+// GenericObfuscated is the family-agnostic Obfuscator value used when recon is
+// confident an assembly is obfuscated (e.g. heavy name mangling) but cannot
+// name the specific tool. It makes Result.NeedsDeobfuscation() true and routes
+// to de4dot's own auto-detection rather than a forced obfuscator preset.
+const GenericObfuscated = "Obfuscated"
+
 // isMangledName reports whether a metadata type name looks renamer-obfuscated:
 // non-ASCII / Private-Use-Area characters, or a 1-2 char all-lowercase token
 // (the sequential a, b, c, ..., aa, ab naming used by ConfuserEx-family renamers).
@@ -195,15 +201,17 @@ func EnrichWithHeuristics(r *Result, sectionNames, importNames, strs []string, f
 		r.EmbeddedSuspected = true
 	}
 
-	// Renamer-obfuscation detection from metadata name mangling. ConfuserEx's
-	// Resources protection strips its own name, so the string-based detection
-	// above misses it; the mangled TypeDef names are the reliable tell.
+	// Generic (family-agnostic) obfuscation layer: heavy metadata name mangling
+	// is a reliable "this is obfuscated" tell but does NOT identify the tool —
+	// the same a/b/aa/<unicode> renaming is used across the ConfuserEx-family
+	// renamers. So we flag it as generically obfuscated (GenericObfuscated)
+	// rather than guessing a family. A later, family-specific signal (e.g. the
+	// ConfuserEx string-decrypter probe in pe.go) may refine this to the exact
+	// obfuscator. GenericObfuscated still makes NeedsDeobfuscation() true and
+	// routes to de4dot's auto-detect path.
 	if r.Kind == Managed && r.Obfuscator == "" {
 		if ratio, total := mangledTypeRatio(typeNames); total >= minTypesForObfCheck && ratio >= mangledTypeThreshold {
-			// Heavy renaming plus resource packing (AssemblyResolve hook, not
-			// Costura) is the ConfuserEx fingerprint; de4dot-cex is the right
-			// pipeline for the whole renamer family regardless of exact tool.
-			r.Obfuscator = "ConfuserEx"
+			r.Obfuscator = GenericObfuscated
 		}
 	}
 

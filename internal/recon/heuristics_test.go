@@ -128,7 +128,11 @@ func TestMangledTypeRatio(t *testing.T) {
 
 func TestEnrichConfuserExFromMangling(t *testing.T) {
 	// Managed assembly with mostly-mangled type names and no name-string marker
-	// (ConfuserEx Resources protection strips its own name) must still be flagged.
+	// must be flagged as generically obfuscated. Name mangling proves obfuscation
+	// but does NOT identify the tool (the a/b/aa renaming is shared across the
+	// renamer family), so the family-agnostic GenericObfuscated value is expected;
+	// a family-specific signal (e.g. the ConfuserEx string-decrypter probe) refines
+	// it later.
 	r := &Result{Kind: Managed}
 	typeNames := make([]string, 0, 40)
 	typeNames = append(typeNames, "<Module>", "PublicApi")
@@ -136,8 +140,11 @@ func TestEnrichConfuserExFromMangling(t *testing.T) {
 		typeNames = append(typeNames, string(c), string(c)+"a")
 	}
 	EnrichWithHeuristics(r, nil, nil, nil, nil, typeNames)
-	if r.Obfuscator != "ConfuserEx" {
-		t.Errorf("Obfuscator = %q, want ConfuserEx", r.Obfuscator)
+	if r.Obfuscator != GenericObfuscated {
+		t.Errorf("Obfuscator = %q, want %q", r.Obfuscator, GenericObfuscated)
+	}
+	if !r.NeedsDeobfuscation() {
+		t.Errorf("NeedsDeobfuscation() = false, want true for mangled assembly")
 	}
 
 	// Clean managed assembly must not be flagged.
