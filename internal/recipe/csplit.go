@@ -25,6 +25,14 @@ type funcEntry struct {
 	File      string `json:"file"` // slash-normalized rel path of the split file from srcDir
 }
 
+// symbolEntry is one line of symbols.ndjson: a single address->name mapping.
+// Streaming these (rather than buffering a map[string]string) keeps memory O(1)
+// in the number of functions.
+type symbolEntry struct {
+	Address string `json:"address"` // normalized lowercase, 0x-prefixed
+	Name    string `json:"name"`
+}
+
 // symbolCounts aggregates named/anonymous symbol statistics.
 type symbolCounts struct {
 	Total     int     `json:"total"`
@@ -36,10 +44,22 @@ type symbolCounts struct {
 // symbolMap is the structure written to <srcDir>/symbols.json (F2). It is an
 // address->name map plus counts and the recovered C++ class list.
 type symbolMap struct {
-	GeneratedAt string            `json:"generated_at"`
-	Counts      symbolCounts      `json:"counts"`
-	Classes     []string          `json:"classes"`
-	Symbols     map[string]string `json:"symbols"`
+	GeneratedAt string       `json:"generated_at"`
+	Counts      symbolCounts `json:"counts"`
+	Classes     []string     `json:"classes"`
+
+	// SymbolsNDJSON points at the streamed full address->name catalog
+	// (symbols.ndjson, one {"address","name"} object per line). The map is NOT
+	// inlined here: at the real scale (millions of functions) an inlined map
+	// makes symbols.json a multi-GB blob that both MarshalIndent (write) and
+	// os.ReadFile (read) materialize whole, which is the OOM this split caused.
+	// symbols.json stays a small, safely-readable summary; consumers that need
+	// per-address names stream symbols.ndjson.
+	SymbolsNDJSON string `json:"symbols_ndjson,omitempty"`
+
+	// Symbols is only populated when reading legacy/small symbols.json files
+	// that still inline the map; it is never written by the current splitter.
+	Symbols map[string]string `json:"symbols,omitempty"`
 }
 
 // splitResult carries the streaming statistics produced by splitDecompiledC.
@@ -72,6 +92,10 @@ const (
 	// fall back to a bufio.Reader loop (see streamLines).
 	scannerInitBuf = 1 << 20
 	scannerMaxBuf  = 16 << 20
+	// maxRecordBytes caps the in-memory size of a single accumulated function
+	// record. A pathological record (tens/hundreds of MB under one header) is
+	// flushed early once it crosses this, so recBuilder can never grow unbounded.
+	maxRecordBytes = 64 << 20
 )
 
 var (
@@ -101,6 +125,18 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 	}
 	defer in.Close()
 
+	inInfo, err := in.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat combined .c: %w", err)
+	}
+
+	// Make the split idempotent: clear any prior functions/ tree first. The
+	// bucket writer only ever rolls to higher-numbered files, so without this a
+	// re-run (e.g. re-decompiling the same target) would APPEND new bucket files
+	// alongside stale ones rather than replacing them.
+	if err := os.RemoveAll(funcsDir); err != nil {
+		return nil, fmt.Errorf("clear functions dir: %w", err)
+	}
 	if err := os.MkdirAll(funcsDir, 0755); err != nil {
 		return nil, fmt.Errorf("mkdir functions: %w", err)
 	}
@@ -118,10 +154,26 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 		ndjsonFile.Close()
 	}()
 
+	// NDJSON sink for the full address->name symbol catalog (F2). Streamed for
+	// the same reason as functions.ndjson: an in-RAM map[string]string plus a
+	// final MarshalIndent is O(n) memory and OOMs on million-function binaries.
+	symNDJSONPath := filepath.Join(srcDir, "symbols.ndjson")
+	symFile, err := os.Create(symNDJSONPath)
+	if err != nil {
+		return nil, fmt.Errorf("create symbols.ndjson: %w", err)
+	}
+	symBuf := bufio.NewWriterSize(symFile, 64*1024)
+	symEnc := json.NewEncoder(symBuf)
+	defer func() {
+		symBuf.Flush()
+		symFile.Close()
+	}()
+
 	res := &splitResult{}
 
-	// Symbol accumulation (F2): single pass over the same records.
-	symbols := make(map[string]string)
+	// Class recovery (F2): a dedup set of C++ class owners. Bounded by the number
+	// of DISTINCT classes (engine classes — small relative to function count),
+	// not by function count, so it does not reproduce the per-function blowup.
 	classSet := make(map[string]bool)
 
 	bw := newBucketWriter(funcsDir)
@@ -134,6 +186,7 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 		recBuilder strings.Builder
 		recBytes   int64
 		recLines   int
+		recCapped  bool // true once the record hit maxRecordBytes (body truncated in RAM)
 		sigPending bool // next non-blank line is the signature
 		recName    string
 		recSigDone bool
@@ -181,8 +234,10 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 			res.sample = append(res.sample, entry)
 		}
 
-		// Symbol map + class recovery (F2).
-		symbols[addr0x] = name
+		// Symbol catalog + class recovery (F2): stream one entry, never buffer.
+		if encErr := symEnc.Encode(&symbolEntry{Address: addr0x, Name: name}); encErr != nil {
+			return encErr
+		}
 		if owner := cppClassOwner(name); owner != "" {
 			classSet[owner] = true
 		}
@@ -191,6 +246,7 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 		recBuilder.Reset()
 		recBytes = 0
 		recLines = 0
+		recCapped = false
 		recName = ""
 		recSigDone = false
 		sigPending = false
@@ -208,6 +264,7 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 		recBuilder.WriteByte('\n')
 		recBytes = int64(len(rawLine)) + 1
 		recLines = 1
+		recCapped = false
 		recName = ""
 		recSigDone = false
 		sigPending = true
@@ -215,8 +272,6 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 	}
 
 	appendLine := func(rawLine string) {
-		recBuilder.WriteString(rawLine)
-		recBuilder.WriteByte('\n')
 		recBytes += int64(len(rawLine)) + 1
 		recLines++
 		// The first non-blank line after the header is the signature.
@@ -226,6 +281,19 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 			sigPending = false
 		}
 		_ = recSigDone
+		// Cap the in-memory record body. recBytes/recLines keep counting (so the
+		// catalog reflects the true record size), but we stop growing recBuilder
+		// so a single pathological record can never exhaust RAM.
+		if recCapped {
+			return
+		}
+		if recBuilder.Len() >= maxRecordBytes {
+			recBuilder.WriteString("// ... [record body truncated by Morgue: exceeded in-memory cap] ...\n")
+			recCapped = true
+			return
+		}
+		recBuilder.WriteString(rawLine)
+		recBuilder.WriteByte('\n')
 	}
 
 	onLine := func(line string) error {
@@ -256,6 +324,17 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 	if err := ndjsonBuf.Flush(); err != nil {
 		return nil, err
 	}
+	if err := symBuf.Flush(); err != nil {
+		return nil, err
+	}
+
+	// Regression guard: a non-empty combined .c that yields zero functions means
+	// the Ghidra header convention drifted (reFuncHeader no longer matches). Fail
+	// loudly instead of silently writing an empty, useless index.
+	if res.FunctionCount == 0 && inInfo.Size() > 0 {
+		return nil, fmt.Errorf("split produced 0 functions from a non-empty combined .c (%d bytes): "+
+			"function-header format may have changed", inInfo.Size())
+	}
 
 	// Finalize counts.
 	res.NamedPct = pct(res.NamedCount, res.FunctionCount)
@@ -267,20 +346,22 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 	}
 	res.Classes = sortedKeys(classSet)
 
-	// F2: write symbols.json. MarshalIndent of the symbols map is O(n) memory;
-	// acceptable for v1 (streaming fallback noted in the spec as a risk).
+	// F2: write symbols.json as a SMALL summary (counts + classes + a pointer to
+	// the streamed symbols.ndjson). It deliberately does NOT inline the full
+	// address->name map, so both writing it (here) and reading it (ue5.go) stay
+	// O(#classes), never O(#functions).
 	sm := symbolMap{
-		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-		Counts:      res.Counts,
-		Classes:     res.Classes,
-		Symbols:     symbols,
+		GeneratedAt:   time.Now().UTC().Format(time.RFC3339),
+		Counts:        res.Counts,
+		Classes:       res.Classes,
+		SymbolsNDJSON: "symbols.ndjson",
 	}
-	if data, mErr := json.MarshalIndent(&sm, "", "  "); mErr == nil {
-		if wErr := os.WriteFile(filepath.Join(srcDir, "symbols.json"), data, 0644); wErr != nil {
-			return nil, fmt.Errorf("write symbols.json: %w", wErr)
-		}
-	} else {
+	data, mErr := json.MarshalIndent(&sm, "", "  ")
+	if mErr != nil {
 		return nil, fmt.Errorf("marshal symbols.json: %w", mErr)
+	}
+	if wErr := os.WriteFile(filepath.Join(srcDir, "symbols.json"), data, 0644); wErr != nil {
+		return nil, fmt.Errorf("write symbols.json: %w", wErr)
 	}
 
 	return res, nil

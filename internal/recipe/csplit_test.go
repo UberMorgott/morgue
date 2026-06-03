@@ -137,7 +137,9 @@ func TestSplitDecompiledC(t *testing.T) {
 		t.Errorf("functions_ndjson = %q", fi.FunctionsNDJSON)
 	}
 
-	// symbols.json: addresses present, classes recovered.
+	// symbols.json: a small summary (counts + classes + ndjson pointer). The full
+	// address->name map is streamed to symbols.ndjson, NOT inlined here (memory
+	// safety). The summary must NOT carry the giant map.
 	smData, err := os.ReadFile(filepath.Join(srcDir, "symbols.json"))
 	if err != nil {
 		t.Fatalf("read symbols.json: %v", err)
@@ -146,12 +148,39 @@ func TestSplitDecompiledC(t *testing.T) {
 	if err := json.Unmarshal(smData, &sm); err != nil {
 		t.Fatalf("symbols.json invalid: %v", err)
 	}
+	if len(sm.Symbols) != 0 {
+		t.Errorf("symbols.json must not inline the address map; got %d entries", len(sm.Symbols))
+	}
+	if sm.SymbolsNDJSON != "symbols.ndjson" {
+		t.Errorf("symbols.json symbols_ndjson = %q, want symbols.ndjson", sm.SymbolsNDJSON)
+	}
+
+	// symbols.ndjson: one {address,name} per line; addresses present, names right.
+	syms := map[string]string{}
+	sf, err := os.Open(filepath.Join(srcDir, "symbols.ndjson"))
+	if err != nil {
+		t.Fatalf("open symbols.ndjson: %v", err)
+	}
+	defer sf.Close()
+	ssc := bufio.NewScanner(sf)
+	ssc.Buffer(make([]byte, 0, 1<<20), 1<<20)
+	for ssc.Scan() {
+		if strings.TrimSpace(ssc.Text()) == "" {
+			continue
+		}
+		var se symbolEntry
+		if err := json.Unmarshal(ssc.Bytes(), &se); err != nil {
+			t.Errorf("symbols.ndjson line not valid symbolEntry: %v", err)
+			continue
+		}
+		syms[se.Address] = se.Name
+	}
 	for _, addr := range []string{"0x00401000", "0x00401100", "0x00408abc", "0x0050ffff"} {
-		if _, ok := sm.Symbols[addr]; !ok {
-			t.Errorf("symbols.json missing address %s (have %v)", addr, sm.Symbols)
+		if _, ok := syms[addr]; !ok {
+			t.Errorf("symbols.ndjson missing address %s (have %v)", addr, syms)
 		}
 	}
-	if got := sm.Symbols["0x00401000"]; got != "NamedFunc" {
+	if got := syms["0x00401000"]; got != "NamedFunc" {
 		t.Errorf("0x00401000 name = %q, want NamedFunc", got)
 	}
 	// Classes: A::B recovered; TArray<int> recovered (Add). FUN_ has no class.
