@@ -10,6 +10,7 @@ require (
 	github.com/cavaliergopher/grab/v3 v3.0.1
 	github.com/creativeprojects/go-selfupdate v1.5.2
 	github.com/google/go-github/v60 v60.0.0
+	github.com/klauspost/compress v1.18.6
 	github.com/saferwall/pe v1.6.5
 	github.com/spf13/cobra v1.10.2
 	github.com/wailsapp/go-webview2 v1.0.23
