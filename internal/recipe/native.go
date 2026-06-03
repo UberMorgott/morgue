@@ -188,6 +188,26 @@ func (n *Native) Execute(ctx *Context) error {
 		report(3, Failed, time.Since(start), err, "")
 	} else {
 		logTool("ghidra", fmt.Sprintf("Indexed %d source files (%d bytes) -> index.json", idx.FileCount, idx.TotalBytes))
+		// Phase B enrichment (parity with the UE5 recipe): offline name
+		// resolution + engine-class flagging + hookable export over the streamed
+		// indexes the split produced. All additive, streaming, logged-not-fatal
+		// so the working native decompile path never regresses.
+		if st, rerr := resolveNames(srcDir); rerr != nil {
+			logTool("ghidra", fmt.Sprintf("Name resolution skipped (non-fatal): %v", rerr))
+		} else if st.Resolved > 0 {
+			logTool("ghidra", fmt.Sprintf("Resolved %d anonymous functions from referenced symbol strings", st.Resolved))
+		}
+		if total, b, cerr := writeClassClassification(srcDir); cerr != nil {
+			logTool("ghidra", fmt.Sprintf("Class classification skipped (non-fatal): %v", cerr))
+		} else if total > 0 {
+			logTool("ghidra", fmt.Sprintf("Classified %d classes (%d boilerplate, %d game) -> indexes/classes.json",
+				total, b, total-b))
+		}
+		if n, herr := writeHookable(srcDir); herr != nil {
+			logTool("ghidra", fmt.Sprintf("Export hookable symbols skipped (non-fatal): %v", herr))
+		} else if n > 0 {
+			logTool("ghidra", fmt.Sprintf("Exported %d hookable functions -> indexes/hookable.json", n))
+		}
 		reportCount(3, time.Since(start), "", idx.FileCount, "files")
 	}
 

@@ -17,13 +17,14 @@ import (
 // symbol stats (from F2's Ghidra symbols.json) plus .usmap detection. It does
 // NOT claim full address->UObject resolution (which needs runtime data).
 type nameResolution struct {
-	SymbolsSource string  `json:"symbols_source"`
-	Named         int     `json:"named"`
-	Total         int     `json:"total"`
-	NamedPct      float64 `json:"named_pct"`
-	ClassesCount  int     `json:"classes_count"`
-	USmapFound    bool    `json:"usmap_found"`
-	USmapPath     string  `json:"usmap_path"`
+	SymbolsSource   string  `json:"symbols_source"`
+	Named           int     `json:"named"`
+	Total           int     `json:"total"`
+	NamedPct        float64 `json:"named_pct"`
+	ClassesCount    int     `json:"classes_count"`
+	ResolvedOffline int     `json:"resolved_offline"` // FUN_ renamed from referenced symbol strings (B3)
+	USmapFound      bool    `json:"usmap_found"`
+	USmapPath       string  `json:"usmap_path"`
 }
 
 // findUsmap returns the path of the first .usmap mapping file found under any
@@ -333,6 +334,19 @@ func (u *UE5) Execute(ctx *Context) error {
 				USmapPath:  filepath.ToSlash(usmapPath),
 			}
 			named := 0
+			// Offline string->symbol resolution (B3): conservatively rename
+			// anonymous FUN_ functions from the distinctive C++ identifiers they
+			// reference, and clean intrinsic noise from the call graph. Streaming
+			// + memory-safe; failure is logged-not-fatal so the step never
+			// regresses the working counts path.
+			if fileExists(symbolsPath) {
+				if st, rerr := resolveNames(srcDir); rerr != nil {
+					log(fmt.Sprintf("Offline name resolution skipped (non-fatal): %v", rerr))
+				} else if st.Resolved > 0 {
+					nr.ResolvedOffline = st.Resolved
+					log(fmt.Sprintf("Resolved %d anonymous functions from referenced symbol strings", st.Resolved))
+				}
+			}
 			if fileExists(symbolsPath) {
 				if data, rerr := os.ReadFile(symbolsPath); rerr == nil {
 					var sm symbolMap
@@ -351,7 +365,7 @@ func (u *UE5) Execute(ctx *Context) error {
 			if usmapPath != "" {
 				log(fmt.Sprintf("Found .usmap mapping file: %s (full parse out of scope for v1, recorded only)", usmapPath))
 			}
-			log("Note: full address->UObject method resolution requires runtime data unavailable offline")
+			log("Note: address->UObject / runtime-vtable resolution requires runtime (UE4SS) data — skipped")
 			if data, merr := json.MarshalIndent(&nr, "", "  "); merr == nil {
 				os.WriteFile(filepath.Join(ctx.Output, "name_resolution.json"), data, 0644)
 			}
@@ -392,20 +406,41 @@ func (u *UE5) Execute(ctx *Context) error {
 				report(5, Failed, time.Since(start), err, "")
 			} else {
 				log(fmt.Sprintf("Indexed %d file(s) (%d bytes) [src+assets] -> index.json", idx.FileCount, idx.TotalBytes))
+				// Engine-boilerplate cleanup (B4): tag recovered classes as engine
+				// boilerplate vs game-specific so navigation foregrounds game logic.
+				// Nothing is deleted — every class is recorded with a flag.
+				// Logged-not-fatal so the index build never regresses.
+				if hasSrc {
+					if total, b, cerr := writeClassClassification(indexSrc); cerr != nil {
+						log(fmt.Sprintf("Class classification skipped (non-fatal): %v", cerr))
+					} else if total > 0 {
+						log(fmt.Sprintf("Classified %d classes (%d boilerplate, %d game) -> indexes/classes.json",
+							total, b, total-b))
+					}
+				}
 				reportCount(5, time.Since(start), "", idx.FileCount, "files")
 			}
 		}
 	}
 
-	// Step 6: Export hookable symbols (stub)
+	// Step 6: Export hookable symbols (B4)
 	if ctx.Config != nil && !ctx.Config.UE5ExportHookable {
 		report(6, Skipped, 0, nil, "")
 		log("Export hookable symbols disabled in settings")
 	} else {
 		report(6, Running, 0, nil, "")
 		start := time.Now()
-		log("Export hookable symbols: stub")
-		report(6, Skipped, time.Since(start), nil, "")
+		srcDir := filepath.Join(ctx.Output, "src")
+		if !fileExists(filepath.Join(srcDir, "functions.ndjson")) {
+			log("Export hookable symbols: no functions.ndjson (Ghidra split not run) — skipping")
+			report(6, Skipped, time.Since(start), nil, "")
+		} else if n, herr := writeHookable(srcDir); herr != nil {
+			log(fmt.Sprintf("Export hookable symbols failed: %v", herr))
+			report(6, Failed, time.Since(start), herr, "")
+		} else {
+			log(fmt.Sprintf("Exported %d hookable functions (named/resolved, addr+name+signature) -> indexes/hookable.json", n))
+			reportCount(6, time.Since(start), "", n, "functions")
+		}
 	}
 
 	return nil
