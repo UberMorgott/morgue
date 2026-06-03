@@ -102,8 +102,8 @@ func sampleHeap(fn func()) uint64 {
 }
 
 // countBucketFiles walks funcsDir and counts .c bucket files. It also asserts
-// that each file's parent directory name is a valid bucketFor() 2-hex prefix
-// (bucketWriter nests as functions/<2hex>/<2hex>_NN.c).
+// that each file's parent directory name is a valid bucketFor() bucket label
+// (bucketWriter nests as functions/<bucket>/<bucket>_NN.c).
 func countBucketFiles(t *testing.T, funcsDir string) int {
 	t.Helper()
 	var n int
@@ -115,8 +115,8 @@ func countBucketFiles(t *testing.T, funcsDir string) int {
 			return nil
 		}
 		dir := filepath.Base(filepath.Dir(p))
-		if len(dir) != 2 {
-			t.Fatalf("bucket file %q not under a 2-hex prefix dir (got %q)", p, dir)
+		if len(dir) != 3 {
+			t.Fatalf("bucket file %q not under a 3-hex bucket dir (got %q)", p, dir)
 		}
 		n++
 		return nil
@@ -399,7 +399,7 @@ func TestSplitRealWindroseMonolith(t *testing.T) {
 		t.Fatalf("nil result for real monolith")
 	}
 
-	// functions/ buckets: count 2-hex dirs, total .c files, total bytes on disk.
+	// functions/ buckets: count bucket dirs, total .c files, total bytes on disk.
 	funcsDir := filepath.Join(srcDir, "functions")
 	var bucketDirs, bucketFiles int
 	var bucketBytes int64
@@ -409,8 +409,8 @@ func TestSplitRealWindroseMonolith(t *testing.T) {
 			return e
 		}
 		if d.IsDir() {
-			if name := filepath.Base(p); len(name) == 2 && p != funcsDir {
-				dirSet[name] = true
+			if p != funcsDir {
+				dirSet[filepath.Base(p)] = true
 			}
 			return nil
 		}

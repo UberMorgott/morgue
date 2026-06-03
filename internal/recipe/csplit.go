@@ -2,6 +2,7 @@ package recipe
 
 import (
 	"bufio"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -18,11 +20,12 @@ import (
 // the existing index.json shape (asserted by ghidra_test.go) is untouched.
 type funcEntry struct {
 	Name      string `json:"name"`
-	Address   string `json:"address"`    // normalized lowercase, 0x-prefixed
-	SizeBytes int64  `json:"size_bytes"` // byte length of the raw record text
-	Lines     int    `json:"lines"`      // newline count within the record
+	Address   string `json:"address"`            // normalized lowercase, 0x-prefixed
+	SizeBytes int64  `json:"size_bytes"`         // byte length of the raw record text
+	Lines     int    `json:"lines"`              // newline count within the record
 	IsNamed   bool   `json:"is_named"`
-	File      string `json:"file"` // slash-normalized rel path of the split file from srcDir
+	File      string `json:"file"`               // slash-normalized rel path of the split file from srcDir
+	Signature string `json:"signature,omitempty"` // the function's C signature line (for hookable.json)
 }
 
 // symbolEntry is one line of symbols.ndjson: a single address->name mapping.
@@ -109,7 +112,76 @@ var (
 	reTotalLine = regexp.MustCompile(`^// Total:`)
 	// reAnonName matches Ghidra's auto-generated (anonymous) symbol prefixes.
 	reAnonName = regexp.MustCompile(`^(FUN_|DAT_|LAB_|UNK_|SUB_)`)
+	// reStringLit matches a C double-quoted string literal (with escapes). Used to
+	// build indexes/string_refs.csv (function -> strings it references).
+	reStringLit = regexp.MustCompile(`"(\\.|[^"\\])*"`)
+	// reCallSite matches an identifier immediately before '(' — a candidate call.
+	// Identifiers may be C++-qualified (Class::Method) or templated (TArray<int>).
+	reCallSite = regexp.MustCompile(`([A-Za-z_][A-Za-z0-9_]*(?:(?:::|<[^>]*>)[A-Za-z0-9_~]*)*)\s*\(`)
+	// rePseudoOp matches Ghidra's synthetic call-syntax builtins — CONCAT44,
+	// ZEXT416, SEXT48, SUB164 — which are not real function references. These are
+	// Ghidra-universal, not arch/game specific.
+	rePseudoOp = regexp.MustCompile(`^(CONCAT|ZEXT|SEXT|SUB)\d`)
 )
+
+// primitiveCasts are C/Ghidra primitive type names that appear in cast syntax
+// (e.g. "undefined1(x)") and must not be treated as callees.
+var primitiveCasts = map[string]bool{
+	"void": true, "bool": true, "char": true, "uchar": true, "wchar_t": true,
+	"short": true, "ushort": true, "int": true, "uint": true, "long": true,
+	"ulong": true, "longlong": true, "ulonglong": true, "float": true,
+	"double": true, "byte": true, "code": true,
+	"undefined": true, "undefined1": true, "undefined2": true,
+	"undefined4": true, "undefined8": true,
+}
+
+// callKeywords are C/C++ control tokens that look like calls (kw(...)) but are
+// not function references; excluded from the caller->callee graph.
+var callKeywords = map[string]bool{
+	"if": true, "for": true, "while": true, "switch": true, "return": true,
+	"sizeof": true, "do": true, "else": true, "case": true, "catch": true,
+	"__assert": true,
+}
+
+// extractRefs scans one decompiled function body (raw, the record text including
+// its "// <addr>" comment header and signature line) and returns the unique
+// string literals it references and the unique callees it invokes, in first-seen
+// order. callerName is excluded from callees (its own signature is in raw).
+//
+// Memory: both result sets are bounded by the content of a SINGLE record, which
+// the splitter already caps at maxRecordBytes; nothing here scales with the
+// total function count.
+func extractRefs(raw, callerName string) (strs, callees []string) {
+	seenStr := map[string]bool{}
+	for _, m := range reStringLit.FindAllString(raw, -1) {
+		inner := m[1 : len(m)-1] // strip surrounding quotes
+		if inner == "" || seenStr[inner] {
+			continue
+		}
+		seenStr[inner] = true
+		strs = append(strs, inner)
+	}
+
+	seenCall := map[string]bool{}
+	for _, line := range strings.Split(raw, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") {
+			continue // comment / record header
+		}
+		for _, m := range reCallSite.FindAllStringSubmatch(line, -1) {
+			callee := m[1]
+			if callee == "" || callKeywords[callee] || callee == callerName || seenCall[callee] {
+				continue
+			}
+			if primitiveCasts[callee] || rePseudoOp.MatchString(callee) {
+				continue // Ghidra cast / synthetic pseudo-op, not a real call
+			}
+			seenCall[callee] = true
+			callees = append(callees, callee)
+		}
+	}
+	return strs, callees
+}
 
 // splitDecompiledC streams the combined decompiled .c at combinedCPath, splits
 // it into per-function files under funcsDir (bucketed by address), streams a
@@ -169,6 +241,43 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 		symFile.Close()
 	}()
 
+	// indexes/ cross-reference CSVs (B1): string_refs.csv (function -> strings it
+	// references) and callers.csv (caller -> callee). Both are written streaming,
+	// one row per (function, ref) as each record is processed — never an in-RAM
+	// graph keyed by function count.
+	indexesDir := filepath.Join(srcDir, "indexes")
+	if err := os.MkdirAll(indexesDir, 0755); err != nil {
+		return nil, fmt.Errorf("mkdir indexes: %w", err)
+	}
+	strRefsFile, err := os.Create(filepath.Join(indexesDir, "string_refs.csv"))
+	if err != nil {
+		return nil, fmt.Errorf("create string_refs.csv: %w", err)
+	}
+	strRefsBuf := bufio.NewWriterSize(strRefsFile, 64*1024)
+	strRefsCSV := csv.NewWriter(strRefsBuf)
+	defer func() {
+		strRefsCSV.Flush()
+		strRefsBuf.Flush()
+		strRefsFile.Close()
+	}()
+	callersFile, err := os.Create(filepath.Join(indexesDir, "callers.csv"))
+	if err != nil {
+		return nil, fmt.Errorf("create callers.csv: %w", err)
+	}
+	callersBuf := bufio.NewWriterSize(callersFile, 64*1024)
+	callersCSV := csv.NewWriter(callersBuf)
+	defer func() {
+		callersCSV.Flush()
+		callersBuf.Flush()
+		callersFile.Close()
+	}()
+	if err := strRefsCSV.Write([]string{"function", "address", "string"}); err != nil {
+		return nil, fmt.Errorf("write string_refs header: %w", err)
+	}
+	if err := callersCSV.Write([]string{"caller", "caller_address", "callee"}); err != nil {
+		return nil, fmt.Errorf("write callers header: %w", err)
+	}
+
 	res := &splitResult{}
 
 	// Class recovery (F2): a dedup set of C++ class owners. Bounded by the number
@@ -189,6 +298,7 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 		recCapped  bool // true once the record hit maxRecordBytes (body truncated in RAM)
 		sigPending bool // next non-blank line is the signature
 		recName    string
+		recSig     string // the captured signature line (for hookable.json)
 		recSigDone bool
 	)
 
@@ -218,6 +328,7 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 			Lines:     recLines,
 			IsNamed:   isNamed,
 			File:      relFile,
+			Signature: recSig,
 		}
 		if encErr := ndjsonEnc.Encode(&entry); encErr != nil {
 			return encErr
@@ -242,12 +353,27 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 			classSet[owner] = true
 		}
 
+		// Cross-reference indexes (B1): one streamed row per (func, string) and
+		// per (caller, callee). extractRefs dedups within this single record.
+		refStrs, refCallees := extractRefs(raw, name)
+		for _, s := range refStrs {
+			if csvErr := strRefsCSV.Write([]string{name, addr0x, s}); csvErr != nil {
+				return csvErr
+			}
+		}
+		for _, callee := range refCallees {
+			if csvErr := callersCSV.Write([]string{name, addr0x, callee}); csvErr != nil {
+				return csvErr
+			}
+		}
+
 		inRecord = false
 		recBuilder.Reset()
 		recBytes = 0
 		recLines = 0
 		recCapped = false
 		recName = ""
+		recSig = ""
 		recSigDone = false
 		sigPending = false
 		return nil
@@ -266,6 +392,7 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 		recLines = 1
 		recCapped = false
 		recName = ""
+		recSig = ""
 		recSigDone = false
 		sigPending = true
 		return nil
@@ -277,6 +404,7 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 		// The first non-blank line after the header is the signature.
 		if sigPending && strings.TrimSpace(rawLine) != "" {
 			recName = extractFuncName(rawLine, recAddrHex)
+			recSig = strings.TrimSpace(rawLine)
 			recSigDone = true
 			sigPending = false
 		}
@@ -325,6 +453,20 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 		return nil, err
 	}
 	if err := symBuf.Flush(); err != nil {
+		return nil, err
+	}
+	strRefsCSV.Flush()
+	if err := strRefsCSV.Error(); err != nil {
+		return nil, fmt.Errorf("flush string_refs.csv: %w", err)
+	}
+	if err := strRefsBuf.Flush(); err != nil {
+		return nil, err
+	}
+	callersCSV.Flush()
+	if err := callersCSV.Error(); err != nil {
+		return nil, fmt.Errorf("flush callers.csv: %w", err)
+	}
+	if err := callersBuf.Flush(); err != nil {
 		return nil, err
 	}
 
@@ -426,12 +568,22 @@ func newBucketWriter(funcsDir string) *bucketWriter {
 
 // bucketFor returns the 2-hex-char bucket for an address (first 2 chars of the
 // address zero-padded to 8 hex digits => <=256 buckets).
+// bucketFor maps a function address to a bucket directory name. It must work for
+// ANY image base: taking the high hex digits (the old behavior) collapses every
+// function of a single-module image into one bucket, because those digits are
+// the constant load base (e.g. 0x14 for a UE5 /BASE:0x140000000 image, 0x00 for
+// a native 0x400000 image). Instead we drop the lowest 12 bits (so functions in
+// the same ~4KB window cluster together for navigation) and key on the next 12
+// bits, giving up to 4096 buckets that distribute regardless of the base and
+// keep nearby addresses adjacent. Deterministic; never sized by file input.
 func bucketFor(addrHex string) string {
-	padded := addrHex
-	if len(padded) < 8 {
-		padded = strings.Repeat("0", 8-len(padded)) + padded
+	h := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(addrHex)), "0x")
+	v, err := strconv.ParseUint(h, 16, 64)
+	if err != nil {
+		// Unparseable address: deterministic fallback bucket, never crash.
+		return "000"
 	}
-	return strings.ToLower(padded[:2])
+	return fmt.Sprintf("%03x", (v>>12)&0xfff)
 }
 
 // write appends block to the appropriate bucket file and returns the
@@ -511,12 +663,32 @@ func (b *bucketWriter) closeOpen() error {
 // in a C signature line. Pointer/qualifier tokens are stripped. On no '(' or
 // empty name it returns "" (the caller substitutes FUN_<addr>).
 func extractFuncName(sig, _ string) string {
-	head, _, ok := strings.Cut(sig, "(")
-	if !ok {
+	// The parameter list opens at the FIRST '(' that is immediately preceded by
+	// an identifier/template/qualifier character — i.e. the name attaches to it
+	// with no separator ("name(args)"). This skips return-type decorations such
+	// as Ghidra's pointer-to-array returns "undefined1 (*) [16]FUN_x(args)",
+	// where the first '(' belongs to "(*)" (preceded by a space) and the real
+	// name attaches to a later '('.
+	paren := -1
+	for i := 0; i < len(sig); i++ {
+		if sig[i] != '(' {
+			continue
+		}
+		if i > 0 {
+			c := sig[i-1]
+			if isIdentByte(c) || c == '>' {
+				paren = i
+				break
+			}
+		}
+	}
+	if paren < 0 {
 		return ""
 	}
+	head := sig[:paren]
+
 	// The function name is the last identifier-ish token in head. Walk back
-	// over trailing whitespace and '*' (pointer return type glued to name).
+	// over trailing whitespace and '*'/'&' (pointer return glued to the name).
 	end := len(head)
 	for end > 0 && (head[end-1] == ' ' || head[end-1] == '\t' || head[end-1] == '*' || head[end-1] == '&') {
 		end--
@@ -531,9 +703,9 @@ func extractFuncName(sig, _ string) string {
 		break
 	}
 	name := strings.TrimSpace(head[start:end])
-	// A leading '*'/'&' may remain glued (e.g. "void *foo"): trim them.
 	name = strings.TrimLeft(name, "*& \t")
-	if name == "" {
+	if name == "" || primitiveCasts[name] {
+		// A bare primitive/undefined type is a mis-parse, not a real name.
 		return ""
 	}
 	return name

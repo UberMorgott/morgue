@@ -211,6 +211,13 @@ func TestExtractFuncName(t *testing.T) {
 		{"int TArray<int>::Add(int p)", "TArray<int>::Add"},
 		{"void *getptr(void)", "getptr"},
 		{"int noparen", ""},
+		// Ghidra pointer-to-array return: the real name (FUN_x) is AFTER the
+		// "(*) [N]" return-type decoration; the return type must NOT be taken
+		// as the name. Regression for the hookable.json "undefined1" garbage.
+		{"undefined1 (*) [16]FUN_14000f3c0(longlong param_1,uint param_7)", "FUN_14000f3c0"},
+		{"undefined1 (*) [32]Foo::Bar(longlong p)", "Foo::Bar"},
+		// A bare primitive/undefined type with params is not a real name.
+		{"undefined1(longlong param_1)", ""},
 	}
 	for _, c := range cases {
 		got := extractFuncName(c.sig, "deadbeef")
