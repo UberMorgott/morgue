@@ -25,6 +25,39 @@ type nameResolution struct {
 	ResolvedOffline int     `json:"resolved_offline"` // FUN_ renamed from referenced symbol strings (B3)
 	USmapFound      bool    `json:"usmap_found"`
 	USmapPath       string  `json:"usmap_path"`
+
+	// Usmap is populated when a .usmap is parsed: it carries the reflected
+	// class/enum/property layout and the offline cross-references we can derive
+	// from it without runtime data. Nil when no usmap is available.
+	Usmap *usmapResolution `json:"usmap,omitempty"`
+}
+
+// usmapResolution holds the offline-derivable enrichment from a parsed .usmap:
+// totals plus the cross-reference between usmap class names and the classes the
+// Ghidra symbol pass recovered (and, when present, the asset name table). This
+// is honest offline data: it confirms which reflected types are visible in the
+// binary's symbols, NOT runtime addresses.
+type usmapResolution struct {
+	Version           int    `json:"version"`            // EUsmapVersion
+	CompressionMethod string `json:"compression_method"` // None/Oodle/Brotli/ZStandard
+	Classes           int    `json:"classes"`
+	Enums             int    `json:"enums"`
+	Properties        int    `json:"properties"`
+
+	// MatchedSymbolClasses is how many usmap classes also appear in the Ghidra
+	// symbols.json class list (matched by name, prefix-insensitive). It quantifies
+	// how much of the reflected type system is present in the recovered binary
+	// symbols — a genuinely offline name-resolution signal.
+	MatchedSymbolClasses int `json:"matched_symbol_classes"`
+	SymbolClassesTotal   int `json:"symbol_classes_total"`
+
+	// MatchedAssetNames is how many usmap class names also occur in the parsed
+	// asset name tables (assets_index.json sample). 0/omitted when no asset index.
+	MatchedAssetNames int `json:"matched_asset_names,omitempty"`
+
+	// SampleGameClasses lists a few matched, non-engine usmap classes to make the
+	// join concrete and AI-readable.
+	SampleGameClasses []string `json:"sample_game_classes,omitempty"`
 }
 
 // findUsmap returns the path of the first .usmap mapping file found under any
@@ -51,6 +84,14 @@ func findUsmap(roots ...string) string {
 		}
 	}
 	return ""
+}
+
+// assetJoinNote formats the optional asset-name-join clause for the log line.
+func assetJoinNote(matched int) string {
+	if matched <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("; %d also seen in parsed asset names", matched)
 }
 
 // UE5 handles Unreal Engine 5 game analysis.
@@ -215,15 +256,53 @@ func (u *UE5) Execute(ctx *Context) error {
 		}
 	}
 
-	// Step 1: SDK class dump (stub — requires runtime injection or static RTTI parse)
+	// Step 1: SDK class dump. Generated OFFLINE from the game's .usmap mappings
+	// (full reflected class/struct/enum + property layout) — no UE4SS runtime
+	// required. Properties/fields only; methods/offsets/sizes are not in a usmap
+	// (documented in sdk/README.md). Falls back to a class-name-only stub from
+	// symbols.json when no usmap is present, and honestly reports when a usmap is
+	// Oodle-compressed (no offline decoder).
 	if ctx.Config != nil && !ctx.Config.UE5SDKDump {
 		report(1, Skipped, 0, nil, "")
 		log("SDK class dump disabled in settings")
 	} else {
 		report(1, Running, 0, nil, "")
 		start := time.Now()
-		log("SDK class dump: not yet implemented (requires UE4SS runtime injection)")
-		report(1, Skipped, time.Since(start), nil, "")
+		usmapPath := findUsmap(gameRoot, filepath.Join(ctx.Output, "extracted"))
+		switch {
+		case usmapPath != "":
+			log(fmt.Sprintf("SDK class dump: parsing mappings %s", filepath.Base(usmapPath)))
+			m, perr := ParseUsmap(usmapPath)
+			if perr != nil {
+				// Oodle / unsupported compression / corrupt: honest message, no fake.
+				log(fmt.Sprintf("SDK class dump: cannot use usmap (%v)", perr))
+				if n := sdkFallbackFromSymbols(ctx.Output, log); n > 0 {
+					log(fmt.Sprintf("SDK class dump: wrote class-name-only fallback from symbols.json (%d classes, no properties)", n))
+					reportCount(1, time.Since(start), "", n, "classes")
+				} else {
+					report(1, Skipped, time.Since(start), nil, "")
+				}
+			} else {
+				res, werr := writeSDKDump(ctx.Output, m, usmapPath)
+				if werr != nil {
+					log(fmt.Sprintf("SDK class dump failed: %v", werr))
+					report(1, Failed, time.Since(start), werr, "")
+				} else {
+					log(fmt.Sprintf("SDK class dump: %d classes, %d enums, %d properties -> %s",
+						res.Classes, res.Enums, res.Properties, filepath.ToSlash(res.Dir)))
+					reportCount(1, time.Since(start), "", res.Classes, "classes")
+				}
+			}
+		default:
+			log("SDK class dump: no .usmap mappings found")
+			if n := sdkFallbackFromSymbols(ctx.Output, log); n > 0 {
+				log(fmt.Sprintf("SDK class dump: wrote class-name-only fallback from symbols.json (%d classes, no properties — full property layout needs a .usmap)", n))
+				reportCount(1, time.Since(start), "", n, "classes")
+			} else {
+				log("SDK class dump: skipped (no usmap and no symbols.json; full class/property layout needs a .usmap mapping file)")
+				report(1, Skipped, time.Since(start), nil, "")
+			}
+		}
 	}
 
 	// Step 2: Extract strings
@@ -363,7 +442,18 @@ func (u *UE5) Execute(ctx *Context) error {
 				}
 			}
 			if usmapPath != "" {
-				log(fmt.Sprintf("Found .usmap mapping file: %s (full parse out of scope for v1, recorded only)", usmapPath))
+				// Parse the usmap and enrich with the offline class/property layout
+				// plus the symbol/asset joins. Non-fatal: a parse failure (e.g. an
+				// Oodle-compressed usmap) just leaves Usmap nil with an honest log.
+				if m, perr := ParseUsmap(usmapPath); perr != nil {
+					log(fmt.Sprintf("Name resolution: .usmap present but not usable (%v) — recorded path only", perr))
+				} else {
+					nr.Usmap = buildUsmapResolution(m, srcDir, ctx.Output)
+					log(fmt.Sprintf("Name resolution: usmap has %d classes / %d enums / %d properties; %d/%d match Ghidra symbol classes%s",
+						nr.Usmap.Classes, nr.Usmap.Enums, nr.Usmap.Properties,
+						nr.Usmap.MatchedSymbolClasses, nr.Usmap.SymbolClassesTotal,
+						assetJoinNote(nr.Usmap.MatchedAssetNames)))
+				}
 			}
 			log("Note: address->UObject / runtime-vtable resolution requires runtime (UE4SS) data — skipped")
 			if data, merr := json.MarshalIndent(&nr, "", "  "); merr == nil {
@@ -417,6 +507,11 @@ func (u *UE5) Execute(ctx *Context) error {
 						log(fmt.Sprintf("Classified %d classes (%d boilerplate, %d game) -> indexes/classes.json",
 							total, b, total-b))
 					}
+					// Cleanup for AI-readability (U4): collapse structurally-identical
+					// (templated) function clones into indexes/duplicates.json, and emit
+					// game-only *.game.csv views. Both are additive + logged-not-fatal;
+					// nothing is deleted from the source.
+					runDedupeAndGameViews(indexSrc, log)
 				}
 				reportCount(5, time.Since(start), "", idx.FileCount, "files")
 			}

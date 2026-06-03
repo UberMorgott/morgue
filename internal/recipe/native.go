@@ -208,6 +208,9 @@ func (n *Native) Execute(ctx *Context) error {
 		} else if n > 0 {
 			logTool("ghidra", fmt.Sprintf("Exported %d hookable functions -> indexes/hookable.json", n))
 		}
+		// AI-readability cleanup (U4) — parity with the UE5 recipe: collapse
+		// templated function clones + emit game-only views. Additive, logged.
+		runDedupeAndGameViews(srcDir, func(m string) { logTool("ghidra", m) })
 		reportCount(3, time.Since(start), "", idx.FileCount, "files")
 	}
 
