@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 )
@@ -35,18 +34,22 @@ import (
 // example list is capped. Game views stream rows and write rows; no full-file
 // buffering.
 
-// reAddrSymbol matches Ghidra auto-generated address-bearing symbols
-// (FUN_140.., DAT_15.., LAB_.., UNK_.., SUB_..). Their embedded address makes two
-// otherwise-identical templated clones differ only in these tokens, so we
-// canonicalize them to a placeholder before hashing. This is what turns "exact
-// duplicate" into "structurally identical clone", the case that actually matters
-// for templated TArray<T>/TMap<K,V> instantiations.
-var reAddrSymbol = regexp.MustCompile(`\b(?:FUN_|DAT_|LAB_|UNK_|SUB_)[0-9A-Fa-f]+\b`)
-
 // dupExampleCap bounds how many duplicate members are listed per group in
 // duplicates.json. The full count is always reported; only the explicit example
 // list is capped to keep the report (and RAM) bounded under pathological clones.
 const dupExampleCap = 64
+
+// usmapDedupeMaxUnique is the self-imposed budget on DISTINCT function bodies the
+// dedupe accumulator will track. Each tracked unique costs a small dupAccum
+// (pointer + two short cloned strings) plus map overhead — on the order of ~150
+// bytes resident, so 8M uniques ≈ ~1.2GB worst case, comfortably under the Job
+// Object cap with headroom for the rest of the process. Real UE binaries top out
+// in the hundreds of thousands of functions (Windrose: 495k total / 441k unique,
+// ~110 MiB peak after the substring-clone fix), so this only trips on a
+// pathological/huge corpus, where we degrade gracefully (stop tracking new
+// groups, log it) instead of risking an OOM near the cap. It is a var (not const)
+// solely so a test can lower it to exercise the budget path.
+var usmapDedupeMaxUnique = 8_000_000
 
 // dupMember identifies one function instance (address + best-effort name).
 type dupMember struct {
@@ -79,6 +82,7 @@ type dedupeResult struct {
 	UniqueFunctions    int
 	DuplicateFunctions int
 	DuplicateGroups    int
+	BudgetExceeded     bool // true if the unique-body budget was hit (partial dedupe)
 }
 
 // internal accumulator (kept in RAM keyed by body hash). Holds NO body text.
@@ -108,42 +112,80 @@ func dedupeFunctionBodies(srcDir string) (dedupeResult, error) {
 
 	groups := make(map[uint64]*dupAccum)
 
+	// One reused hasher across all bodies (Reset per body) — no per-body hasher
+	// allocation. hashBody normalizes inline (no intermediate normalized string),
+	// so the only per-body cost is the addr/name strings the callback receives.
+	h := fnv.New64a()
+
 	for _, fp := range files {
 		if err := scanSplitRecords(fp, func(addr, name, body string) {
 			res.TotalFunctions++
-			h := fnv.New64a()
-			io.WriteString(h, normalizeBody(body))
+
+			// SAFETY NET: a self-imposed budget on distinct functions. If the
+			// corpus is so large that the accumulator map would threaten the
+			// process memory cap, stop accumulating NEW groups (still count totals
+			// and still attribute to already-seen groups) rather than risk a
+			// process-killing alloc near the Job Object cap. Logged by the caller.
+			h.Reset()
+			hashBody(h, body)
 			key := h.Sum64()
 			g, ok := groups[key]
-			if !ok {
-				groups[key] = &dupAccum{canonAddr: addr, canonName: name, count: 1}
+			if ok {
+				g.count++
+				if len(g.dups) < dupExampleCap {
+					// Clone: name is a SUBSTRING of the (large) body; storing it
+					// raw would pin the whole body's backing array in the map,
+					// keeping every retained body alive (the real heap-peak cause).
+					g.dups = append(g.dups, dupMember{Address: addr, Name: cloneStr(name)})
+				} else {
+					g.truncated = true
+				}
 				return
 			}
-			g.count++
-			if len(g.dups) < dupExampleCap {
-				g.dups = append(g.dups, dupMember{Address: addr, Name: name})
-			} else {
-				g.truncated = true
+			if len(groups) >= usmapDedupeMaxUnique {
+				// Budget exhausted: don't grow the map further. This body becomes
+				// an un-tracked unique (counted in TotalFunctions only). Mark that
+				// the pass was budget-capped so the report/log is honest.
+				res.BudgetExceeded = true
+				return
 			}
+			// Clone canonName for the same backing-array reason as above. addr is
+			// already a freshly-built "0x..." string, but cloning it too is cheap
+			// and removes any doubt about retained substrings.
+			groups[key] = &dupAccum{canonAddr: cloneStr(addr), canonName: cloneStr(name), count: 1}
 		}); err != nil {
 			return res, err
 		}
 	}
 
-	res.UniqueFunctions = len(groups)
-	res.DuplicateFunctions = res.TotalFunctions - res.UniqueFunctions
+	// Collapsed count = sum of (count-1) over all groups. This is exact whether
+	// or not the budget was hit: un-tracked uniques (budget overflow) never enter
+	// a group, so they correctly count as unique in (total - collapsed).
+	collapsed := 0
+	for _, g := range groups {
+		collapsed += g.count - 1
+	}
+	res.DuplicateFunctions = collapsed
+	res.UniqueFunctions = res.TotalFunctions - collapsed
 
 	// Build the report (only groups with >1 member).
+	note := "Functions whose decompiled bodies are identical after canonicalizing " +
+		"Ghidra address-symbols (FUN_/DAT_/LAB_/UNK_/SUB_<hex> -> <SYM>) and " +
+		"excluding the address header are collapsed here — these are dominated by " +
+		"templated TArray/TMap instantiations. Originals remain on disk; this is a " +
+		"map from a canonical function to its structural clones. Nothing was " +
+		"deleted or truncated from the source."
+	if res.BudgetExceeded {
+		note += " NOTE: the corpus exceeded the dedupe memory budget (" +
+			"usmapDedupeMaxUnique distinct bodies); deduplication is PARTIAL — only " +
+			"the first budget-many distinct bodies were tracked, so some duplicates " +
+			"may be uncollapsed. No data was lost; this only affects this report."
+	}
 	report := duplicatesReport{
 		TotalFunctions:     res.TotalFunctions,
 		UniqueFunctions:    res.UniqueFunctions,
 		DuplicateFunctions: res.DuplicateFunctions,
-		Note: "Functions whose decompiled bodies are identical after canonicalizing " +
-			"Ghidra address-symbols (FUN_/DAT_/LAB_/UNK_/SUB_<hex> -> <SYM>) and " +
-			"excluding the address header are collapsed here — these are dominated by " +
-			"templated TArray/TMap instantiations. Originals remain on disk; this is a " +
-			"map from a canonical function to its structural clones. Nothing was " +
-			"deleted or truncated from the source.",
+		Note:               note,
 	}
 	for _, g := range groups {
 		if g.count <= 1 {
@@ -251,32 +293,99 @@ func scanSplitRecords(path string, fn func(addr, name, body string)) error {
 
 // funcNameFromBody extracts a best-effort function name from a decompiled body
 // by running extractFuncName over the first non-empty, non-comment line (the
-// signature). Returns "" when nothing name-like is found.
+// signature). Returns "" when nothing name-like is found. It walks lines without
+// strings.Split, so it allocates no per-body line slice (×500k bodies).
 func funcNameFromBody(body string) string {
-	for _, line := range strings.Split(body, "\n") {
+	for len(body) > 0 {
+		nl := strings.IndexByte(body, '\n')
+		var line string
+		if nl < 0 {
+			line, body = body, ""
+		} else {
+			line, body = body[:nl], body[nl+1:]
+		}
 		s := strings.TrimSpace(line)
 		if s == "" || strings.HasPrefix(s, "//") {
 			continue
 		}
-		if name := extractFuncName(s, ""); name != "" {
-			return name
-		}
-		// Only inspect the first meaningful line; deeper lines are body, not sig.
-		return ""
+		// First meaningful line is the signature; deeper lines are body, not sig.
+		return extractFuncName(s, "")
 	}
 	return ""
 }
 
-// normalizeBody canonicalizes a decompiled body for clone detection: it rewrites
-// Ghidra address-bearing auto-symbols (FUN_/DAT_/LAB_/UNK_/SUB_<hex>) to a single
-// "<SYM>" token so two templated instantiations that differ ONLY in those
-// embedded addresses hash equal. It deliberately does NOT touch real names,
-// literals, or structure: functions that reference different NAMED symbols, or
-// have any other textual difference, stay distinct. This keeps the collapse
-// conservative (structurally-identical clones only) while catching the templated
-// duplicates that dominate a UE binary.
-func normalizeBody(body string) string {
-	return reAddrSymbol.ReplaceAllString(body, "<SYM>")
+// hashBody writes a clone-canonical form of body into h WITHOUT allocating: it
+// streams the bytes and, whenever it meets a Ghidra address-bearing auto-symbol
+// (FUN_/DAT_/LAB_/UNK_/SUB_ followed by hex), it emits the literal "<SYM>" in
+// place of the whole token. Two templated instantiations that differ ONLY in
+// those embedded addresses therefore hash equal, while functions that differ in
+// any real name/literal/structure stay distinct. This replaces a per-body
+// regexp.ReplaceAllString (which allocated a fresh normalized string for every
+// one of ~500k bodies — the dominant transient heap churn) with a zero-alloc
+// scan straight into the reused hasher.
+func hashBody(h io.Writer, body string) {
+	const symRepl = "<SYM>"
+	i := 0
+	n := len(body)
+	for i < n {
+		// Fast path: copy a run of bytes up to the next potential symbol start.
+		start := i
+		for i < n && !isAddrSymStart(body, i) {
+			i++
+		}
+		if i > start {
+			io.WriteString(h, body[start:i])
+		}
+		if i >= n {
+			break
+		}
+		// At a symbol start: skip the 4-char prefix + the hex run, emit <SYM>.
+		i += 4 // prefix length (FUN_/DAT_/LAB_/UNK_/SUB_ are all 4 bytes)
+		for i < n && isHexByte(body[i]) {
+			i++
+		}
+		io.WriteString(h, symRepl)
+	}
+}
+
+// isAddrSymStart reports whether a Ghidra address-symbol token begins at body[i]:
+// one of the 4-char prefixes (FUN_/DAT_/LAB_/UNK_/SUB_) at a word boundary,
+// immediately followed by at least one hex digit. The word-boundary check (prev
+// byte not an identifier byte) mirrors the \b in the old regexp so we don't
+// rewrite a prefix embedded mid-identifier.
+func isAddrSymStart(s string, i int) bool {
+	if i+5 > len(s) { // need 4 prefix bytes + >=1 hex
+		return false
+	}
+	if s[i+3] != '_' {
+		return false
+	}
+	switch s[i : i+3] {
+	case "FUN", "DAT", "LAB", "UNK", "SUB":
+	default:
+		return false
+	}
+	if !isHexByte(s[i+4]) {
+		return false
+	}
+	// Word boundary: the byte before the prefix must not be an identifier byte.
+	if i > 0 && isIdentByte(s[i-1]) {
+		return false
+	}
+	return true
+}
+
+// isHexByte reports whether c is an ASCII hex digit.
+func isHexByte(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+// cloneStr returns a copy of s backed by its own minimal allocation. Used before
+// storing a body-substring (a function name) in the long-lived accumulator map,
+// so the small name doesn't pin the entire decompiled body's backing array —
+// which is what kept ~440k bodies resident and drove the dedupe heap peak.
+func cloneStr(s string) string {
+	return strings.Clone(s)
 }
 
 // gameViewResult summarizes the filtered companion outputs.
@@ -402,6 +511,9 @@ func runDedupeAndGameViews(srcDir string, log func(string)) {
 	} else if dr.TotalFunctions > 0 && log != nil {
 		log(fmt.Sprintf("Collapsed %d duplicate function bodies into %d canonical (%d groups) of %d total -> indexes/duplicates.json (originals kept)",
 			dr.DuplicateFunctions, dr.UniqueFunctions, dr.DuplicateGroups, dr.TotalFunctions))
+		if dr.BudgetExceeded {
+			log(fmt.Sprintf("Function dedupe: corpus exceeded the %d-unique memory budget — dedupe is PARTIAL (no data lost, originals intact)", usmapDedupeMaxUnique))
+		}
 	}
 	if gv, err := writeGameViews(srcDir); err != nil {
 		if log != nil {

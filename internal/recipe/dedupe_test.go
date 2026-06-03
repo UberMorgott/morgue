@@ -116,6 +116,50 @@ func TestDedupeFunctionBodies_SymbolNormalized(t *testing.T) {
 	}
 }
 
+// TestDedupeFunctionBodies_Budget exercises the safety net: when the distinct-
+// body budget is exceeded, the pass stops tracking NEW groups, sets
+// BudgetExceeded, and the collapsed/unique counts stay arithmetically honest
+// (collapsed = sum over tracked groups of count-1; untracked uniques count as
+// unique). Never aborts.
+func TestDedupeFunctionBodies_Budget(t *testing.T) {
+	old := usmapDedupeMaxUnique
+	usmapDedupeMaxUnique = 1 // only the first distinct body may be tracked
+	defer func() { usmapDedupeMaxUnique = old }()
+
+	srcDir := t.TempDir()
+	fnDir := filepath.Join(srcDir, "functions")
+	rec := func(addr, body string) string {
+		return "// === f @ 0x" + addr + " (size=10 lines=5) ===\n// " + addr + "\n" + body
+	}
+	a := "void a(void)\n{\n  return;\n}\n"
+	b := "void b(void)\n{\n  return 1;\n}\n"
+	c := "void c(void)\n{\n  return 2;\n}\n"
+	// 4 functions, 3 distinct bodies (a appears twice). Budget=1 => only the
+	// first distinct body ("a") is tracked; its 2nd instance still collapses,
+	// b and c become untracked uniques.
+	writeSplitFile(t, filepath.Join(fnDir, "00.c"),
+		rec("1000", a)+rec("2000", a)+rec("3000", b)+rec("4000", c))
+
+	res, err := dedupeFunctionBodies(srcDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.BudgetExceeded {
+		t.Error("BudgetExceeded should be true")
+	}
+	if res.TotalFunctions != 4 {
+		t.Errorf("TotalFunctions = %d, want 4", res.TotalFunctions)
+	}
+	// Only the "a" group is tracked: it has 2 members => 1 collapsed.
+	if res.DuplicateFunctions != 1 {
+		t.Errorf("DuplicateFunctions = %d, want 1", res.DuplicateFunctions)
+	}
+	// unique = total - collapsed = 4 - 1 = 3 (a-canonical, b, c).
+	if res.UniqueFunctions != 3 {
+		t.Errorf("UniqueFunctions = %d, want 3", res.UniqueFunctions)
+	}
+}
+
 func TestDedupeFunctionBodies_NoFunctionsDir(t *testing.T) {
 	srcDir := t.TempDir()
 	res, err := dedupeFunctionBodies(srcDir)
