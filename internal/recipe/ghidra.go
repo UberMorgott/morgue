@@ -212,7 +212,11 @@ func runGhidra(
 	ghidraPhaseIdx := 0 // 0=import, 1=analyze, 2=disassemble — only moves forward
 	ghidraPhases := []string{"ghidra:import", "ghidra:analyze", "ghidra:disassemble"}
 	lastLogTime := time.Now().Add(-2 * time.Second) // allow first log immediately
-	result, runErr := util.RunCmdStreamingEnv(ctx, ghidraEnv, analyzeHeadless, []string{
+	// Launch with CREATE_BREAKAWAY_FROM_JOB so the JVM escapes morgue's Job
+	// Object memory cap: GHIDRA_HEADLESS_MAXMEM above sizes the heap to ~70% of
+	// physical RAM (tens of GB), far above the per-process cap, so without the
+	// breakaway the JVM OOM-crashes on the large binaries we target.
+	result, runErr := util.RunCmdStreamingEnvBreakaway(ctx, ghidraEnv, analyzeHeadless, []string{
 		projDir, "MorgueProject",
 		"-import", binaryPath,
 		"-postScript", scriptPath, outputFile,

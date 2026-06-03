@@ -29,6 +29,11 @@ var (
 )
 
 func main() {
+	// Cap process memory before doing any real work, so both the CLI and the GUI
+	// are protected against a runaway allocation (the function-split OOM that
+	// froze the user's machine). Applied once, here, for every code path.
+	applyMemoryCap()
+
 	// If CLI args provided → cobra
 	if len(os.Args) > 1 {
 		runCLI()
@@ -37,6 +42,39 @@ func main() {
 
 	// No args → Wails GUI
 	runGUI()
+}
+
+// applyMemoryCap installs a Windows Job Object memory limit on the morgue
+// process. The cap is min(4 GiB, ~75% of physical RAM) and is never set above
+// physical RAM; with it in force, a runaway allocation fails (the allocator
+// errors) instead of thrashing the whole machine. No-op on non-Windows.
+func applyMemoryCap() {
+	const (
+		hardCap  uintptr = 4 << 30 // 4 GiB absolute ceiling
+		fallback uintptr = 2 << 30 // used if physical RAM is unknown
+		safePct          = 75      // reserve at most this % of physical RAM
+	)
+
+	limit := hardCap
+	if phys := util.TotalPhysicalMemoryBytes(); phys > 0 {
+		// 75% of physical RAM is always < physical, so the cap is never set at
+		// or above total RAM. Take whichever is smaller: that fraction or 4 GiB.
+		if safe := uintptr(phys / 100 * safePct); safe < limit {
+			limit = safe
+		}
+	} else if limit > fallback {
+		// Physical RAM unknown (e.g. probe failed): stay conservative.
+		limit = fallback
+	}
+	if limit == 0 {
+		return
+	}
+
+	if err := util.LimitProcessMemory(limit); err != nil {
+		log.Printf("memory cap: could not apply %d MiB process limit: %v", limit>>20, err)
+		return
+	}
+	log.Printf("memory cap: limited process to %d MiB", limit>>20)
 }
 
 func runGUI() {

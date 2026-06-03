@@ -44,22 +44,31 @@ func RunCmdWithEnv(ctx context.Context, name string, args []string, dir string, 
 // RunCmdStreaming runs a command and calls onLine for each stdout line in real-time.
 // stderr is still buffered. Returns the full CmdResult after completion.
 func RunCmdStreaming(ctx context.Context, name string, args []string, dir string, onLine func(line string)) (*CmdResult, error) {
-	return runCmdStreaming(ctx, name, args, dir, nil, nil, onLine)
+	return runCmdStreaming(ctx, name, args, dir, nil, nil, false, onLine)
 }
 
 // RunCmdStreamingWithStdin is like RunCmdStreaming but with custom stdin.
 func RunCmdStreamingWithStdin(ctx context.Context, name string, args []string, dir string, stdin io.Reader, onLine func(line string)) (*CmdResult, error) {
-	return runCmdStreaming(ctx, name, args, dir, nil, stdin, onLine)
+	return runCmdStreaming(ctx, name, args, dir, nil, stdin, false, onLine)
 }
 
 // RunCmdStreamingEnv is like RunCmdStreaming but with extra environment variables.
 // env is a list of "KEY=VALUE" strings appended to the current environment
 // (os.Environ()); later entries override earlier ones for the same key.
 func RunCmdStreamingEnv(ctx context.Context, env []string, name string, args []string, dir string, onLine func(line string)) (*CmdResult, error) {
-	return runCmdStreaming(ctx, name, args, dir, env, nil, onLine)
+	return runCmdStreaming(ctx, name, args, dir, env, nil, false, onLine)
 }
 
-func runCmdStreaming(ctx context.Context, name string, args []string, dir string, env []string, stdin io.Reader, onLine func(line string)) (*CmdResult, error) {
+// RunCmdStreamingEnvBreakaway is like RunCmdStreamingEnv but launches the process
+// with CREATE_BREAKAWAY_FROM_JOB (Windows only) so it and its descendants escape
+// morgue's Job Object memory cap. Use this ONLY for tools that legitimately need
+// more than the per-process cap — currently just Ghidra's JVM, which sizes its
+// heap to a large fraction of physical RAM. On non-Windows the flag is a no-op.
+func RunCmdStreamingEnvBreakaway(ctx context.Context, env []string, name string, args []string, dir string, onLine func(line string)) (*CmdResult, error) {
+	return runCmdStreaming(ctx, name, args, dir, env, nil, true, onLine)
+}
+
+func runCmdStreaming(ctx context.Context, name string, args []string, dir string, env []string, stdin io.Reader, breakaway bool, onLine func(line string)) (*CmdResult, error) {
 	if strings.HasSuffix(name, ".dll") {
 		args = append([]string{name}, args...)
 		localDotnet := filepath.Join(BaseDir(), "runtimes", "dotnet", "dotnet.exe")
@@ -85,6 +94,9 @@ func runCmdStreaming(ctx context.Context, name string, args []string, dir string
 	}
 	if stdin != nil {
 		cmd.Stdin = stdin
+	}
+	if breakaway {
+		applyBreakaway(cmd)
 	}
 
 	stdoutPipe, err := cmd.StdoutPipe()
