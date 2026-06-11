@@ -57,13 +57,30 @@ func (s *UpdateService) Check() UpdateStatus {
 func (s *UpdateService) Apply() error {
 	app := application.Get()
 
-	onProgress := func(p selfupdate.Progress) {
-		if app != nil {
-			app.Event.Emit("update:progress", p)
+	// Emit progress from a dedicated drainer goroutine — mirrors PipelineService,
+	// which forwards engine events to the GUI from a goroutine separate from the
+	// worker. The download loop pushes ticks onto a buffered channel; the drainer
+	// relays them to Wails. Emitting inline from the download loop did not render
+	// live in the GUI.
+	progress := make(chan selfupdate.Progress, 64)
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		for p := range progress {
+			if app != nil {
+				app.Event.Emit("update:progress", p)
+			}
 		}
+	}()
+
+	onProgress := func(p selfupdate.Progress) {
+		progress <- p
 	}
 
-	if err := selfupdate.Update(s.Version, onProgress); err != nil {
+	err := selfupdate.Update(s.Version, onProgress)
+	close(progress)
+	<-drained
+	if err != nil {
 		// selfupdate.Update already emitted a PhaseError event with details.
 		return err
 	}
