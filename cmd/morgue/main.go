@@ -190,6 +190,12 @@ func runGUI() {
 }
 
 func runCLI() {
+	// The release binary is linked with -H=windowsgui (no console), so a CLI
+	// invocation from a terminal would print nothing. Reattach to the parent
+	// console first. No-op/harmless in console-subsystem dev builds and when
+	// launched detached.
+	attachParentConsole()
+
 	root := &cobra.Command{
 		Use:   "morgue",
 		Short: "Binary Decompilation Orchestrator",
