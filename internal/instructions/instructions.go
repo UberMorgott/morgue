@@ -75,7 +75,7 @@ If installing=true but lastActivity > 2 min ago, the operation is likely hung.
   dotnet-generic      — .NET managed assemblies (ilspycmd)
   dotnet-confuserex   — ConfuserEx obfuscated .NET (de4dot + ilspycmd)
   unity-mono          — Unity Mono game DLLs (ilspycmd)
-  unity-il2cpp        — Unity IL2CPP builds (not yet implemented)
+  unity-il2cpp        — Unity IL2CPP builds (Il2CppDumper + ilspycmd)
   native              — native binaries (Ghidra headless)
   delphi              — Delphi binaries (IDR + Ghidra)
   ue5                 — Unreal Engine 5 (PAK extraction)
@@ -91,7 +91,7 @@ If installing=true but lastActivity > 2 min ago, the operation is likely hung.
 ## Notes
 - All tools auto-download on first use (ilspycmd, Ghidra, strings, etc.)
 - Runtimes (.NET, Java) auto-install when needed
-- Default output: ./decompiled/
+- Default output: <binary dir>/output/  (override with -o/--output)
 - GUI must be running for 'morgue api' commands
 - 'morgue run' works standalone (no GUI needed)
 `
