@@ -7,11 +7,22 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/mattn/go-isatty"
+
 	"github.com/UberMorgott/morgue/internal/config"
 	"github.com/UberMorgott/morgue/internal/engine"
 	_ "github.com/UberMorgott/morgue/internal/recipe"
 	"github.com/UberMorgott/morgue/internal/util"
 )
+
+// stderrIsTerminal reports whether stderr is an interactive terminal. The watch
+// TUI renders to stderr; when stderr is redirected (e.g. a background run piping
+// to a log file) the TUI draws nothing and looks hung, so we fall back to the
+// plain line-streaming path instead.
+func stderrIsTerminal() bool {
+	fd := os.Stderr.Fd()
+	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
+}
 
 // RunOptions holds CLI run command options.
 type RunOptions struct {
@@ -29,7 +40,12 @@ type RunOptions struct {
 // Run executes the decompilation pipeline from CLI.
 func Run(opts RunOptions) error {
 	if opts.Watch && !opts.Quiet {
-		return RunWatch(opts)
+		if stderrIsTerminal() {
+			return RunWatch(opts)
+		}
+		// Non-interactive stderr (redirected/piped): the watch TUI would render
+		// nothing. Degrade to the plain line-streaming path below.
+		fmt.Fprintln(os.Stderr, "[watch] disabled: stderr is not a terminal, using plain line output")
 	}
 
 	cfg, err := config.Load(util.ConfigPath())

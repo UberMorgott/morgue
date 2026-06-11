@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cavaliergopher/grab/v3"
 	"github.com/google/go-github/v60/github"
 )
 
@@ -259,38 +258,12 @@ func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(byte
 			for _, asset := range matched {
 				archivePath := filepath.Join(destDir, asset.Name)
 
-				client := grab.NewClient()
-				req, err := grab.NewRequest(archivePath, asset.URL)
-				if err != nil {
-					return "", fmt.Errorf("create download request for %s: %w", asset.Name, err)
-				}
-
-				resp := client.Do(req)
-
-				// Progress reporting loop
-				t := time.NewTicker(200 * time.Millisecond)
-
-				done := false
-				for !done {
-					select {
-					case <-t.C:
-						if onProgress != nil {
-							onProgress(resp.BytesComplete(), resp.Size())
-						}
-					case <-resp.Done:
-						done = true
-					}
-				}
-				t.Stop()
-
-				// Final progress report
-				if onProgress != nil {
-					onProgress(resp.BytesComplete(), resp.Size())
-				}
-
-				if err := resp.Err(); err != nil {
+				// Reuse the shared downloader so this release-asset path gets the
+				// same bounded retry-with-backoff and enriched (URL + timeout)
+				// errors as every other download.
+				if err := downloadFile(asset.URL, archivePath, onProgress); err != nil {
 					os.Remove(archivePath)
-					return "", fmt.Errorf("download %s: %w", asset.Name, err)
+					return "", err
 				}
 
 				if isArchiveFile(archivePath) {
