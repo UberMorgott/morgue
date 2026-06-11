@@ -2,18 +2,25 @@ version: 2
 
 before:
   hooks:
+    # The frontend (frontend/dist) is built by the release workflow BEFORE
+    # goreleaser runs, because //go:embed all:frontend/dist must resolve at
+    # compile time. Do not add an npm step here — keep this hook chain pure Go.
     - go mod tidy
     - go test ./...
 
 builds:
+  # Windows-only. Morgue is a Windows desktop+CLI tool: cmd/morgue imports
+  # internal/webview2 (user32/shell32 syscalls) and the Wails v3 GUI backend,
+  # neither of which compiles for linux/darwin (go-webview2 has Windows-only
+  # build constraints; the Wails Linux backend needs CGO + GTK/webkit, which
+  # CGO_ENABLED=0 cannot provide). build.bat / Taskfile target Windows only;
+  # the release mirrors that. go-webview2 is pure Go, so CGO stays disabled.
   - main: ./cmd/morgue
     binary: morgue
     env:
       - CGO_ENABLED=0
     goos:
       - windows
-      - linux
-      - darwin
     goarch:
       - amd64
       - arm64
@@ -23,7 +30,7 @@ builds:
       - -X main.Commit={{.ShortCommit}}
 
 archives:
-  - format: zip
+  - formats: [zip]
     name_template: "morgue_{{.Os}}_{{.Arch}}"
 
 checksum:
