@@ -37,6 +37,18 @@ func isNewer(latestTag, currentVersion string) bool {
 	return latest.GreaterThan(current)
 }
 
+// semverOrZero returns the clean base semver of v, or "0.0.0" when v isn't
+// valid semver (e.g. a "dev" build). go-selfupdate's UpdateSelf parses the
+// supplied current version as semver, so an unparseable "dev" must be mapped
+// to a real low version instead of crashing the update.
+func semverOrZero(v string) string {
+	b := baseVersion(v)
+	if _, err := semver.NewVersion(b); err != nil {
+		return "0.0.0"
+	}
+	return b
+}
+
 const repo = "UberMorgott/morgue"
 
 // newUpdater creates a configured selfupdate.Updater with GitHub source.
@@ -124,7 +136,7 @@ func Update(currentVersion string) error {
 
 	fmt.Printf("Updating %s → %s...\n", currentVersion, latest.Version())
 
-	_, err = updater.UpdateSelf(ctx, baseVersion(currentVersion), selfupdate.ParseSlug(repo))
+	_, err = updater.UpdateSelf(ctx, semverOrZero(currentVersion), selfupdate.ParseSlug(repo))
 	if err != nil {
 		return fmt.Errorf("update: %w", err)
 	}
