@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/UberMorgott/morgue/internal/util"
 )
 
 // RuntimeKind identifies a runtime dependency.
@@ -146,6 +148,7 @@ func detectRuntimeVersion(kind RuntimeKind, binPath string) string {
 		return ""
 	}
 
+	util.HideCmdWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return ""

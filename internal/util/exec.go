@@ -95,6 +95,7 @@ func runCmdStreaming(ctx context.Context, name string, args []string, dir string
 	if stdin != nil {
 		cmd.Stdin = stdin
 	}
+	HideCmdWindow(cmd)
 	if breakaway {
 		applyBreakaway(cmd)
 	}
@@ -178,6 +179,8 @@ func runCmd(ctx context.Context, name string, args []string, dir string, env []s
 	if stdin != nil {
 		cmd.Stdin = stdin
 	}
+
+	HideCmdWindow(cmd)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
