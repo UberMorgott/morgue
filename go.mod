@@ -11,6 +11,7 @@ require (
 	github.com/creativeprojects/go-selfupdate v1.5.2
 	github.com/google/go-github/v60 v60.0.0
 	github.com/klauspost/compress v1.18.6
+	github.com/mattn/go-isatty v0.0.20
 	github.com/saferwall/pe v1.6.5
 	github.com/spf13/cobra v1.10.2
 	github.com/wailsapp/go-webview2 v1.0.23
@@ -67,7 +68,6 @@ require (
 	github.com/lmittmann/tint v1.1.2 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.23 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/pjbgf/sha1cd v0.5.0 // indirect

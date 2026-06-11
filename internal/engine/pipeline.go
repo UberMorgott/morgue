@@ -328,6 +328,8 @@ func (e *Engine) ensureRuntimeDeps(filePath string, rec recipe.Recipe, em emitte
 				continue // already available
 			}
 			em.emit("runtime", filePath, fmt.Sprintf("Installing runtime %s...", rk))
+			lastPct := -1
+			lastEmit := time.Now()
 			rtCb := &tools.InstallCallbacks{
 				OnProgress: func(name string, bytesDown, bytesTotal int64) {
 					if em.ch != nil {
@@ -335,11 +337,17 @@ func (e *Engine) ensureRuntimeDeps(filePath string, rec recipe.Recipe, em emitte
 						if bytesTotal > 0 {
 							pct = int(bytesDown * 100 / bytesTotal)
 						}
-						em.send(PipelineEvent{
-							Phase:   "download",
-							Target:  filePath,
-							Message: fmt.Sprintf("Downloading runtime %s... %d%%", name, pct),
-						})
+						// Throttle: emit only when the integer percent changed or
+						// >=1s elapsed, but always let the final 100% through.
+						if pct != lastPct || pct >= 100 || time.Since(lastEmit) >= time.Second {
+							lastPct = pct
+							lastEmit = time.Now()
+							em.send(PipelineEvent{
+								Phase:   "download",
+								Target:  filePath,
+								Message: fmt.Sprintf("Downloading runtime %s... %d%%", name, pct),
+							})
+						}
 					}
 				},
 				OnExtract: func(name string) {
@@ -370,6 +378,8 @@ func (e *Engine) ensureTools(filePath string, rec recipe.Recipe, em emitter) err
 	}
 
 	// Wire download progress to pipeline events
+	lastPct := -1
+	lastEmit := time.Now()
 	installCb := &tools.InstallCallbacks{
 		OnProgress: func(tool string, bytesDown, bytesTotal int64) {
 			if em.ch != nil {
@@ -377,11 +387,17 @@ func (e *Engine) ensureTools(filePath string, rec recipe.Recipe, em emitter) err
 				if bytesTotal > 0 {
 					pct = int(bytesDown * 100 / bytesTotal)
 				}
-				em.send(PipelineEvent{
-					Phase:   "download",
-					Target:  filePath,
-					Message: fmt.Sprintf("Downloading %s... %d%%", tool, pct),
-				})
+				// Throttle: emit only when the integer percent changed or >=1s
+				// elapsed, but always let the final 100% through.
+				if pct != lastPct || pct >= 100 || time.Since(lastEmit) >= time.Second {
+					lastPct = pct
+					lastEmit = time.Now()
+					em.send(PipelineEvent{
+						Phase:   "download",
+						Target:  filePath,
+						Message: fmt.Sprintf("Downloading %s... %d%%", tool, pct),
+					})
+				}
 			}
 		},
 		OnExtract: func(tool string) {

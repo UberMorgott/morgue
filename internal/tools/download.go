@@ -3,8 +3,10 @@ package tools
 import (
 	"archive/zip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,9 +18,59 @@ import (
 	"github.com/UberMorgott/morgue/internal/util"
 )
 
+// downloadMaxAttempts bounds how many times a download is retried on a
+// (likely transient) network failure before giving up.
+const downloadMaxAttempts = 3
+
+// isNetworkTimeout reports whether err looks like a transient network/TLS
+// timeout worth retrying. On Windows behind a throttling firewall, grab/HTTP
+// surfaces WININET errors such as 0x80072EE2 (timeout) wrapped in the chain
+// (e.g. "failed to loadSystemRoots: exit status 0x80072ee2").
+func isNetworkTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "loadsystemroots") ||
+		strings.Contains(msg, "0x80072ee2") ||
+		strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "timed out") ||
+		strings.Contains(msg, "deadline exceeded")
+}
+
 // downloadFile downloads a URL to a local file with progress reporting.
 // The grab library handles resume via ETag/partial files automatically.
+// Transient network timeouts are retried with bounded exponential backoff, and
+// the returned error carries the target URL plus a network-timeout hint so a
+// failure is actionable in a headless/redirected log.
 func downloadFile(url, destPath string, onProgress func(bytesDown, bytesTotal int64)) error {
+	var lastErr error
+	for attempt := 1; attempt <= downloadMaxAttempts; attempt++ {
+		lastErr = downloadOnce(url, destPath, onProgress)
+		if lastErr == nil {
+			return nil
+		}
+		if !isNetworkTimeout(lastErr) {
+			break
+		}
+		if attempt < downloadMaxAttempts {
+			time.Sleep(time.Duration(attempt) * 2 * time.Second)
+		}
+	}
+
+	if isNetworkTimeout(lastErr) {
+		return fmt.Errorf("download %s: network timeout after %d attempts (firewall/connectivity?): %w",
+			url, downloadMaxAttempts, lastErr)
+	}
+	return fmt.Errorf("download %s: %w", url, lastErr)
+}
+
+// downloadOnce performs a single download attempt.
+func downloadOnce(url, destPath string, onProgress func(bytesDown, bytesTotal int64)) error {
 	client := grab.NewClient()
 	req, err := grab.NewRequest(destPath, url)
 	if err != nil {
