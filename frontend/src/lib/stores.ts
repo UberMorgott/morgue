@@ -17,6 +17,35 @@ export const apiRunSeq = writable<number>(0);
 export const lastRunPath = writable<string>('');
 export const lastApiRunSeq = writable<number>(0);
 
+// --- App self-update progress ---
+// Mirrors selfupdate.Progress emitted from Go via the `update:progress` event.
+export type UpdatePhase = 'downloading' | 'installing' | 'done' | 'error' | '';
+export interface UpdateProgress {
+  active: boolean;
+  phase: UpdatePhase;
+  downloaded: number;
+  total: number;
+  percent: number;
+  version: string;
+  error: string;
+}
+
+const emptyUpdate: UpdateProgress = {
+  active: false,
+  phase: '',
+  downloaded: 0,
+  total: 0,
+  percent: 0,
+  version: '',
+  error: '',
+};
+
+export const updateProgress = writable<UpdateProgress>({ ...emptyUpdate });
+
+export function resetUpdateProgress() {
+  updateProgress.set({ ...emptyUpdate });
+}
+
 // Persist language choice to localStorage
 currentLang.subscribe((lang) => {
   try {

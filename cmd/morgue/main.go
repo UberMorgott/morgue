@@ -303,7 +303,9 @@ func selfUpdateCmd() *cobra.Command {
 			if checkOnly {
 				return selfupdate.Check(Version)
 			}
-			return selfupdate.Update(Version)
+			// CLI path: no progress callback, no auto-relaunch — just print the
+			// restart message (handled inside Update).
+			return selfupdate.Update(Version, nil)
 		},
 	}
 

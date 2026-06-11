@@ -19,6 +19,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'header.updateApp': { en: 'Update to', ru: 'Обновить до' },
   'header.toolUpdates': { en: 'updates', ru: 'обновлений' },
 
+  // App self-update overlay
+  'update.title': { en: 'Updating Morgue', ru: 'Обновление Morgue' },
+  'update.downloading': { en: 'Downloading update...', ru: 'Загрузка обновления...' },
+  'update.installing': { en: 'Installing...', ru: 'Установка...' },
+  'update.done': { en: 'Update complete', ru: 'Обновление завершено' },
+  'update.restarting': { en: 'Restarting...', ru: 'Перезапуск...' },
+  'update.failed': { en: 'Update failed', ru: 'Ошибка обновления' },
+
   // HomePage
   'home.title': { en: 'Binary Decompiler', ru: 'Декомпилятор бинарных файлов' },
   'home.subtitle': { en: 'Automated decompilation pipeline for .NET, Delphi, and native targets', ru: 'Автоматический Pipeline декомпиляции для .NET, Delphi и нативных целей' },

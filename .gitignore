@@ -30,7 +30,13 @@ obj/
 runtimes/
 frontend/public/font-compare.html
 font-compare.html
+# Generated Windows resource files. The per-arch icon resources under
+# cmd/morgue are committed so every `go build` (incl. GoReleaser, which never
+# runs go-winres) embeds the app icon into the released exe. Ignore stray syso
+# elsewhere, but keep the committed icon resources for the release arches.
 *.syso
+!cmd/morgue/rsrc_windows_amd64.syso
+!cmd/morgue/rsrc_windows_arm64.syso
 
 # Agent/tool configs
 .serena/
