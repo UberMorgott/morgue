@@ -25,7 +25,13 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w
+      # -H=windowsgui marks the exe as the Windows GUI subsystem so launching
+      # the GUI (double-click / no args) does NOT pop a background console.
+      # Release-only: the matrix is windows amd64+arm64, and runCLI() reattaches
+      # to the parent console (cmd/morgue/console_windows.go) so CLI output still
+      # works. Dev builds (build.bat / plain go build) intentionally keep the
+      # console for debugging and must NOT get this flag.
+      - -s -w -H=windowsgui
       - -X main.Version={{.Version}}
       - -X main.Commit={{.ShortCommit}}
 
