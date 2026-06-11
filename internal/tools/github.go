@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/go-github/v60/github"
+	"github.com/google/go-github/v74/github"
 )
 
 type assetInfo struct {
