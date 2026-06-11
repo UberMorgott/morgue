@@ -7,6 +7,7 @@ import (
 	"io"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/creativeprojects/go-selfupdate"
@@ -150,11 +151,13 @@ type ProgressFunc func(Progress)
 
 // countingReader wraps an io.Reader and reports cumulative bytes read via emit.
 type countingReader struct {
-	r       io.Reader
-	read    int64
-	total   int64
-	version string
-	emit    ProgressFunc
+	r        io.Reader
+	read     int64
+	total    int64
+	version  string
+	emit     ProgressFunc
+	lastPct  int
+	lastEmit time.Time
 }
 
 func (c *countingReader) Read(p []byte) (int, error) {
@@ -169,13 +172,19 @@ func (c *countingReader) Read(p []byte) (int, error) {
 					pct = 100
 				}
 			}
-			c.emit(Progress{
-				Phase:      PhaseDownloading,
-				Downloaded: c.read,
-				Total:      c.total,
-				Percent:    pct,
-				Version:    c.version,
-			})
+			// Throttle: emit on a percent change or at most ~every 120ms, so a
+			// fast burst of Reads can't flood the event bridge (and coalesce).
+			if pct != c.lastPct || time.Since(c.lastEmit) >= 120*time.Millisecond {
+				c.lastPct = pct
+				c.lastEmit = time.Now()
+				c.emit(Progress{
+					Phase:      PhaseDownloading,
+					Downloaded: c.read,
+					Total:      c.total,
+					Percent:    pct,
+					Version:    c.version,
+				})
+			}
 		}
 	}
 	return n, err

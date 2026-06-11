@@ -136,7 +136,11 @@
     // App self-update progress. Backend emits selfupdate.Progress; we surface it
     // in a modal overlay. Also covers the startup auto-update path (which emits
     // the same `update:progress` events before auto-relaunching).
-    cleanupUpdateProgress = onEvent('update:progress', (data: any) => {
+    cleanupUpdateProgress = onEvent('update:progress', (evt: any) => {
+      // Wails v3 wraps the emitted payload; unwrap it the same way the pipeline
+      // handler does (data.data[0] → data.data → data). Reading evt.phase
+      // directly yields undefined, which froze the progress bar.
+      const data = evt?.data?.[0] ?? evt?.data ?? evt;
       if (!data) return;
       updateProgress.set({
         active: true,
