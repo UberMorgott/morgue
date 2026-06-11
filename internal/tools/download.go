@@ -308,6 +308,7 @@ func installFromGitBuild(tool ToolDef, destDir string, onProgress func(string, i
 
 	cmd := exec.CommandContext(ctx, dotnetBin, "build", "-c", "Release", "-o", destDir)
 	cmd.Dir = projectDir
+	util.HideCmdWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		os.RemoveAll(srcDir)
