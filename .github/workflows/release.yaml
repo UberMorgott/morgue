@@ -10,14 +10,36 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    # Windows runner: Morgue is a Windows desktop+CLI tool. cmd/morgue imports
+    # internal/webview2 (Win32 syscalls) and the Wails v3 Windows backend, which
+    # only compile on Windows. This also lets `go test ./...` (a goreleaser
+    # before-hook) compile every package, including the Windows-only ones.
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Build the Svelte SPA into frontend/dist BEFORE goreleaser: the Go binary
+      # embeds it via `//go:embed all:frontend/dist`, which must resolve at
+      # compile time. frontend/dist is gitignored, so it is absent on a fresh
+      # checkout and must be produced here. Mirrors build.bat step 2; the Wails
+      # bindings under frontend/bindings are committed, so no `wails3 generate`
+      # is needed.
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
       - uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser

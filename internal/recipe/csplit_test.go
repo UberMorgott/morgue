@@ -56,7 +56,14 @@ func TestSplitDecompiledC(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := splitAndIndexDecompiledC(srcDir, `C:\x\wur.exe`)
+	// binaryPath must use the OS-native separator: splitAndIndexDecompiledC
+	// derives the combined-.c base name via filepath.Base, which only treats the
+	// running OS's separator as a path delimiter. A hard-coded Windows path
+	// (C:\x\wur.exe) makes filepath.Base a no-op on Linux, so the base name comes
+	// out as "C:\x\wur", the "wur.c" lookup misses, and the splitter returns a nil
+	// result (the CI-only failure). Build the path with filepath.Join so the test
+	// is hermetic on every platform; production always passes native paths.
+	res, err := splitAndIndexDecompiledC(srcDir, filepath.Join(`C:\x`, "wur.exe"))
 	if err != nil {
 		t.Fatalf("splitAndIndexDecompiledC: %v", err)
 	}
