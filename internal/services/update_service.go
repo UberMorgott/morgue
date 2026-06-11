@@ -1,6 +1,12 @@
 package services
 
 import (
+	"log"
+	"os"
+	"os/exec"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+
 	"github.com/UberMorgott/morgue/internal/selfupdate"
 )
 
@@ -45,7 +51,59 @@ func (s *UpdateService) Check() UpdateStatus {
 	}
 }
 
-// Apply downloads and installs the latest version.
+// Apply downloads and installs the latest version, emitting `update:progress`
+// Wails events throughout so the GUI can render a progress bar. On success it
+// auto-relaunches the freshly-installed binary and quits the current process.
 func (s *UpdateService) Apply() error {
-	return selfupdate.Update(s.Version)
+	app := application.Get()
+
+	onProgress := func(p selfupdate.Progress) {
+		if app != nil {
+			app.Event.Emit("update:progress", p)
+		}
+	}
+
+	if err := selfupdate.Update(s.Version, onProgress); err != nil {
+		// selfupdate.Update already emitted a PhaseError event with details.
+		return err
+	}
+
+	// Only auto-relaunch in GUI/app context. A headless `morgue self-update`
+	// CLI run goes through main.go (app == nil there) and just prints the
+	// restart message — never force-relaunch a headless process.
+	if app != nil {
+		relaunch(app)
+	}
+	return nil
+}
+
+// relaunch spawns the freshly-installed executable detached and quits the
+// current process. Guards against relaunch loops via the MORGUE_RELAUNCHED env
+// marker so a crash-on-start of the new binary can't fork-bomb.
+func relaunch(app *application.App) {
+	if os.Getenv("MORGUE_RELAUNCHED") == "1" {
+		log.Printf("relaunch: skipped (already relaunched once this chain)")
+		app.Quit()
+		return
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		log.Printf("relaunch: cannot resolve executable: %v", err)
+		app.Quit()
+		return
+	}
+
+	cmd := exec.Command(exe, os.Args[1:]...)
+	cmd.Env = append(os.Environ(), "MORGUE_RELAUNCHED=1")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		log.Printf("relaunch: failed to start new binary: %v", err)
+		// Don't quit — leave the (already-updated-on-disk) current process
+		// running so the user isn't left with nothing.
+		return
+	}
+	log.Printf("relaunch: started %s (pid %d), quitting current process", exe, cmd.Process.Pid)
+	app.Quit()
 }

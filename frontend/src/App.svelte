@@ -2,13 +2,14 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import Header from './components/Header.svelte';
   import Sidebar from './components/Sidebar.svelte';
+  import UpdateOverlay from './components/UpdateOverlay.svelte';
 
   import HomePage from './pages/HomePage.svelte';
   import ToolsPage from './pages/ToolsPage.svelte';
   import SettingsPage from './pages/SettingsPage.svelte';
   import AboutPage from './pages/AboutPage.svelte';
   import { ReconService, UpdateService, ToolsService } from './lib/api';
-  import { currentLang, startupBusy, apiRunSeq } from './lib/stores';
+  import { currentLang, startupBusy, apiRunSeq, updateProgress, resetUpdateProgress } from './lib/stores';
 
   import { onEvent } from './lib/events';
   import { pipelineState, updateFromEvent, addHistoryEntry, resetPipeline } from './lib/pipeline';
@@ -112,10 +113,12 @@
   }
 
   let cleanupPipelineProgress: (() => void) | null = null;
+  let cleanupUpdateProgress: (() => void) | null = null;
 
   onDestroy(() => {
     stopApiPoll();
     cleanupPipelineProgress?.();
+    cleanupUpdateProgress?.();
     unsubLang();
   });
 
@@ -128,6 +131,22 @@
 
     cleanupPipelineProgress = onEvent('pipeline:progress', (data: any) => {
       updateFromEvent(data);
+    });
+
+    // App self-update progress. Backend emits selfupdate.Progress; we surface it
+    // in a modal overlay. Also covers the startup auto-update path (which emits
+    // the same `update:progress` events before auto-relaunching).
+    cleanupUpdateProgress = onEvent('update:progress', (data: any) => {
+      if (!data) return;
+      updateProgress.set({
+        active: true,
+        phase: data.phase ?? '',
+        downloaded: data.downloaded ?? 0,
+        total: data.total ?? 0,
+        percent: data.percent ?? 0,
+        version: data.version ?? '',
+        error: data.error ?? '',
+      });
     });
 
     try {
@@ -174,10 +193,18 @@
   }
 
   async function handleAppUpdate() {
+    // Show the overlay immediately, before the first progress event arrives.
+    resetUpdateProgress();
+    updateProgress.set({ active: true, phase: 'downloading', downloaded: 0, total: 0, percent: 0, version: '', error: '' });
     try {
+      // On success the backend auto-relaunches and quits this process, so this
+      // promise may never resolve — the overlay's "restarting" state stays up
+      // until the new instance takes over. On failure it rejects; the backend
+      // already emitted a PhaseError event, but surface it defensively too.
       await UpdateService.Apply();
     } catch (e: any) {
       console.error('UpdateService.Apply failed:', e);
+      updateProgress.update(p => ({ ...p, active: true, phase: 'error', error: String(e?.message ?? e) }));
     }
   }
 
@@ -204,6 +231,7 @@
       {/if}
     </div>
   </div>
+  <UpdateOverlay {lang} />
 </div>
 
 <style>

@@ -103,6 +103,7 @@ func (s *Server) HookEvents(app *application.App) {
 	s.app = app
 	events := []string{
 		"pipeline:progress",
+		"update:progress",
 		"tool:download:start",
 		"tool:download:progress",
 		"tool:download:complete",

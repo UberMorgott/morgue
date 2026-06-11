@@ -371,13 +371,21 @@ func (s *ToolsService) StartupAutoUpdate() map[string]interface{} {
 			"phase": "app-update",
 			"label": "Updating app to " + newVersion + "...",
 		})
-		if err := selfupdate.Update(s.appVersion); err != nil {
+		onProgress := func(p selfupdate.Progress) {
+			emit("update:progress", p)
+		}
+		if err := selfupdate.Update(s.appVersion, onProgress); err != nil {
 			log.Printf("startup: app auto-update failed: %v", err)
 		} else {
 			result["autoApplied"] = true
 			emit("app:update:complete", map[string]interface{}{
 				"version": newVersion,
 			})
+			// Auto-relaunch into the freshly-installed binary (GUI context only;
+			// app == nil short-circuits inside relaunch's caller guard).
+			if app := application.Get(); app != nil {
+				relaunch(app)
+			}
 		}
 	}
 
