@@ -1,13 +1,13 @@
 # Morgue — Project Rules
 
 ## Stack
-- **Backend:** Go 1.25, Wails v3, Cobra CLI
-- **Frontend:** Svelte 5 (runes: $props, $state, $derived, $effect), TypeScript, Vite 6, custom CSS utilities (no CSS framework)
+- **Backend:** Go 1.26.4, Wails v3 (v3.0.0-alpha.98), Cobra CLI
+- **Frontend:** Svelte 5 (runes: $props, $state, $derived, $effect), TypeScript 6, Vite 8, custom CSS utilities (no CSS framework)
 - **Desktop:** Wails 3 (Go backend + embedded SPA)
 
 ## Architecture
 - `cmd/morgue/main.go` — entry point (CLI args → Cobra, no args → Wails GUI + HTTP API)
-- `internal/` — core Go packages (api, app, cli, config, engine, recipe, recon, scanner, selfupdate, services, skiplist, tools, tui [legacy])
+- `internal/` — core Go packages (api, cli, config, engine, instructions, recipe, recon, scanner, selfupdate, services, skiplist, tools, util, webview2, tui [legacy])
 - `internal/api/` — HTTP API server (localhost:19876) for hybrid mode. Handlers, SSE events, AI instructions.
 - `internal/engine/` — pipeline execution engine. Emits `PipelineEvent` with fields: Phase, Target, Message, Obfuscator, Deobfuscator, Tool, ReconKind, Compiler, FileSize, RecipeName, RecipeDesc, Progress, Done, Error, Output.
 - `internal/tools/` — tool download/install manager; tools stored in `BaseDir()/tools/<name>/`
