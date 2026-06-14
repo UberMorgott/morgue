@@ -29,12 +29,24 @@ var (
 // terminal.
 //
 // It is intentionally best-effort and never fatal:
+//   - If stdout is ALREADY a valid handle the launcher redirected it to a
+//     pipe/file (e.g. `morgue run --quiet > out.json`, or PowerShell
+//     Start-Process -RedirectStandardOutput) or a newer Go runtime already
+//     wired it up. We MUST NOT rebind it — pointing it at CONOUT$ would send the
+//     output to the terminal instead of the redirect target and silently drop
+//     the machine-readable result (the exact v0.4.5 regression). So we no-op.
 //   - In a console-subsystem dev build the process already owns a console, so
 //     AttachConsole fails (ERROR_ACCESS_DENIED) — we ignore it and keep the
 //     console we already have.
 //   - When launched detached (no parent console, e.g. double-click) it fails
 //     (ERROR_INVALID_HANDLE) — output simply goes nowhere, which is acceptable.
 func attachParentConsole() {
+	if stdHandleValid(windows.STD_OUTPUT_HANDLE) {
+		// Output is redirected to a pipe/file (or already wired by the runtime).
+		// Leave the std handles untouched so the redirect target keeps the data.
+		return
+	}
+
 	r, _, _ := procAttachConsole.Call(uintptr(attachParentProcess))
 	if r == 0 {
 		// No parent console, or we already own one: nothing to rewire.
@@ -71,4 +83,12 @@ func attachParentConsole() {
 		windows.SetStdHandle(windows.STD_INPUT_HANDLE, in)
 		os.Stdin = os.NewFile(uintptr(in), "CONIN$")
 	}
+}
+
+// stdHandleValid reports whether the given standard handle (one of the
+// STD_*_HANDLE ids) is already usable — i.e. the launcher redirected it to a
+// pipe/file or the Go runtime synthesized one for the GUI-subsystem binary.
+func stdHandleValid(id uint32) bool {
+	h, err := windows.GetStdHandle(id)
+	return err == nil && h != 0 && h != windows.InvalidHandle
 }
