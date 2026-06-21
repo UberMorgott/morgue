@@ -33,6 +33,8 @@ func (i *IL2CPP) Steps() []StepInfo {
 		{Name: "Copy originals", Required: false},
 		{Name: "Extract metadata", Required: true},
 		{Name: "Decompile metadata assemblies", Required: true},
+		{Name: "Extract data layer", Required: false},
+		{Name: "Decode Odin config", Required: false},
 		{Name: "Extract strings", Required: false},
 		{Name: "Build indexes", Required: false},
 	}
@@ -41,8 +43,10 @@ func (i *IL2CPP) Steps() []StepInfo {
 func (i *IL2CPP) RequiredTools() []string {
 	// il2cppinspector is the preferred dumper (its RuntimeDeps pull in the
 	// .NET 10 ASP.NET runtime, auto-installed by the engine before Execute);
-	// il2cppdumper is kept as the fallback.
-	return []string{"il2cppinspector", "il2cppdumper", "ilspycmd", "strings"}
+	// il2cppdumper is kept as the fallback. assetripper drives the config-only
+	// data-layer export (ScriptableObjects/MonoBehaviour) that the Odin decode
+	// stage then renders.
+	return []string{"il2cppinspector", "il2cppdumper", "ilspycmd", "assetripper", "strings"}
 }
 
 func (i *IL2CPP) Execute(ctx *Context) error {
