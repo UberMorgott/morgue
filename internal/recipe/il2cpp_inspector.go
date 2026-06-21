@@ -44,17 +44,21 @@ func dumperOrder(version int32, inspectorAvailable bool) []string {
 	return []string{"il2cppdumper", "il2cppinspector"}
 }
 
-// inspectorArgs builds the InspectorRedux CLI argument list. --select-outputs
-// restricts emission to the C# file (-c) and DLLs (-d) only (no Python/C++/JSON).
-// The C# output path is normalized to forward slashes; InspectorRedux accepts
-// either separator on Windows.
-func inspectorArgs(binPath, metadataPath, csOutDir, dllOutDir string) []string {
+// inspectorArgs builds the InspectorRedux 2026.x CLI argument list. The CLI uses a
+// `process` subcommand with positional input paths (binary + metadata, auto-detected
+// in any order) and a single output FOLDER (-o). `-s` (--output-csharp-stub) and
+// `-d` (--output-dummy-dlls) are bare switches that select the C# stub + DummyDLL
+// outputs only; nothing else (no Python/C++/JSON) is emitted. InspectorRedux writes
+// the C# to <dumpRoot>/cs/il2cpp.cs and the DummyDLLs to <dumpRoot>/dll/*.dll, which
+// is exactly the structured dump/cs + dump/dll layout, so dumpRoot is <out>/dump.
+func inspectorArgs(binPath, metadataPath, dumpRoot string) []string {
 	return []string{
-		"-i", binPath,
-		"-m", metadataPath,
-		"--select-outputs",
-		"-c", filepath.ToSlash(filepath.Join(csOutDir, "il2cpp.cs")),
-		"-d", dllOutDir,
+		"process",
+		binPath,
+		metadataPath,
+		"-o", dumpRoot,
+		"-s",
+		"-d",
 	}
 }
 
@@ -71,8 +75,16 @@ func inspectorEnv(aspNetRuntimeDir, tmpDir string) []string {
 }
 
 // runInspector spawns the InspectorRedux CLI streaming its output to onLine.
+//
+// It launches with CREATE_BREAKAWAY_FROM_JOB so the process escapes morgue's
+// per-process Job Object memory cap. Building the full .NET type model for a large
+// IL2CPP image (LC2's GameAssembly.dll is ~165 MB → 192 DummyDLLs) peaks at ~4.5 GB
+// working set, above the default 4 GiB cap; under the cap InspectorRedux is
+// throttled mid-generation and silently emits only a handful of assemblies (it
+// still returns exit 0), so the breakaway is required for a complete dump. This
+// mirrors the Ghidra JVM, which breaks away for the same reason.
 func runInspector(ctx context.Context, exePath string, args, env []string, workDir string, onLine func(string)) (*util.CmdResult, error) {
-	return util.RunCmdStreamingEnv(ctx, env, exePath, args, workDir, onLine)
+	return util.RunCmdStreamingEnvBreakaway(ctx, env, exePath, args, workDir, onLine)
 }
 
 // aspNetRuntimeDir resolves the .NET 10 ASP.NET runtime root directory used for
@@ -166,25 +178,49 @@ func runInspectorDump(ctx *Context, metadataPath, dummyDllDir string, logTool fu
 		return fmt.Errorf("ASP.NET runtime unavailable for InspectorRedux: %w", err)
 	}
 
-	csOutDir := filepath.Join(ctx.Output, "dump", "cs")
+	// InspectorRedux 2026.x writes cs/ and dll/ subdirs under a single output
+	// folder. dummyDllDir is <out>/dump/dll, so the dump root is its parent and
+	// the C# lands at <dumpRoot>/cs/il2cpp.cs — matching the structured layout.
+	dumpRoot := filepath.Dir(dummyDllDir)
+	csOutDir := filepath.Join(dumpRoot, "cs")
 	tmpDir := filepath.Join(ctx.Output, ".tmp")
-	for _, d := range []string{dummyDllDir, csOutDir, tmpDir} {
+	for _, d := range []string{dumpRoot, dummyDllDir, csOutDir, tmpDir} {
 		if err := os.MkdirAll(d, 0755); err != nil {
 			return err
 		}
 	}
 
-	args := inspectorArgs(ctx.Target, metadataPath, csOutDir, dummyDllDir)
+	args := inspectorArgs(ctx.Target, metadataPath, dumpRoot)
 	env := inspectorEnv(runtimeDir, tmpDir)
 
 	logTool("il2cppinspector", fmt.Sprintf("Running Il2CppInspectorRedux: %s + %s", filepath.Base(ctx.Target), filepath.Base(metadataPath)))
+
+	// InspectorRedux's CLI starts a SignalR/Kestrel host that does NOT shut down
+	// after the `process` command finishes — the process lingers indefinitely.
+	// When it prints "Export finished" every output (cs/il2cpp.cs + dll/*.dll) is
+	// already on disk, so we cancel its context to terminate the idle host and
+	// unblock the wait. A cancel-induced kill after that marker is the expected,
+	// successful path. The streaming callback runs in the same goroutine as the
+	// read loop, so exportDone needs no synchronization.
+	runCtx, cancelRun := context.WithCancel(ctx.Ctx)
+	defer cancelRun()
+	exportDone := false
 	lastLog := time.Now().Add(-2 * time.Second)
-	result, runErr := runInspector(ctx.Ctx, exePath, args, env, ctx.Output, func(line string) {
+	result, runErr := runInspector(runCtx, exePath, args, env, ctx.Output, func(line string) {
+		if strings.Contains(line, "Export finished") {
+			exportDone = true
+			cancelRun()
+		}
 		if time.Since(lastLog) >= time.Second && strings.TrimSpace(line) != "" {
 			logTool("il2cppinspector", strings.TrimSpace(line))
 			lastLog = time.Now()
 		}
 	})
+	// Success path: we saw "Export finished"; the kill we triggered is expected,
+	// so ignore the resulting context-cancelled / non-zero exit.
+	if exportDone {
+		return nil
+	}
 	if runErr != nil {
 		return fmt.Errorf("InspectorRedux spawn failed: %w", runErr)
 	}
