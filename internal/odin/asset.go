@@ -45,9 +45,30 @@ func DecodeAssetFile(path string) (string, int, error) {
 	if err != nil {
 		return "", 0, err
 	}
+	text, err := decodeBlob(blob)
+	if err != nil {
+		return "", len(blob), err
+	}
+	return text, len(blob), nil
+}
+
+// decodeBlob runs the decoder + printer inside a recover boundary so a
+// malformed/truncated blob (out-of-range reads, bad string lengths, oversized
+// primarrays) is converted into a returned error instead of crashing the
+// process. The happy path is unaffected: recover only fires on a panic.
+func decodeBlob(blob []byte) (text string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if de, ok := r.(decodeError); ok {
+				err = de
+			} else {
+				err = fmt.Errorf("malformed odin blob: %v", r)
+			}
+		}
+	}()
 	d := newDecoder(blob)
 	d.run()
-	return printTree(d.toks), len(blob), nil
+	return printTree(d.toks), nil
 }
 
 // DecodeDir decodes the named files (in order) under dir, emitting the same

@@ -19,6 +19,7 @@ func newReader(data []byte) *reader { return &reader{b: data, i: 0} }
 
 func (r *reader) end() bool      { return r.i >= len(r.b) }
 func (r *reader) pos() int       { return r.i }
+func (r *reader) remaining() int { return len(r.b) - r.i }
 func (r *reader) peekType() byte { return r.b[r.i] }
 
 func (r *reader) readByteRaw() byte { v := r.b[r.i]; r.i++; return v }
