@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // AssetRipperClient drives a headless AssetRipper Free instance over HTTP.
@@ -78,4 +80,39 @@ func (c *AssetRipperClient) ExportUnityProject(ctx context.Context, gameDataDir,
 		return err
 	}
 	return c.Reset(ctx)
+}
+
+// itoaInt renders an int as a decimal string. Kept local to this package so the
+// recipe code does not import a formatter from elsewhere just for launch args.
+func itoaInt(v int) string { return fmt.Sprintf("%d", v) }
+
+// freePort asks the OS for an available TCP port and returns it. The listener
+// is closed immediately; the port is then reused by the spawned process. There
+// is a tiny race window, but binding 127.0.0.1:0 picks a port unlikely to be
+// taken before the child binds it.
+func freePort() (int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
+}
+
+// waitReady polls the AssetRipper root until it responds or ctx is done.
+func (c *AssetRipperClient) waitReady(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("assetripper not ready: %w", ctx.Err())
+		default:
+		}
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/", nil)
+		resp, err := c.HTTP.Do(req)
+		if err == nil {
+			resp.Body.Close()
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
