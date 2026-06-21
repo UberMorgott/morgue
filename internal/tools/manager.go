@@ -176,6 +176,9 @@ func (m *Manager) Install(name string, cb *InstallCallbacks) (string, error) {
 	switch tool.Method {
 	case MethodGitHubRelease:
 		version, err := installFromGitHub(tool, destDir, m.cfg.GitHubToken, progressCb, extractCb)
+		if err == nil {
+			_ = m.RecordInstall(name, version)
+		}
 		return version, err
 	case MethodDirectURL:
 		var err error
@@ -189,6 +192,7 @@ func (m *Manager) Install(name string, cb *InstallCallbacks) (string, error) {
 		}
 		versionFile := filepath.Join(destDir, ".version")
 		os.WriteFile(versionFile, []byte("latest"), 0644)
+		_ = m.RecordInstall(name, "latest")
 		return "latest", nil
 	case MethodDotnetTool:
 		err := installDotnetTool(tool, destDir)
@@ -201,6 +205,7 @@ func (m *Manager) Install(name string, cb *InstallCallbacks) (string, error) {
 		}
 		versionFile := filepath.Join(destDir, ".version")
 		os.WriteFile(versionFile, []byte(ver), 0644)
+		_ = m.RecordInstall(name, ver)
 		return ver, nil
 	case MethodNuGet:
 		ver, err := installFromNuGet(tool, destDir, progressCb, onExtractNuGet)
@@ -209,9 +214,13 @@ func (m *Manager) Install(name string, cb *InstallCallbacks) (string, error) {
 		}
 		versionFile := filepath.Join(destDir, ".version")
 		os.WriteFile(versionFile, []byte(ver), 0644)
+		_ = m.RecordInstall(name, ver)
 		return ver, nil
 	case MethodGitBuild:
 		version, err := installFromGitBuild(tool, destDir, onProgressGitBuild, extractCb)
+		if err == nil {
+			_ = m.RecordInstall(name, version)
+		}
 		return version, err
 	default:
 		return "", fmt.Errorf("unsupported install method for %s", name)
