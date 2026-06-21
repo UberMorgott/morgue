@@ -63,7 +63,9 @@ func (s *PipelineService) Run(input, output string) error {
 		output = cfg.DefaultOutputDir
 	}
 	if output == "" {
-		output = util.DefaultOutputDir()
+		// GUI/API implicit default: most-free disk (avoids C:/E:). An explicit
+		// output or configured DefaultOutputDir still wins above.
+		output = util.AutoOutputRoot()
 	}
 	os.MkdirAll(output, 0755)
 

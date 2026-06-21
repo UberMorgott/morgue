@@ -87,7 +87,9 @@ func RunWatch(opts RunOptions) error {
 		opts.Output = cfg.DefaultOutputDir
 	}
 	if opts.Output == "" {
-		opts.Output = util.DefaultOutputDir()
+		// Implicit default: most-free disk (avoids C:/E:). Explicit -o / configured
+		// dir still wins above.
+		opts.Output = util.AutoOutputRoot()
 	}
 	os.MkdirAll(opts.Output, 0755)
 
