@@ -72,9 +72,9 @@ func fmtVal(t tok) string {
 	}
 	switch t.kind {
 	case "float":
-		return trimFloat(float64(t.value.(float32)))
+		return fmtFloatCap6(float64(t.value.(float32)), 32)
 	case "double":
-		return trimFloat(t.value.(float64))
+		return fmtFloatCap6(t.value.(float64), 64)
 	case "bool":
 		if t.value.(bool) {
 			return "True"
@@ -88,11 +88,34 @@ func fmtVal(t tok) string {
 	return fmt.Sprintf("%v", t.value)
 }
 
-// trimFloat reproduces C# ToString("0.######", InvariantCulture):
-// up to 6 fractional digits, trailing zeros removed, no trailing dot.
-func trimFloat(v float64) string {
-	s := strconv.FormatFloat(v, 'f', 6, 64)
-	if strings.Contains(s, ".") {
+// fmtFloatCap6 reproduces .NET Core ToString("0.######", InvariantCulture).
+//
+// .NET formats the value to its display precision FIRST, then the "0.######"
+// custom format caps the result to at most 6 fractional digits:
+//   - float (bitSize 32): display precision is 7 significant digits (G7), so a
+//     float32 whose shortest round-trip is 151.13637 prints as 151.1364. Naively
+//     widening float32->float64 and printing the shortest double (151.13637) or
+//     6 fixed decimals (151.136368) is WRONG — verified against .NET net8.0.
+//   - double (bitSize 64): full precision, then the 6-fractional-digit cap.
+// After the precision step, trailing zeros and a trailing dot are removed.
+func fmtFloatCap6(v float64, bitSize int) string {
+	var s string
+	if bitSize == 32 {
+		s = strconv.FormatFloat(v, 'g', 7, 32) // 7 significant digits (.NET G7)
+	} else {
+		s = strconv.FormatFloat(v, 'g', -1, 64) // shortest round-trippable double
+	}
+	// Expand exponent form to plain decimal so fractional digits can be counted.
+	if strings.ContainsAny(s, "eE") {
+		s = strconv.FormatFloat(v, 'f', -1, 64)
+	}
+	if dot := strings.IndexByte(s, '.'); dot >= 0 {
+		if frac := len(s) - dot - 1; frac > 6 {
+			rv, _ := strconv.ParseFloat(s, 64)
+			s = strconv.FormatFloat(rv, 'f', 6, 64)
+		}
+	}
+	if strings.ContainsRune(s, '.') {
 		s = strings.TrimRight(s, "0")
 		s = strings.TrimRight(s, ".")
 	}
@@ -135,9 +158,9 @@ func decodePrimArray(raw []byte, bytesPer int, ptype string) string {
 		off := k * bytesPer
 		switch {
 		case isFloat && bytesPer == 4:
-			vals = append(vals, trimFloat(float64(math.Float32frombits(binary.LittleEndian.Uint32(raw[off:])))))
+			vals = append(vals, fmtFloatCap6(float64(math.Float32frombits(binary.LittleEndian.Uint32(raw[off:]))), 32))
 		case isDouble && bytesPer == 8:
-			vals = append(vals, trimFloat(math.Float64frombits(binary.LittleEndian.Uint64(raw[off:]))))
+			vals = append(vals, fmtFloatCap6(math.Float64frombits(binary.LittleEndian.Uint64(raw[off:])), 64))
 		case isLong && bytesPer == 8:
 			vals = append(vals, strconv.FormatInt(int64(binary.LittleEndian.Uint64(raw[off:])), 10))
 		case bytesPer == 4:
