@@ -292,6 +292,11 @@ const translations: Record<string, Record<Lang, string>> = {
 
   'settings.dotnet': { en: '.NET', ru: '.NET' },
 
+  // Settings — Unity IL2CPP
+  'settings.il2cpp': { en: 'Unity IL2CPP', ru: 'Unity IL2CPP' },
+  'settings.il2cpp.fullExport': { en: 'Full asset export', ru: 'Полный экспорт ассетов' },
+  'settings.il2cpp.fullExportHint': { en: 'Export the entire Unity project (textures, meshes, audio) instead of config/scripts only. Much larger output (tens of GB).', ru: 'Экспортировать весь проект Unity (текстуры, меши, аудио), а не только конфиги/скрипты. Намного больше места (десятки ГБ).' },
+
   'settings.native': { en: 'Native', ru: 'Нативные' },
   'settings.native.ghidraDecompile': { en: 'Full Ghidra decompilation', ru: 'Полная декомпиляция Ghidra' },
   'settings.native.ghidraDecompileHint': { en: 'Decompile the native binary to C code with Ghidra. The core of native analysis but can be slow and heavy on large binaries.', ru: 'Декомпиляция нативного бинарника в C-код через Ghidra. Основа анализа нативного кода, но может быть медленной и тяжёлой на крупных бинарниках.' },

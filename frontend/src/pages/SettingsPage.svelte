@@ -166,6 +166,14 @@
           </div>
         </section>
 
+        <!-- Section: Unity IL2CPP -->
+        <section class="settings-card glass">
+          <h3 class="card-title">{t(lang, 'settings.il2cpp')}</h3>
+          <div class="card-rows">
+            <SettingsToggle label={t(lang, 'settings.il2cpp.fullExport')} hint={t(lang, 'settings.il2cpp.fullExportHint')} active={config.IL2CPPFullExport} onToggle={() => toggleField('IL2CPPFullExport')} />
+          </div>
+        </section>
+
         <!-- Section: Native -->
         <section class="settings-card glass">
           <h3 class="card-title">{t(lang, 'settings.native')}</h3>
