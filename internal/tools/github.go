@@ -175,6 +175,62 @@ func fetchLatestRelease(repo, token string) (tagName string, assets []assetInfo,
 	return release.GetTagName(), infos, nil
 }
 
+// resolveInstallTag returns the tag to install: the pinned ToolDef.Version when
+// set, otherwise the latest tag discovered from the release feed.
+func resolveInstallTag(tool ToolDef, latestTag string) string {
+	if tool.Version != "" {
+		return tool.Version
+	}
+	return latestTag
+}
+
+// fetchReleaseByTag fetches a specific release (not "latest") via the GitHub API.
+func fetchReleaseByTag(repo, token, tag string) (string, []assetInfo, error) {
+	parts := strings.SplitN(repo, "/", 2)
+	if len(parts) != 2 {
+		return "", nil, fmt.Errorf("invalid repo: %s", repo)
+	}
+	var client *github.Client
+	if token != "" {
+		client = github.NewClient(nil).WithAuthToken(token)
+	} else {
+		client = github.NewClient(nil)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	release, _, err := client.Repositories.GetReleaseByTag(ctx, parts[0], parts[1], tag)
+	if err != nil {
+		return "", nil, fmt.Errorf("fetch release %s@%s: %w", repo, tag, err)
+	}
+	var infos []assetInfo
+	for _, a := range release.Assets {
+		infos = append(infos, assetInfo{Name: a.GetName(), URL: a.GetBrowserDownloadURL()})
+	}
+	return release.GetTagName(), infos, nil
+}
+
+// downloadAndExtract downloads each matched asset into destDir, extracting archives.
+func downloadAndExtract(matched []assetInfo, destDir string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
+	for _, asset := range matched {
+		archivePath := filepath.Join(destDir, asset.Name)
+		if err := downloadFile(asset.URL, archivePath, onProgress); err != nil {
+			os.Remove(archivePath)
+			return err
+		}
+		if isArchiveFile(archivePath) {
+			if onExtract != nil {
+				onExtract()
+			}
+			if err := extractArchive(archivePath, destDir); err != nil {
+				return err
+			}
+			os.Remove(archivePath)
+		}
+		// Plain files (exe, dll, etc.) stay in destDir as-is.
+	}
+	return nil
+}
+
 // fetchReleaseCached returns release info, using cache when available.
 // On cache miss it calls the GitHub API and saves the result.
 // On API error it falls back to stale cache if available.
@@ -250,6 +306,26 @@ func matchAssets(assets []assetInfo, glob string) []assetInfo {
 // Returns the version tag on success.
 func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) (string, error) {
 	baseDir := filepath.Dir(destDir)
+
+	// Pinned version: fetch that exact release via API, scrape on failure.
+	if tool.Version != "" {
+		tag := resolveInstallTag(tool, "")
+		_, assets, err := fetchReleaseByTag(tool.Repo, token, tag)
+		if err == nil {
+			if matched := matchAssets(assets, tool.AssetGlob); len(matched) > 0 {
+				if derr := downloadAndExtract(matched, destDir, onProgress, onExtract); derr != nil {
+					return "", derr
+				}
+				os.WriteFile(filepath.Join(destDir, ".version"), []byte(tag), 0644)
+				return tag, nil
+			}
+		}
+		if derr := tryDirectDownload(tool, tag, destDir, onProgress, onExtract); derr != nil {
+			return "", fmt.Errorf("install pinned %s@%s: %w", tool.Name, tag, derr)
+		}
+		os.WriteFile(filepath.Join(destDir, ".version"), []byte(tag), 0644)
+		return tag, nil
+	}
 
 	tagName, assets, err := fetchReleaseCached(baseDir, tool.Repo, token)
 	if err == nil {
