@@ -1,6 +1,17 @@
 package odin
 
-import "strconv"
+import (
+	"fmt"
+	"strconv"
+)
+
+// decodeError is a sentinel panic payload raised by the decoder/reader on a
+// malformed or truncated Odin blob. It is recovered at the DecodeAssetFile
+// boundary and returned as an error so DecodeDir can log the file and continue
+// (design spec §6: an unparseable blob must not abort the whole data stage).
+type decodeError string
+
+func (e decodeError) Error() string { return string(e) }
 
 // tok is one decoded token. Mirrors the C# Tok class.
 type tok struct {
@@ -102,8 +113,21 @@ func (d *decoder) run() {
 		case 0x08: // PrimitiveArray: int32 count, int32 bytesPer, raw bytes
 			count := int(d.r.readInt32())
 			bytesPer := int(d.r.readInt32())
-			raw := make([]byte, count*bytesPer)
-			for k := 0; k < len(raw) && !d.r.end(); k++ {
+			// Sanity-cap the allocation: count/bytesPer come straight from the
+			// file, so a hostile/corrupt blob could request gigabytes. Use int64
+			// math to avoid int overflow, and reject a length longer than the
+			// bytes actually left in the buffer (a primarray cannot exceed that).
+			total := int64(count) * int64(bytesPer)
+			if count < 0 || bytesPer < 0 || total > int64(d.r.remaining()) {
+				panic(decodeError(fmt.Sprintf(
+					"primarray length %d (count=%d bytesPer=%d) exceeds %d remaining bytes at %d",
+					total, count, bytesPer, d.r.remaining(), d.r.pos())))
+			}
+			raw := make([]byte, total)
+			for k := 0; k < len(raw); k++ {
+				if d.r.end() {
+					panic(decodeError(fmt.Sprintf("truncated primarray: got %d of %d bytes at %d", k, len(raw), d.r.pos())))
+				}
 				raw[k] = d.r.readByteRaw()
 			}
 			d.add(tok{kind: "primarray", value: int64(count), typeStr: itoa(bytesPer), rawArr: raw, depth: d.depth})
