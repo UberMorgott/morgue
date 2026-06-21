@@ -150,11 +150,17 @@ func RunAssetRipperExport(ctx context.Context, exePath, gameDataDir, outDir, tmp
 	}
 
 	// Launch headless in the background; it serves until the process is killed.
+	// Use the breakaway spawn so AssetRipper escapes morgue's per-process Job
+	// Object memory cap: loading a large IL2CPP game runs Cpp2IL over the whole
+	// GameAssembly (LC2 ≈ 165 MB) and peaks well above the default 4 GiB cap.
+	// Under the cap, /LoadFolder is throttled and Kestrel returns HTTP 500, so the
+	// export silently produces no assets. (Same reason the InspectorRedux + Ghidra
+	// spawns break away.)
 	launchCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	errCh := make(chan error, 1)
 	go func() {
-		_, runErr := util.RunCmdStreamingEnv(launchCtx, ripperEnv(tmpDir), exePath, ripperLaunchArgs(port), filepath.Dir(exePath), onLine)
+		_, runErr := util.RunCmdStreamingEnvBreakaway(launchCtx, ripperEnv(tmpDir), exePath, ripperLaunchArgs(port), filepath.Dir(exePath), onLine)
 		errCh <- runErr
 	}()
 
