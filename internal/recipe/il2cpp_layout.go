@@ -45,3 +45,14 @@ func (l il2cppLayout) mkdirAll() error {
 	}
 	return nil
 }
+
+// stageDone reports whether a stage's primary output marker already exists, so a
+// resumed run can skip work it has already produced. force always returns false
+// (re-run regardless of the marker).
+func stageDone(marker string, force bool) bool {
+	if force {
+		return false
+	}
+	_, err := os.Stat(marker)
+	return err == nil
+}
