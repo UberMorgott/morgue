@@ -57,7 +57,9 @@ func Run(opts RunOptions) error {
 		opts.Output = cfg.DefaultOutputDir
 	}
 	if opts.Output == "" {
-		opts.Output = util.DefaultOutputDir()
+		// Implicit default: most-free disk (avoids C:/E:, which run out of space
+		// on tens-of-GB exports). An explicit -o or configured dir still wins above.
+		opts.Output = util.AutoOutputRoot()
 	}
 	os.MkdirAll(opts.Output, 0755)
 

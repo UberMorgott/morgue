@@ -48,3 +48,11 @@ func OutputRoot(explicit string, drives []DriveInfo) string {
 	}
 	return filepath.Join(letter+`\`, "morgue-out")
 }
+
+// AutoOutputRoot returns the most-free non-C:/non-E: output root, falling back to
+// DefaultOutputDir() when no drives are reported (non-Windows / restricted env).
+// This is the implicit default wired into the CLI/service entry points; an
+// explicit user-provided output path always takes precedence upstream.
+func AutoOutputRoot() string {
+	return OutputRoot("", EnumerateDrives())
+}
