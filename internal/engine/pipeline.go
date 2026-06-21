@@ -530,8 +530,13 @@ func (e *Engine) executeRecipe(
 	// persist a single copy of the target binary for reproducibility, and
 	// keeping it consistent across all recipes is worth the small disk cost.
 	if execErr == nil && !e.cfg.KeepIntermediates {
-		// For IL2CPP: remove DummyDll (already decompiled to src/)
+		// Legacy IL2CPP layout: metadata/DummyDll (kept for older runs; no-op on
+		// the structured dump/dll layout, which is now a deliverable and is NOT
+		// removed — see dump/cs + dump/dll under the IL2CPP structured layout).
 		os.RemoveAll(filepath.Join(targetOutput, "metadata", "DummyDll"))
+		// Transient spawn TEMP/cwd + the legacy raw Il2CppDumper output mirror live
+		// under .tmp; safe to drop once the dump landed in dump/dll.
+		os.RemoveAll(filepath.Join(targetOutput, ".tmp"))
 		// Remove raw strings.txt (structured strings.json is kept)
 		os.Remove(filepath.Join(targetOutput, "strings.txt"))
 	}

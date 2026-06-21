@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/UberMorgott/morgue/internal/metadata"
+	"github.com/UberMorgott/morgue/internal/odin"
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/util"
 )
@@ -136,12 +137,25 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 	report(1, Running, 0, nil, "")
 	start = time.Now()
 
-	metaDir := filepath.Join(ctx.Output, "metadata")
-	if err := os.MkdirAll(metaDir, 0755); err != nil {
+	// Structured output layout rooted at ctx.Output (the engine already hands us a
+	// per-target dir, so the game segment is empty — no double nesting):
+	//   dump/cs  il2cpp.cs       dump/dll  DummyDLLs
+	//   data     config export   log       .tmp (spawn TEMP/cwd, kept off C:)
+	layout := newIL2CPPLayout(ctx.Output, "")
+	if err := layout.mkdirAll(); err != nil {
 		report(1, Failed, time.Since(start), err, "")
 		return err
 	}
-	dummyDllDir := filepath.Join(metaDir, "DummyDll")
+	// force re-runs every stage even when its output marker exists. Driven by the
+	// global KeepIntermediates inverse is wrong; we gate purely on KeepIntermediates
+	// being unrelated — resume is the default, so force stays false here. (A CLI
+	// --force flag can flip this in a later milestone.)
+	force := false
+
+	// Legacy Il2CppDumper writes a fixed DummyDll/ subdir; root it under .tmp so its
+	// raw output is transient, then runLegacyDump mirrors the DLLs into dump/dll.
+	legacyMetaDir := filepath.Join(layout.TmpDir, "legacy-dump")
+	dummyDllDir := layout.DllDir
 
 	metaVersion, verErr := metadata.ReadVersion(metadataPath)
 	if verErr != nil {
@@ -152,10 +166,18 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		logTool("il2cpp", fmt.Sprintf("Detected IL2CPP metadata version %d", metaVersion))
 	}
 
-	toolUsed, err := runDumpStage(ctx, metadataPath, metaDir, dummyDllDir, metaVersion, logTool)
-	if err != nil {
-		report(1, Failed, time.Since(start), err, toolUsed)
-		return err
+	csMarker := filepath.Join(layout.CsDir, "il2cpp.cs")
+	var toolUsed string
+	if stageDone(csMarker, force) && fileNonEmpty(dummyDllDir) {
+		logTool("il2cpp", "Dump already present (dump/cs + dump/dll) — skipping extraction")
+		toolUsed = "cached"
+	} else {
+		used, derr := runDumpStage(ctx, metadataPath, legacyMetaDir, dummyDllDir, metaVersion, logTool)
+		if derr != nil {
+			report(1, Failed, time.Since(start), derr, used)
+			return derr
+		}
+		toolUsed = used
 	}
 
 	// Count outputs for logging
@@ -272,13 +294,78 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 	}
 	reportCount(2, time.Since(start), "ilspycmd", succeeded, "assemblies")
 
-	// Step 3: Extract strings from GameAssembly.dll
-	report(3, Running, 0, nil, "strings")
+	// Step 3: Extract data layer (AssetRipper config-only export). Non-fatal: the
+	// IL2CPP code dump is the primary deliverable, so a missing tool / data dir or
+	// an export failure logs + reports but never aborts the run.
+	report(3, Running, 0, nil, "assetripper")
+	start = time.Now()
+	rippedMarker := filepath.Join(layout.DataDir, ".ripped")
+	gameDataDir := findGameDataDir(ctx.Target)
+	if ripperPath, rErr := ctx.Tools.Resolve("assetripper"); rErr != nil {
+		logTool("assetripper", fmt.Sprintf("assetripper unavailable, skipping data layer: %v", rErr))
+		report(3, Skipped, time.Since(start), nil, "assetripper")
+	} else if gameDataDir == "" {
+		logTool("assetripper", "could not locate *_Data dir, skipping data layer")
+		report(3, Skipped, time.Since(start), nil, "assetripper")
+	} else if stageDone(rippedMarker, force) {
+		logTool("assetripper", "data layer already extracted — skipping")
+		reportCount(3, time.Since(start), "assetripper", countAssetFiles(layout.DataDir), "assets")
+	} else {
+		full := ctx.Config.IL2CPPFullExport
+		logTool("assetripper", fmt.Sprintf("Exporting %s (full=%v)", gameDataDir, full))
+		rLastLog := time.Now().Add(-2 * time.Second)
+		rerr := RunAssetRipperExport(ctx.Ctx, ripperPath, gameDataDir, layout.DataDir, layout.TmpDir, full, func(line string) {
+			if time.Since(rLastLog) >= time.Second && strings.TrimSpace(line) != "" {
+				logTool("assetripper", strings.TrimSpace(line))
+				rLastLog = time.Now()
+			}
+		})
+		if rerr != nil {
+			logTool("assetripper", fmt.Sprintf("AssetRipper export failed (non-fatal): %v", rerr))
+			report(3, Failed, time.Since(start), rerr, "assetripper")
+		} else {
+			os.WriteFile(rippedMarker, []byte("ok"), 0644)
+			reportCount(3, time.Since(start), "assetripper", countAssetFiles(layout.DataDir), "assets")
+		}
+	}
+
+	// Step 4: Decode Odin config from the exported .asset files into a readable
+	// tree. Each blob is decoded under recover() so a single malformed asset is
+	// logged and skipped — never aborts the run.
+	report(4, Running, 0, nil, "odin")
+	start = time.Now()
+	assetFiles := collectAssetFiles(layout.DataDir)
+	if len(assetFiles) == 0 {
+		logTool("odin", "no .asset files to decode, skipping Odin decode")
+		report(4, Skipped, time.Since(start), nil, "odin")
+	} else {
+		decoded := 0
+		var outBuf strings.Builder
+		rule := strings.Repeat("#", 60)
+		for _, af := range assetFiles {
+			text, n, derr := decodeAssetSafe(af)
+			if derr != nil {
+				logTool("odin", fmt.Sprintf("Odin decode skipped %s: %v", filepath.Base(af), derr))
+				continue
+			}
+			outBuf.WriteString("\n" + rule + "\n")
+			outBuf.WriteString(fmt.Sprintf("## %s  (%d bytes)\n", filepath.Base(af), n))
+			outBuf.WriteString(rule + "\n")
+			outBuf.WriteString(text)
+			decoded++
+		}
+		os.WriteFile(filepath.Join(layout.DataDir, "odin-decoded.txt"), []byte(outBuf.String()), 0644)
+		logTool("odin", fmt.Sprintf("Decoded %d Odin config files", decoded))
+		reportCount(4, time.Since(start), "odin", decoded, "configs")
+	}
+
+	// Step 5: Extract strings from GameAssembly.dll
+	report(5, Running, 0, nil, "strings")
 	start = time.Now()
 	stringsPath, err := ctx.Tools.Resolve("strings")
 	if err != nil {
 		logTool("strings", fmt.Sprintf("strings tool not available: %v", err))
-		report(3, Skipped, time.Since(start), nil, "strings")
+		report(5, Skipped, time.Since(start), nil, "strings")
 	} else {
 		stringsOut := filepath.Join(ctx.Output, "strings.txt")
 		strLineCount := 0
@@ -293,7 +380,7 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 			if time.Since(strLastProgress) >= time.Second {
 				if ctx.Progress != nil {
 					ctx.Progress <- StepProgress{
-						Step: 3, Total: total, Name: steps[3].Name,
+						Step: 5, Total: total, Name: steps[5].Name,
 						Tool: "strings", Status: Running,
 						Count: strLineCount, Unit: "strings",
 					}
@@ -308,22 +395,22 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		// Analyze and structure strings
 		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
 		strCount := countLines(stringsOut)
-		reportCount(3, time.Since(start), "strings", strCount, "strings")
+		reportCount(5, time.Since(start), "strings", strCount, "strings")
 	}
 
-	// Step 4: Build indexes
-	report(4, Running, 0, nil, "")
+	// Step 6: Build indexes
+	report(6, Running, 0, nil, "")
 	start = time.Now()
 	logTool("ilspycmd", "Building indexes for decompiled output")
 	if _, statErr := os.Stat(srcDir); statErr != nil {
 		logTool("ilspycmd", "No source to index — ilspycmd produced no src/ output, skipping")
-		report(4, Skipped, time.Since(start), nil, "")
+		report(6, Skipped, time.Since(start), nil, "")
 	} else if idx, err := buildIndex(srcDir); err != nil {
 		logTool("ilspycmd", fmt.Sprintf("Build indexes failed: %v", err))
-		report(4, Failed, time.Since(start), err, "")
+		report(6, Failed, time.Since(start), err, "")
 	} else {
 		logTool("ilspycmd", fmt.Sprintf("Indexed %d source files (%d bytes) -> index.json", idx.FileCount, idx.TotalBytes))
-		reportCount(4, time.Since(start), "", idx.FileCount, "files")
+		reportCount(6, time.Since(start), "", idx.FileCount, "files")
 	}
 
 	return nil
@@ -387,4 +474,87 @@ func countFiles(dir, ext string) int {
 		}
 	}
 	return count
+}
+
+// findGameDataDir returns the Unity *_Data directory for a GameAssembly path.
+// GameAssembly.dll sits inside <Game>_Data, so its own directory is usually the
+// answer; if not, look for a sibling *_Data dir beside the exe.
+func findGameDataDir(target string) string {
+	dir := filepath.Dir(target)
+	if strings.HasSuffix(strings.ToLower(dir), "_data") {
+		return dir
+	}
+	parent := filepath.Dir(dir)
+	entries, _ := os.ReadDir(parent)
+	for _, e := range entries {
+		if e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), "_data") {
+			return filepath.Join(parent, e.Name())
+		}
+	}
+	return ""
+}
+
+// collectAssetFiles walks a directory tree for *.asset files (recursive).
+func collectAssetFiles(root string) []string {
+	var out []string
+	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if strings.EqualFold(filepath.Ext(path), ".asset") {
+			out = append(out, path)
+		}
+		return nil
+	})
+	return out
+}
+
+// countAssetFiles counts *.asset files under root (recursive).
+func countAssetFiles(root string) int { return len(collectAssetFiles(root)) }
+
+// fileNonEmpty reports whether a path exists and (for dirs) has entries.
+func fileNonEmpty(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	if info.IsDir() {
+		entries, _ := os.ReadDir(path)
+		return len(entries) > 0
+	}
+	return info.Size() > 0
+}
+
+// decodeAssetSafe wraps odin.DecodeAssetFile with a panic recovery so a single
+// malformed Odin blob (the reader panics on a bad string length) is turned into
+// an error and skipped rather than aborting the whole pipeline.
+func decodeAssetSafe(path string) (text string, n int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			text, n = "", 0
+			err = fmt.Errorf("panic decoding %s: %v", filepath.Base(path), r)
+		}
+	}()
+	return odin.DecodeAssetFile(path)
+}
+
+// copyDirFlat copies all regular files from src into dst (non-recursive — enough
+// for Il2CppDumper's flat DummyDll output).
+func copyDirFlat(src, dst string) error {
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if err := copyFile(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
 }
