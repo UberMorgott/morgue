@@ -23,6 +23,7 @@ type RuntimeKind string
 const (
 	RuntimeDotnet RuntimeKind = "dotnet"
 	RuntimeJava   RuntimeKind = "java"
+	RuntimeAspNet RuntimeKind = "dotnet-aspnet10"
 )
 
 // RuntimeStatus holds the detected state of a runtime.
@@ -45,6 +46,9 @@ func RuntimeNeeded() []RuntimeKind {
 		if t.Name == "ghidra" {
 			needs[RuntimeJava] = true
 		}
+		for _, rk := range t.RuntimeDeps {
+			needs[rk] = true
+		}
 	}
 	var result []RuntimeKind
 	for k := range needs {
@@ -66,6 +70,11 @@ func runtimeBinary(kind RuntimeKind) string {
 			return filepath.Join("bin", "java.exe")
 		}
 		return filepath.Join("bin", "java")
+	case RuntimeAspNet:
+		if runtime.GOOS == "windows" {
+			return "dotnet.exe"
+		}
+		return "dotnet"
 	}
 	return ""
 }
@@ -77,6 +86,8 @@ func runtimeSystemName(kind RuntimeKind) string {
 		return "dotnet"
 	case RuntimeJava:
 		return "java"
+	case RuntimeAspNet:
+		return "dotnet"
 	}
 	return ""
 }
@@ -99,7 +110,7 @@ func (m *Manager) CheckRuntimes() []RuntimeStatus {
 		neededSet[k] = true
 	}
 
-	allKinds := []RuntimeKind{RuntimeDotnet, RuntimeJava}
+	allKinds := []RuntimeKind{RuntimeDotnet, RuntimeJava, RuntimeAspNet}
 	statuses := make([]RuntimeStatus, 0, len(allKinds))
 
 	for _, kind := range allKinds {
@@ -193,6 +204,8 @@ func (m *Manager) InstallRuntime(kind RuntimeKind, cb *InstallCallbacks) error {
 		return m.installDotnetSDK(cb)
 	case RuntimeJava:
 		return m.installJavaJRE(cb)
+	case RuntimeAspNet:
+		return m.installAspNetRuntime(cb)
 	default:
 		return fmt.Errorf("unknown runtime: %s", kind)
 	}
@@ -381,6 +394,47 @@ func (m *Manager) installJavaJRE(cb *InstallCallbacks) error {
 	bin := m.localRuntimeBin(RuntimeJava)
 	if _, err := os.Stat(bin); err != nil {
 		return fmt.Errorf("java JRE binary not found after extraction: %s", bin)
+	}
+	return nil
+}
+
+// aspNetRuntimeURL returns the .NET 10 ASP.NET Core runtime (win-x64) zip URL.
+// The ASP.NET bundle is a superset of the base runtime, de-risking InspectorRedux
+// which targets net10.0 framework-dependent.
+func aspNetRuntimeURL() string {
+	return "https://aka.ms/dotnet/10.0/aspnetcore-runtime-win-x64.zip"
+}
+
+// installAspNetRuntime downloads the portable .NET 10 ASP.NET runtime zip into
+// baseDir/runtimes/dotnet-aspnet10/. Mirrors installDotnetSDK.
+func (m *Manager) installAspNetRuntime(cb *InstallCallbacks) error {
+	destDir := m.localRuntimeDir(RuntimeAspNet)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Errorf("create aspnet dir: %w", err)
+	}
+
+	zipPath := filepath.Join(m.baseDir, "runtimes", "aspnetcore-runtime.zip")
+	url := aspNetRuntimeURL()
+
+	var progressCb func(bytesDown, bytesTotal int64)
+	if cb != nil && cb.OnProgress != nil {
+		progressCb = func(bytesDown, bytesTotal int64) {
+			cb.OnProgress("dotnet-aspnet10", bytesDown, bytesTotal)
+		}
+	}
+
+	if err := downloadFile(url, zipPath, progressCb); err != nil {
+		return fmt.Errorf("download .NET ASP.NET runtime: %w", err)
+	}
+	defer os.Remove(zipPath)
+
+	if err := extractZip(zipPath, destDir); err != nil {
+		return fmt.Errorf("extract .NET ASP.NET runtime: %w", err)
+	}
+
+	bin := m.localRuntimeBin(RuntimeAspNet)
+	if _, err := os.Stat(bin); err != nil {
+		return fmt.Errorf(".NET ASP.NET runtime binary not found after extraction: %s", bin)
 	}
 	return nil
 }
