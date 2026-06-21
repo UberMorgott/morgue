@@ -185,6 +185,12 @@ func detectRuntimeVersion(kind RuntimeKind, binPath string) string {
 }
 
 // RuntimePath returns the path to a runtime binary, preferring local.
+//
+// RuntimeAspNet is version-sensitive: InspectorRedux targets net10.0 and a stray
+// older system dotnet (e.g. 8.x) on PATH would otherwise be accepted and then fail
+// at launch with "You must install or update .NET". So for RuntimeAspNet a system
+// dotnet only counts when it actually hosts an ASP.NET Core 10.x runtime; otherwise
+// the caller is told the runtime is missing and installs the bundled portable copy.
 func (m *Manager) RuntimePath(kind RuntimeKind) (string, error) {
 	localBin := m.localRuntimeBin(kind)
 	if _, err := os.Stat(localBin); err == nil {
@@ -192,9 +198,45 @@ func (m *Manager) RuntimePath(kind RuntimeKind) (string, error) {
 	}
 	sysName := runtimeSystemName(kind)
 	if sysPath, err := exec.LookPath(sysName); err == nil {
+		if kind == RuntimeAspNet && !systemDotNetHasAspNet10(sysPath) {
+			return "", fmt.Errorf("runtime %s not found — system dotnet lacks .NET 10 ASP.NET Core", kind)
+		}
 		return sysPath, nil
 	}
 	return "", fmt.Errorf("runtime %s not found — install via Tools page", kind)
+}
+
+// systemDotNetHasAspNet10 reports whether the dotnet at dotnetPath hosts an
+// ASP.NET Core 10.x runtime, by parsing `dotnet --list-runtimes`.
+func systemDotNetHasAspNet10(dotnetPath string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, dotnetPath, "--list-runtimes")
+	util.HideCmdWindow(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return false
+	}
+	return listRuntimesHasAspNet10(string(out))
+}
+
+// listRuntimesHasAspNet10 is the pure parser for `dotnet --list-runtimes` output:
+// it returns true when a Microsoft.AspNetCore.App 10.x runtime line is present.
+// Lines look like: "Microsoft.AspNetCore.App 10.0.9 [C:\Program Files\dotnet\...]".
+func listRuntimesHasAspNet10(listRuntimesOutput string) bool {
+	for _, line := range strings.Split(listRuntimesOutput, "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) < 2 {
+			continue
+		}
+		if fields[0] != "Microsoft.AspNetCore.App" {
+			continue
+		}
+		if strings.HasPrefix(fields[1], "10.") {
+			return true
+		}
+	}
+	return false
 }
 
 // InstallRuntime downloads and installs a portable runtime.
