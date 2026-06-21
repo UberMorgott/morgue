@@ -411,20 +411,34 @@ func (e *Engine) ensureTools(filePath string, rec recipe.Recipe, em emitter) err
 		},
 	}
 
-	installFailed := false
+	// Install each tool with a small retry. A transient failure (e.g. a GitHub
+	// API 504) on ONE tool must not abort installs of the others — we continue and
+	// let the post-loop re-check decide whether any genuinely-required tool is
+	// still missing. Each failure is surfaced with the offending tool name.
+	const installAttempts = 3
 	for _, name := range needed {
-		em.emit("install", filePath, fmt.Sprintf("Installing %s...", name))
-		if _, err := e.tools.Install(name, installCb); err != nil {
-			em.emitErr("tools", filePath, fmt.Errorf("auto-install %s: %w", name, err))
-			installFailed = true
+		var lastErr error
+		for attempt := 1; attempt <= installAttempts; attempt++ {
+			if attempt == 1 {
+				em.emit("install", filePath, fmt.Sprintf("Installing %s...", name))
+			} else {
+				em.emit("install", filePath, fmt.Sprintf("Retrying %s (attempt %d/%d)...", name, attempt, installAttempts))
+			}
+			if _, err := e.tools.Install(name, installCb); err != nil {
+				lastErr = err
+				continue
+			}
+			lastErr = nil
 			break
 		}
-	}
-	if installFailed {
-		return fmt.Errorf("failed to auto-install required tools")
+		if lastErr != nil {
+			// Continue with the remaining tools; the re-check below fails the run
+			// only if a still-missing tool is actually required.
+			em.emitErr("tools", filePath, fmt.Errorf("auto-install %s (after %d attempts): %w", name, installAttempts, lastErr))
+		}
 	}
 
-	// Re-check after install
+	// Re-check after install: only genuinely still-missing tools matter here.
 	needed = e.tools.ToolsNeeded(rec.RequiredTools())
 	if len(needed) > 0 {
 		err := fmt.Errorf("still missing after install: %v", needed)
