@@ -47,6 +47,12 @@ type Config struct {
 	UE5BuildIndexes    bool `json:"UE5BuildIndexes" yaml:"ue5_build_indexes"`
 	UE5ExportHookable  bool `json:"UE5ExportHookable" yaml:"ue5_export_hookable"`
 
+	// Unity IL2CPP pipeline toggles
+	// IL2CPPFullExport drives AssetRipper's data-layer export mode: false (default)
+	// exports config-only PrimaryContent (ScriptableObjects/MonoBehaviour/TextAsset),
+	// true exports the full Unity project (opt-in; tens of GB).
+	IL2CPPFullExport bool `json:"IL2CPPFullExport" yaml:"il2cpp_full_export"`
+
 	// Native pipeline step toggles
 	NativeGhidraDecompile bool `json:"NativeGhidraDecompile" yaml:"native_ghidra_decompile"`
 

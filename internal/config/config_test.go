@@ -69,6 +69,39 @@ func TestLoad(t *testing.T) {
 	}
 }
 
+func TestIL2CPPFullExportRoundTrip(t *testing.T) {
+	// Default is config-only (false).
+	if Default().IL2CPPFullExport != false {
+		t.Fatalf("IL2CPPFullExport default = true, want false")
+	}
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("il2cpp_full_export: true\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if !cfg.IL2CPPFullExport {
+		t.Fatalf("IL2CPPFullExport not loaded from yaml, got false")
+	}
+
+	// Save -> Load round-trip preserves the flag.
+	cfg.IL2CPPFullExport = true
+	if err := Save(cfgPath, cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+	loaded, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() after Save() error: %v", err)
+	}
+	if !loaded.IL2CPPFullExport {
+		t.Fatalf("IL2CPPFullExport lost in Save/Load round-trip")
+	}
+}
+
 func TestLoadMissing(t *testing.T) {
 	cfg, err := Load("/nonexistent/path/config.yaml")
 	if err != nil {

@@ -86,11 +86,27 @@ func aspNetRuntimeDir(m *tools.Manager) (string, error) {
 	return filepath.Dir(bin), nil
 }
 
+// runDumpWithOrder tries each dumper tool in order, returning the first that
+// succeeds. If all fail it returns an aggregate error naming every tool tried and
+// its error (never silent). This is the pure ordering primitive — runDumpStage
+// supplies the real per-tool runner; unit tests inject a fake one.
+func runDumpWithOrder(ctx context.Context, order []string, run func(ctx context.Context, tool string) error) (string, error) {
+	var errs []string
+	for _, tool := range order {
+		if err := run(ctx, tool); err != nil {
+			errs = append(errs, tool+": "+err.Error())
+			continue
+		}
+		return tool, nil
+	}
+	return "", fmt.Errorf("all dumpers failed [%s]", strings.Join(errs, " | "))
+}
+
 // runDumpStage performs the IL2CPP dump (Step 1) version-aware with fallback.
 // Policy (dumperOrder): Il2CppInspectorRedux first when installed AND it supports
 // the detected metadata version; legacy Il2CppDumper as the fallback (and as the
 // first choice for versions InspectorRedux can't handle). Both tools populate the
-// same dummyDllDir so downstream steps are unchanged.
+// same dummyDllDir (the structured dump/dll dir) so downstream steps are unchanged.
 //
 // On success it returns the tool name that produced output. If every candidate
 // tool is missing or fails, it returns an aggregated error naming the detected
@@ -100,9 +116,11 @@ func runDumpStage(ctx *Context, metadataPath, metaDir, dummyDllDir string, versi
 	inspectorAvailable := inspectorErr == nil
 
 	order := dumperOrder(version, inspectorAvailable)
-	var attempts []string
 
-	for _, tool := range order {
+	// runOne executes a single dumper and verifies it produced assemblies. The
+	// success criterion is output presence (Il2CppDumper crashes on a trailing
+	// Console.ReadKey() despite finishing its work, so the exit code is unreliable).
+	runOne := func(c context.Context, tool string) error {
 		var runErr error
 		switch tool {
 		case "il2cppinspector":
@@ -110,26 +128,28 @@ func runDumpStage(ctx *Context, metadataPath, metaDir, dummyDllDir string, versi
 		case "il2cppdumper":
 			runErr = runLegacyDump(ctx, metadataPath, metaDir, dummyDllDir, logTool)
 		default:
-			continue
+			return fmt.Errorf("unknown dumper %q", tool)
 		}
-		// Success criterion (shared with the legacy path): DummyDll dir exists and
-		// holds at least one assembly. Il2CppDumper crashes on a trailing
-		// Console.ReadKey() despite finishing its work, so output presence — not the
-		// exit code — is the gate.
-		if runErr == nil {
-			if _, statErr := os.Stat(dummyDllDir); statErr == nil && countFiles(dummyDllDir, ".dll") > 0 {
-				return tool, nil
-			}
-			runErr = fmt.Errorf("%s produced no assemblies in %s", tool, dummyDllDir)
+		if runErr != nil {
+			logTool(tool, fmt.Sprintf("dump attempt failed, trying next: %v", runErr))
+			return runErr
 		}
-		attempts = append(attempts, fmt.Sprintf("%s: %v", tool, runErr))
-		logTool(tool, fmt.Sprintf("dump attempt failed, trying next: %v", runErr))
+		if _, statErr := os.Stat(dummyDllDir); statErr != nil || countFiles(dummyDllDir, ".dll") == 0 {
+			err := fmt.Errorf("%s produced no assemblies in %s", tool, dummyDllDir)
+			logTool(tool, fmt.Sprintf("dump attempt failed, trying next: %v", err))
+			return err
+		}
+		return nil
 	}
 
-	return "", fmt.Errorf(
-		"no IL2CPP dumper succeeded for metadata version %d; tried [%s]: %s",
-		version, strings.Join(order, ", "), strings.Join(attempts, " | "),
-	)
+	used, err := runDumpWithOrder(ctx.Ctx, order, runOne)
+	if err != nil {
+		return "", fmt.Errorf(
+			"no IL2CPP dumper succeeded for metadata version %d; tried [%s]: %w",
+			version, strings.Join(order, ", "), err,
+		)
+	}
+	return used, nil
 }
 
 // runInspectorDump resolves and runs Il2CppInspectorRedux, writing DummyDLLs into
@@ -209,6 +229,20 @@ func runLegacyDump(ctx *Context, metadataPath, metaDir, dummyDllDir string, logT
 			stderr = strings.TrimSpace(result.Stderr)
 		}
 		return fmt.Errorf("Il2CppDumper spawn failed: %w (%s)", runErr, stderr)
+	}
+
+	// Il2CppDumper always emits its assemblies into a fixed "DummyDll" subdir of
+	// metaDir. When the caller's shared dummyDllDir is that exact subdir the dump
+	// already lands there; otherwise (the structured dump/dll layout) mirror the
+	// produced DLLs into dummyDllDir so the success check + downstream ilspycmd see
+	// them in one place.
+	producedDir := filepath.Join(metaDir, "DummyDll")
+	if filepath.Clean(producedDir) != filepath.Clean(dummyDllDir) {
+		if _, statErr := os.Stat(producedDir); statErr == nil {
+			if cpErr := copyDirFlat(producedDir, dummyDllDir); cpErr != nil {
+				return fmt.Errorf("mirror Il2CppDumper output into %s: %w", dummyDllDir, cpErr)
+			}
+		}
 	}
 	return nil
 }
