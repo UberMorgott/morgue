@@ -7,8 +7,12 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/UberMorgott/morgue/internal/util"
 )
 
 // AssetRipperClient drives a headless AssetRipper Free instance over HTTP.
@@ -115,4 +119,66 @@ func (c *AssetRipperClient) waitReady(ctx context.Context) error {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
+}
+
+// ripperLaunchArgs builds the headless launch args for AssetRipper.GUI.Free.exe.
+func ripperLaunchArgs(port int) []string {
+	return []string{"--headless", "--port", itoaInt(port)}
+}
+
+// ripperEnv redirects the spawned process's temp to the output disk so large
+// extractions don't fill C:.
+func ripperEnv(tmpDir string) []string {
+	return []string{"TEMP=" + tmpDir, "TMP=" + tmpDir}
+}
+
+// RunAssetRipperExport launches AssetRipper headless, drives the export, and
+// shuts it down. When full is false, exports PrimaryContent (config-only);
+// when true, exports the full Unity project (opt-in, large).
+// onLine receives the process's stdout lines for logging.
+func RunAssetRipperExport(ctx context.Context, exePath, gameDataDir, outDir, tmpDir string, full bool, onLine func(string)) error {
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		return fmt.Errorf("create ripper tmp dir: %w", err)
+	}
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		return fmt.Errorf("create ripper out dir: %w", err)
+	}
+
+	port, err := freePort()
+	if err != nil {
+		return fmt.Errorf("pick assetripper port: %w", err)
+	}
+
+	// Launch headless in the background; it serves until the process is killed.
+	launchCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		_, runErr := util.RunCmdStreamingEnv(launchCtx, ripperEnv(tmpDir), exePath, ripperLaunchArgs(port), filepath.Dir(exePath), onLine)
+		errCh <- runErr
+	}()
+
+	cl := &AssetRipperClient{
+		BaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
+		HTTP:    &http.Client{Timeout: 0}, // exports can be long; no client timeout
+	}
+
+	readyCtx, readyCancel := context.WithTimeout(ctx, 60*time.Second)
+	defer readyCancel()
+	if err := cl.waitReady(readyCtx); err != nil {
+		return err
+	}
+
+	if full {
+		err = cl.ExportUnityProject(ctx, gameDataDir, outDir)
+	} else {
+		err = cl.ExportPrimaryContent(ctx, gameDataDir, outDir)
+	}
+	// Stop the server regardless of export result.
+	cancel()
+	select {
+	case <-errCh:
+	case <-time.After(5 * time.Second):
+	}
+	return err
 }
