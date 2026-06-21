@@ -300,6 +300,73 @@ func matchAssets(assets []assetInfo, glob string) []assetInfo {
 	return result
 }
 
+// nonInstallableAssetExts are sidecar files (signatures, checksums, notes) that
+// must never be selected as the primary installable asset.
+var nonInstallableAssetExts = []string{".asc", ".sig", ".sha256", ".sha512", ".md5", ".txt", ".json"}
+
+// selectPrimaryAsset picks exactly ONE installable archive from a matched set,
+// making asset selection deterministic when a glob matches several files. It
+// drops signature/checksum/text sidecars, prefers a .zip, then any archive,
+// then the first remaining asset. Returns nil if nothing installable remains.
+func selectPrimaryAsset(matched []assetInfo) *assetInfo {
+	var candidates []assetInfo
+	for _, a := range matched {
+		lower := strings.ToLower(a.Name)
+		skip := false
+		for _, ext := range nonInstallableAssetExts {
+			if strings.HasSuffix(lower, ext) {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			candidates = append(candidates, a)
+		}
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	// Prefer .zip explicitly (the InspectorRedux/AssetRipper CLI archives).
+	for i := range candidates {
+		if strings.HasSuffix(strings.ToLower(candidates[i].Name), ".zip") {
+			return &candidates[i]
+		}
+	}
+	// Then any recognized archive.
+	for i := range candidates {
+		if isArchiveName(candidates[i].Name) {
+			return &candidates[i]
+		}
+	}
+	return &candidates[0]
+}
+
+// isArchiveName reports whether a filename looks like a supported archive.
+func isArchiveName(name string) bool {
+	lower := strings.ToLower(name)
+	for _, ext := range []string{".zip", ".tar.gz", ".tgz", ".7z", ".gz"} {
+		if strings.HasSuffix(lower, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// validateBinaryInstalled confirms the tool's expected Binary is resolvable under
+// destDir after extraction (including inside a nested archive top-level dir, e.g.
+// Il2CppInspectorRedux.CLI-win-x64/). Returns a clear error if not, so a
+// half-installed tool fails here rather than later in Resolve().
+func validateBinaryInstalled(tool ToolDef, destDir string) error {
+	if tool.Binary == "" {
+		return nil
+	}
+	if findBinaryRecursive(destDir, tool.Binary) == "" {
+		return fmt.Errorf("install %s: expected binary %q not found under %s after extraction",
+			tool.Name, tool.Binary, destDir)
+	}
+	return nil
+}
+
 // installFromGitHub downloads and extracts a GitHub release asset.
 // Uses cached release info to avoid API rate limits.
 // Falls back to direct URL download when API is unavailable.
@@ -307,21 +374,26 @@ func matchAssets(assets []assetInfo, glob string) []assetInfo {
 func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) (string, error) {
 	baseDir := filepath.Dir(destDir)
 
-	// Pinned version: fetch that exact release via API, scrape on failure.
+	// Pinned version: reproducibility requires the EXACT tag. Fetch it via API and
+	// fail loudly if the pinned release/asset is missing — never silently fall back
+	// to scrape/latest, which would defeat the lock.
 	if tool.Version != "" {
 		tag := resolveInstallTag(tool, "")
 		_, assets, err := fetchReleaseByTag(tool.Repo, token, tag)
-		if err == nil {
-			if matched := matchAssets(assets, tool.AssetGlob); len(matched) > 0 {
-				if derr := downloadAndExtract(matched, destDir, onProgress, onExtract); derr != nil {
-					return "", derr
-				}
-				os.WriteFile(filepath.Join(destDir, ".version"), []byte(tag), 0644)
-				return tag, nil
-			}
+		if err != nil {
+			return "", fmt.Errorf("pinned release %s for %s not found: %w", tag, tool.Name, err)
 		}
-		if derr := tryDirectDownload(tool, tag, destDir, onProgress, onExtract); derr != nil {
-			return "", fmt.Errorf("install pinned %s@%s: %w", tool.Name, tag, derr)
+		matched := matchAssets(assets, tool.AssetGlob)
+		primary := selectPrimaryAsset(matched)
+		if primary == nil {
+			return "", fmt.Errorf("pinned release %s for %s: no installable asset matched glob %q (found %d assets)",
+				tag, tool.Name, tool.AssetGlob, len(assets))
+		}
+		if derr := downloadAndExtract([]assetInfo{*primary}, destDir, onProgress, onExtract); derr != nil {
+			return "", derr
+		}
+		if verr := validateBinaryInstalled(tool, destDir); verr != nil {
+			return "", verr
 		}
 		os.WriteFile(filepath.Join(destDir, ".version"), []byte(tag), 0644)
 		return tag, nil
