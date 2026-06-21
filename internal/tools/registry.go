@@ -118,6 +118,28 @@ var Registry = []ToolDef{
 		AssetGlob:   "Il2CppDumper-win-*",
 		Binary:      "Il2CppDumper.exe",
 	},
+	{
+		Name:        "il2cppinspector",
+		Description: "Il2CppInspectorRedux — modern IL2CPP dumper (metadata v16–v106)",
+		Category:    CategoryExtractor,
+		Method:      MethodGitHubRelease,
+		Repo:        "LukeFZ/Il2CppInspectorRedux",
+		AssetGlob:   "Il2CppInspectorRedux.CLI-win-x64*",
+		Binary:      "Il2CppInspector.Redux.CLI.exe",
+		Version:     "2026.2",
+		RuntimeDeps: []RuntimeKind{RuntimeAspNet},
+	},
+	{
+		Name:        "assetripper",
+		Description: "AssetRipper Free — Unity asset/ScriptableObject extractor (headless)",
+		Category:    CategoryExtractor,
+		Method:      MethodGitHubRelease,
+		Repo:        "AssetRipper/AssetRipper",
+		AssetGlob:   "AssetRipper_win_x64*",
+		Binary:      "AssetRipper.GUI.Free.exe",
+		Version:     "1.3.14",
+		Optional:    false,
+	},
 }
 
 // FindByName looks up a tool definition by name.
