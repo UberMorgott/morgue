@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/UberMorgott/morgue/internal/metadata"
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/util"
 )
@@ -38,7 +39,10 @@ func (i *IL2CPP) Steps() []StepInfo {
 }
 
 func (i *IL2CPP) RequiredTools() []string {
-	return []string{"il2cppdumper", "ilspycmd", "strings"}
+	// il2cppinspector is the preferred dumper (its RuntimeDeps pull in the
+	// .NET 10 ASP.NET runtime, auto-installed by the engine before Execute);
+	// il2cppdumper is kept as the fallback.
+	return []string{"il2cppinspector", "il2cppdumper", "ilspycmd", "strings"}
 }
 
 func (i *IL2CPP) Execute(ctx *Context) error {
@@ -118,56 +122,42 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 	log(fmt.Sprintf("Copied GameAssembly.dll and %s", filepath.Base(metadataPath)))
 	report(0, Success, time.Since(start), nil, "")
 
-	// Step 1: Extract metadata with Il2CppDumper
-	report(1, Running, 0, nil, "il2cppdumper")
+	// Step 1: Extract metadata. Version-aware dumper selection with fallback:
+	// detect the global-metadata.dat version, prefer Il2CppInspectorRedux when it
+	// is installed AND supports that version, and fall back to the legacy
+	// Il2CppDumper otherwise. Both tools populate the same DummyDll dir so the
+	// downstream decompile/index steps are unchanged. If every dumper fails, the
+	// error names the detected version + every tool tried + each tool error
+	// (never a silent failure).
+	report(1, Running, 0, nil, "")
 	start = time.Now()
-
-	dumperPath, err := ctx.Tools.Resolve("il2cppdumper")
-	if err != nil {
-		report(1, Failed, time.Since(start), err, "il2cppdumper")
-		return fmt.Errorf("il2cppdumper not available: %w", err)
-	}
 
 	metaDir := filepath.Join(ctx.Output, "metadata")
 	if err := os.MkdirAll(metaDir, 0755); err != nil {
-		report(1, Failed, time.Since(start), err, "il2cppdumper")
+		report(1, Failed, time.Since(start), err, "")
 		return err
 	}
+	dummyDllDir := filepath.Join(metaDir, "DummyDll")
 
-	logTool("il2cppdumper", fmt.Sprintf("Running Il2CppDumper: %s + %s", filepath.Base(ctx.Target), filepath.Base(metadataPath)))
-	dumperLastLog := time.Now().Add(-2 * time.Second)
-	result, err := util.RunCmdStreamingWithStdin(ctx.Ctx, dumperPath, []string{
-		ctx.Target,
-		metadataPath,
-		metaDir,
-	}, "", strings.NewReader("\r\n"), func(line string) {
-		if time.Since(dumperLastLog) >= time.Second && strings.TrimSpace(line) != "" {
-			logTool("il2cppdumper", fmt.Sprintf("Il2CppDumper: %s", strings.TrimSpace(line)))
-			dumperLastLog = time.Now()
-		}
-	})
-
-	exitCode := -1
-	if result != nil {
-		exitCode = result.ExitCode
+	metaVersion, verErr := metadata.ReadVersion(metadataPath)
+	if verErr != nil {
+		// Non-fatal: an unreadable header just means we can't route on version;
+		// dumperOrder still picks a tool based on InspectorRedux availability.
+		logTool("il2cpp", fmt.Sprintf("Could not read metadata version (%v); proceeding with dumper auto-selection", verErr))
+	} else {
+		logTool("il2cpp", fmt.Sprintf("Detected IL2CPP metadata version %d", metaVersion))
 	}
 
-	// Il2CppDumper crashes on Console.ReadKey() after completing work — check output instead of exit code
-	dummyDllDir := filepath.Join(metaDir, "DummyDll")
-	if _, statErr := os.Stat(dummyDllDir); os.IsNotExist(statErr) {
-		stderr := ""
-		if result != nil && result.Stderr != "" {
-			stderr = result.Stderr
-		}
-		errMsg := fmt.Errorf("Il2CppDumper failed (exit %d): %s", exitCode, stderr)
-		report(1, Failed, time.Since(start), errMsg, "il2cppdumper")
-		return errMsg
+	toolUsed, err := runDumpStage(ctx, metadataPath, metaDir, dummyDllDir, metaVersion, logTool)
+	if err != nil {
+		report(1, Failed, time.Since(start), err, toolUsed)
+		return err
 	}
 
 	// Count outputs for logging
 	dummyDlls := countFiles(dummyDllDir, ".dll")
-	logTool("il2cppdumper", fmt.Sprintf("Il2CppDumper produced %d dummy assemblies", dummyDlls))
-	reportCount(1, time.Since(start), "il2cppdumper", dummyDlls, "assemblies")
+	logTool(toolUsed, fmt.Sprintf("%s produced %d dummy assemblies", toolUsed, dummyDlls))
+	reportCount(1, time.Since(start), toolUsed, dummyDlls, "assemblies")
 
 	// Step 2: Decompile metadata assemblies with ilspycmd
 	report(2, Running, 0, nil, "ilspycmd")
