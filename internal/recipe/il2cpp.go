@@ -477,14 +477,37 @@ func countFiles(dir, ext string) int {
 }
 
 // findGameDataDir returns the Unity *_Data directory for a GameAssembly path.
-// GameAssembly.dll sits inside <Game>_Data, so its own directory is usually the
-// answer; if not, look for a sibling *_Data dir beside the exe.
+// Three real layouts are covered, in order:
+//  1. GameAssembly.dll lives INSIDE <Game>_Data        -> its own dir is the answer.
+//  2. GameAssembly.dll lives at the game ROOT (Steam)  -> <Game>_Data is a CHILD.
+//  3. fallback                                          -> a SIBLING *_Data dir.
+//
+// The Steam layout (case 2: GameAssembly.dll beside <Game>_Data, e.g.
+// ".../Lost Castle 2/GameAssembly.dll" + ".../Lost Castle 2/LostCastle2_Data")
+// is the common one and must be detected.
 func findGameDataDir(target string) string {
 	dir := filepath.Dir(target)
+
+	// Case 1: the binary already sits inside a *_Data dir.
 	if strings.HasSuffix(strings.ToLower(dir), "_data") {
 		return dir
 	}
-	parent := filepath.Dir(dir)
+
+	// Case 2: a *_Data dir is a direct child of the binary's dir (Steam root).
+	if child := firstDataDir(dir); child != "" {
+		return child
+	}
+
+	// Case 3: a *_Data dir is a sibling of the binary's dir.
+	if sib := firstDataDir(filepath.Dir(dir)); sib != "" {
+		return sib
+	}
+	return ""
+}
+
+// firstDataDir returns the first immediate child of parent whose name ends in
+// "_data" (case-insensitive), or "" if none.
+func firstDataDir(parent string) string {
 	entries, _ := os.ReadDir(parent)
 	for _, e := range entries {
 		if e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), "_data") {
