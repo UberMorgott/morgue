@@ -25,7 +25,11 @@ result as decompiled source, structured strings, and navigable indexes.
 - **Auto runtimes** — required .NET and Java runtimes are fetched and managed locally
   when a recipe needs them.
 - **ConfuserEx handling** — detects ConfuserEx (including marker-stripped variants) and
-  deobfuscates via de4dot before decompiling.
+  deobfuscates via de4dot, plus built-on-demand passes for what de4dot leaves behind:
+  custom resource-keyed string decryption on the host assembly and embedded children
+  (`cfxstrings`), dynamic embedded-assembly extraction (`cfxextract`, gated behind
+  `--allow-dynamic`), and opt-in control-flow deobfuscation of constant-provider switch
+  flattening (`cfxcflow`, enabled with `--cflow`).
 - **AI-optimized output** — per-target layout with decompiled `src/`, structured
   `strings.json`, `recon.json`, and call-graph/name-resolution indexes designed for
   LLM consumption.
@@ -98,6 +102,8 @@ morgue run <target>                    Decompile a file or directory
       --exclude <a,b>                  Additional exclude patterns
       --allow-dynamic                  Allow recipe steps that EXECUTE target code
                                        (e.g. ConfuserEx embedded-assembly extraction)
+      --cflow                          Enable control-flow deobfuscation pass
+                                       (experimental, off by default)
 
 morgue tools check                     List managed tools and their install status
 morgue tools install [name]           Install all missing tools, or a specific one
@@ -159,7 +165,8 @@ task bindings   # regenerate Wails bindings from Go services
 
 Releases are produced by GoReleaser on a Windows GitHub Actions runner. Pushing a `v*`
 tag builds the frontend, then runs `goreleaser release --clean` to publish the
-Windows amd64 + arm64 zip archives and checksums. Latest release: **v0.4.2**.
+Windows amd64 + arm64 zip archives and checksums. See
+[GitHub Releases](https://github.com/UberMorgott/morgue/releases) for the latest version.
 
 ## Stack
 
