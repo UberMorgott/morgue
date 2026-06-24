@@ -277,13 +277,14 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 
 	// Step 6: Unflatten control-flow (host assembly). cfxcflow statically
 	// un-flattens ConfuserEx-family switch-dispatch control flow on the host
-	// `current` stage. Static-only (no target code execution), so it runs by
-	// default; disabled via --no-cflow. Best-effort: any failure (no SDK, build
-	// fails, nothing matched) keeps `current` unchanged and reports Skipped.
+	// `current` stage. Static-only (no target code execution). Experimental and a
+	// near no-op on typical targets, so it is OPT-IN via --cflow (off by default).
+	// Best-effort: any failure (no SDK, build fails, nothing matched) keeps
+	// `current` unchanged and reports Skipped.
 	report(6, Running, 0, nil, "cfxcflow")
 	start = time.Now()
-	if ctx.NoCflow {
-		logTool("cfxcflow", "control-flow deobfuscation disabled (--no-cflow); skipping")
+	if !ctx.Cflow {
+		logTool("cfxcflow", "control-flow deobfuscation off by default (enable with --cflow); skipping")
 		report(6, Skipped, time.Since(start), nil, "cfxcflow")
 	} else if dotnet := d.resolveDotnetSDK(ctx); dotnet == "" {
 		logTool("cfxcflow", "no .NET SDK found — skipping control-flow deobfuscation pass")
@@ -802,10 +803,10 @@ func (d *DotnetConfuserEx) decompileExtracted(
 	}
 
 	// Build (cached) the cfxcflow control-flow pass once for the whole batch.
-	// Like cfxstrings it is an enhancement: no SDK / build failure / --no-cflow
-	// just means children are decompiled without the un-flattening pass.
+	// Opt-in (--cflow) and an enhancement: when off, or no SDK / build failure,
+	// children are decompiled without the un-flattening pass.
 	cfxCflowDLL := ""
-	if !ctx.NoCflow && dotnet != "" {
+	if ctx.Cflow && dotnet != "" {
 		if built, berr := d.buildCflowPass(ctx, dotnet, logTool); berr != nil {
 			logTool("cfxcflow", fmt.Sprintf("control-flow pass build failed (%v) — decompiling without it", berr))
 		} else {
