@@ -19,7 +19,9 @@ import (
 //	    equal (pre/post in-proc interpretation match):   SELFTEST-DEFLATTEN:PASS
 //	(b) an argument-dependent (runtime-state) fixture is left byte-identical
 //	    (no Plan produced, withheld):                     SELFTEST-WITHHELD:PASS
-//	(c) the rewritten output reparses/validates:          SELFTEST-VERIFY:PASS
+//	(c) a constant-state fixture whose selector index transform is non-injective
+//	    (`state & K`) is WITHHELD, not mis-linearized:    SELFTEST-WITHHELD-ANDOR:PASS
+//	(d) the rewritten output reparses/validates:          SELFTEST-VERIFY:PASS
 //
 // Skips (does not fail) when no .NET SDK is available to build the tool.
 func TestCfxCflowSelftest(t *testing.T) {
@@ -52,6 +54,7 @@ func TestCfxCflowSelftest(t *testing.T) {
 	for _, want := range []string{
 		"SELFTEST-DEFLATTEN:PASS",
 		"SELFTEST-WITHHELD:PASS",
+		"SELFTEST-WITHHELD-ANDOR:PASS",
 		"SELFTEST-VERIFY:PASS",
 	} {
 		if !strings.Contains(out, want) {

@@ -519,9 +519,12 @@ internal static class Program
             if (op == CilOpCodes.Shl) { r = a << (b & 31); return true; }
             if (op == CilOpCodes.Shr) { r = a >> (b & 31); return true; }
             if (op == CilOpCodes.Shr_Un) { r = (int)((uint)a >> (b & 31)); return true; }
-            if (op == CilOpCodes.Div) { if (b == 0) return false; r = a / b; return true; }
+            // #5: signed Div/Rem overflow — int.MinValue / -1 (and % -1) throw
+            // OverflowException even under `unchecked`; bail rather than crash the
+            // interpreter (just a missed fold).
+            if (op == CilOpCodes.Div) { if (b == 0 || (a == int.MinValue && b == -1)) return false; r = a / b; return true; }
             if (op == CilOpCodes.Div_Un) { if (b == 0) return false; r = (int)((uint)a / (uint)b); return true; }
-            if (op == CilOpCodes.Rem) { if (b == 0) return false; r = a % b; return true; }
+            if (op == CilOpCodes.Rem) { if (b == 0 || (a == int.MinValue && b == -1)) return false; r = a % b; return true; }
             if (op == CilOpCodes.Rem_Un) { if (b == 0) return false; r = (int)((uint)a % (uint)b); return true; }
         }
         return false;
@@ -730,20 +733,29 @@ internal static class Program
     }
 
     // FindSelectorLocal walks backward from the switch over the small expression
-    // that computes the selector (ldloc [xor/add literal]) and returns the local.
+    // that computes the switch INDEX (ldloc [xor/add/sub literal]) and returns the
+    // local. Only Xor/Add/Sub are accepted as index transforms: each is INJECTIVE in
+    // the state value, so the constant state maps to exactly one switch index and the
+    // linearization is sound. And/Or are NON-injective (they collapse distinct states
+    // to the same index) and are NOT recognised here — a `state & K`/`state | K`
+    // selector therefore fails detection and the method is withheld (see also
+    // ReadSelectorTransform, which computes the index only for these same ops). NOTE:
+    // this is the INDEX path; And/Or remain valid in the store-EXPRESSION fold path
+    // (IsConstantStoreExpr/TryFoldStoreExpr), where a concrete constant is computed
+    // and injectivity is irrelevant.
+    private static bool IsInjectiveIndexTransform(CilOpCode op) =>
+        op == CilOpCodes.Xor || op == CilOpCodes.Add || op == CilOpCodes.Sub;
+
     private static CilLocalVariable FindSelectorLocal(IList<CilInstruction> ins, int switchIdx)
     {
         // Pattern variants:
         //   ldloc s; switch
         //   ldloc s; ldc.i4 key; xor; switch
         //   ldloc s; ldc.i4 key; add; switch
+        //   ldloc s; ldc.i4 key; sub; switch
         int j = switchIdx - 1;
-        // optional trailing arith with literal
-        while (j >= 1 &&
-               (ins[j].OpCode == CilOpCodes.Xor || ins[j].OpCode == CilOpCodes.Add ||
-                ins[j].OpCode == CilOpCodes.Sub || ins[j].OpCode == CilOpCodes.And ||
-                ins[j].OpCode == CilOpCodes.Or) &&
-               ins[j - 1].IsLdcI4())
+        // optional trailing INJECTIVE arith with literal
+        while (j >= 1 && IsInjectiveIndexTransform(ins[j].OpCode) && ins[j - 1].IsLdcI4())
         {
             j -= 2; // skip the literal and the arith op
         }
@@ -929,9 +941,59 @@ internal static class Program
         }
 
         if (plan.Redirects.Count == 0) return null;
+
+        // #3: exception-handler region safety. A rewritten `br` whose source and
+        // target lie in DIFFERENT EH regions (try / handler / filter spans) is
+        // runtime-invalid IL — only `leave` may cross a protected-region boundary, and
+        // AsmResolver's reparse in Verify does NOT catch a cross-region `br`. If any
+        // redirect would cross a boundary, withhold the whole method.
+        var regions = EhRegionMap(cfg.Method.CilMethodBody, ins);
+        foreach (var (at, target) in plan.Redirects)
+        {
+            int si = ins.IndexOf(at), ti = ins.IndexOf(target);
+            if (si < 0 || ti < 0) return null;
+            if (!SameRegion(regions, si, ti)) return null;
+        }
+
         plan.RemovedBlocks = chain.Count; // dispatcher round-trips collapsed
         return plan;
     }
+
+    // EhRegionMap assigns each instruction index a region SIGNATURE: the ordered list
+    // of exception-handler spans (try / handler / filter) that enclose it, encoded as
+    // a stable string. Two instructions are in the SAME region iff their signatures
+    // match — i.e. the identical set of nested protected/handler regions encloses
+    // both. A `br` between same-region instructions is legal; one crossing a boundary
+    // (entering/leaving a try, handler, or filter) is not.
+    private static string[] EhRegionMap(CilMethodBody body, IList<CilInstruction> ins)
+    {
+        int n = ins.Count;
+        var sig = new List<string>[n];
+        for (int i = 0; i < n; i++) sig[i] = new List<string>();
+
+        int Idx(ICilLabel l) => l == null ? -1 : IndexByOffset(ins, l.Offset);
+        int eh = 0;
+        foreach (var h in body.ExceptionHandlers)
+        {
+            eh++;
+            void Tag(int a, int b, string kind)
+            {
+                if (a < 0) return;
+                int end = b < 0 ? n : b; // null end => to method end (defensive)
+                for (int k = a; k < end && k < n; k++) sig[k].Add($"{eh}:{kind}");
+            }
+            Tag(Idx(h.TryStart), Idx(h.TryEnd), "try");
+            Tag(Idx(h.HandlerStart), Idx(h.HandlerEnd), "handler");
+            if (h.FilterStart != null) Tag(Idx(h.FilterStart), Idx(h.HandlerStart), "filter");
+        }
+
+        var outp = new string[n];
+        for (int i = 0; i < n; i++) outp[i] = string.Join("|", sig[i]);
+        return outp;
+    }
+
+    private static bool SameRegion(string[] regions, int a, int b)
+        => a >= 0 && b >= 0 && a < regions.Length && b < regions.Length && regions[a] == regions[b];
 
     // ResolveDispatchDefault returns the concrete instruction the dispatcher falls
     // through to after the switch (the default/out-of-range arm). Typically a
@@ -952,8 +1014,11 @@ internal static class Program
     }
 
     // ReadSelectorTransform reads the inline `state [op key]` transform applied to
-    // the state local before the switch. Returns op=Nop-equivalent (none) when the
-    // selector is the bare local.
+    // the state local before the switch and used to COMPUTE the concrete switch index
+    // in Prove. Only injective transforms (Xor/Add/Sub) are accepted; a non-injective
+    // index op (And/Or) right before the switch returns false -> Prove withholds. This
+    // mirrors FindSelectorLocal's detection gate so the index computed here can never
+    // diverge from what was detected. op=Nop means the bare local is the index.
     private static bool ReadSelectorTransform(IList<CilInstruction> ins, int switchIdx,
         out CilOpCode op, out int key)
     {
@@ -961,8 +1026,10 @@ internal static class Program
         int j = switchIdx - 1;
         if (j < 1) { return ins[switchIdx - 1].OpCode == CilOpCodes.Ldloc ||
                             ins[switchIdx - 1].OpCode == CilOpCodes.Ldloc_S; }
-        if ((ins[j].OpCode == CilOpCodes.Xor || ins[j].OpCode == CilOpCodes.Add ||
-             ins[j].OpCode == CilOpCodes.Sub) && ins[j - 1].IsLdcI4())
+        // A non-injective index transform (And/Or) cannot be soundly linearized.
+        if ((ins[j].OpCode == CilOpCodes.And || ins[j].OpCode == CilOpCodes.Or) && ins[j - 1].IsLdcI4())
+            return false;
+        if (IsInjectiveIndexTransform(ins[j].OpCode) && ins[j - 1].IsLdcI4())
         {
             op = ins[j].OpCode;
             key = ins[j - 1].GetLdcI4Constant();
@@ -1046,6 +1113,12 @@ internal static class Program
             // store on the path -> not a constant straight-line case -> withhold.
             if (!seenWalk.Add(i)) return false;
             var op = ins[i].OpCode;
+
+            // #4: a case body that READS the dispatcher state (ldloc state) before its
+            // terminal stloc means the body's logic depends on the state value we are
+            // about to make dead by removing the dispatcher. Removing the dispatcher
+            // would leave that read observing a stale/undefined value -> withhold.
+            if (GetLdlocLocal(ins[i]) == state) return false;
 
             var def = GetStlocLocal(ins[i]);
             if (def == state)
@@ -1413,6 +1486,7 @@ internal static class Program
         {
             rc |= SelfTestDeflatten() ? 0 : 1;
             rc |= SelfTestWithheld() ? 0 : 1;
+            rc |= SelfTestWithheldAndOr() ? 0 : 1;
             rc |= SelfTestVerify() ? 0 : 1;
         }
         catch (Exception e)
@@ -1420,6 +1494,7 @@ internal static class Program
             Console.Error.WriteLine("selftest exception: " + e);
             Console.WriteLine("SELFTEST-DEFLATTEN:FAIL");
             Console.WriteLine("SELFTEST-WITHHELD:FAIL");
+            Console.WriteLine("SELFTEST-WITHHELD-ANDOR:FAIL");
             Console.WriteLine("SELFTEST-VERIFY:FAIL");
             return 1;
         }
@@ -1493,6 +1568,69 @@ internal static class Program
         Console.WriteLine($"WITHHELD detect={detected} prove={(plan != null)}");
         Console.WriteLine(withheld ? "SELFTEST-WITHHELD:PASS" : "SELFTEST-WITHHELD:FAIL");
         return withheld;
+    }
+
+    // #1 regression fixture: a dispatcher whose pre-switch selector is `ldloc s; ldc K;
+    // and; switch` — the state is fully constant, but `& K` is a NON-INJECTIVE index
+    // transform that Prove cannot soundly linearize. Assert it is WITHHELD (plan==null)
+    // AND the method body is left byte-identical (no rewrite applied).
+    private static bool SelfTestWithheldAndOr()
+    {
+        var module = NewModule("cfxcflow_selftest_andor");
+        var provider = BuildProvider(module);
+        var flat = BuildAndIndexDispatcher(module, provider);
+
+        var all = module.GetAllTypes().SelectMany(t => t.Methods).Where(x => x.CilMethodBody != null).ToList();
+        var provs = IdentifyProviders(all);
+
+        // snapshot the body (opcodes + operands) before analysis.
+        var before = SnapshotBody(flat);
+
+        var cfg = Cfg.Build(flat);
+        bool detected = TryFindFlatteningSwitch(flat, cfg, provs, out var sw, out var st);
+        Plan plan = detected ? Prove(flat, cfg, provs, sw, st) : null;
+        // Withheld from linearization: no Plan. (Detection may or may not fire; the And
+        // index transform makes FindSelectorLocal return no local, so typically detect
+        // is false — either way Prove must not produce a plan.)
+        if (plan != null) Apply(flat, plan); // would be a BUG; run it so the snapshot diff catches it
+
+        var after = SnapshotBody(flat);
+        bool unchanged = before == after;
+        bool withheld = plan == null && unchanged;
+        Console.WriteLine($"WITHHELD-ANDOR detect={detected} prove={(plan != null)} bodyUnchanged={unchanged}");
+        Console.WriteLine(withheld ? "SELFTEST-WITHHELD-ANDOR:PASS" : "SELFTEST-WITHHELD-ANDOR:FAIL");
+        return withheld;
+    }
+
+    // SnapshotBody serialises a body's instruction opcodes+operands to a stable string
+    // so a selftest can assert a method was left byte-identical (no rewrite). Operands
+    // are rendered by STRUCTURE (branch target as instruction index, local as slot,
+    // ldc as constant), NOT by offset-dependent ToString — CalculateOffsets, run
+    // during analysis, shifts label offsets without changing the body, and we must not
+    // mistake that for a rewrite.
+    private static string SnapshotBody(MethodDefinition m)
+    {
+        var ins = m.CilMethodBody.Instructions;
+        InvalidateOffsets(ins);
+        ins.CalculateOffsets();
+        var sb = new StringBuilder();
+        foreach (var i in ins)
+        {
+            sb.Append(i.OpCode.Mnemonic).Append(' ');
+            switch (i.Operand)
+            {
+                case ICilLabel lbl: sb.Append("->" + IndexByOffset(ins, lbl.Offset)); break;
+                case IList<ICilLabel> labels: sb.Append("sw[" + string.Join(",", labels.Select(l => IndexByOffset(ins, l.Offset))) + "]"); break;
+                case CilLocalVariable lv: sb.Append("loc" + lv.Index); break;
+                case IMethodDescriptor md: sb.Append(md.FullName); break;
+                default:
+                    if (i.IsLdcI4()) sb.Append(i.GetLdcI4Constant());
+                    else sb.Append(i.Operand?.ToString() ?? "");
+                    break;
+            }
+            sb.Append('\n');
+        }
+        return sb.ToString();
     }
 
     // After de-flattening fixture 1 and writing it, the output module must reparse.
@@ -1740,6 +1878,69 @@ internal static class Program
 
         blockA.Instruction = il.Add(CilOpCodes.Ldloc, acc);
         il.Add(CilOpCodes.Ldc_I4, 10);
+        il.Add(CilOpCodes.Add);
+        il.Add(CilOpCodes.Stloc, acc);
+        il.Add(CilOpCodes.Ldc_I4_0);
+        il.Add(CilOpCodes.Stloc, state);
+        il.Add(CilOpCodes.Br, loop);
+
+        exit.Instruction = il.Add(CilOpCodes.Ldloc, acc);
+        il.Add(CilOpCodes.Ret);
+        return m;
+    }
+
+    // And-index dispatcher (#1 regression): identical to BuildFlattened EXCEPT the
+    // dispatcher selector is `ldloc s; ldc.i4 7; and; switch` — a NON-INJECTIVE index
+    // transform. The state values are still pure constants, but `& 7` cannot be
+    // soundly inverted to a single case, so Prove MUST withhold and the body MUST be
+    // left byte-identical.
+    private static MethodDefinition BuildAndIndexDispatcher(ModuleDefinition module, MethodDefinition provider)
+    {
+        var t = HostType(module, "FlatAnd");
+        var i32 = module.CorLibTypeFactory.Int32;
+        var sig = MethodSignature.CreateStatic(i32);
+        var m = new MethodDefinition("RunAnd", MethodAttributes.Public | MethodAttributes.Static, sig);
+        t.Methods.Add(m);
+        var body = new CilMethodBody(m);
+        m.CilMethodBody = body;
+
+        var state = new CilLocalVariable(i32);
+        var acc = new CilLocalVariable(i32);
+        body.LocalVariables.Add(state);
+        body.LocalVariables.Add(acc);
+        var il = body.Instructions;
+
+        var loop = new CilInstructionLabel();
+        var blockA = new CilInstructionLabel();
+        var blockB = new CilInstructionLabel();
+        var exit = new CilInstructionLabel();
+
+        il.Add(CilOpCodes.Ldc_I4_0);
+        il.Add(CilOpCodes.Stloc, acc);
+        il.Add(CilOpCodes.Ldc_I4, 16);
+        il.Add(CilOpCodes.Call, provider);   // s = P(16) -> 2
+        il.Add(CilOpCodes.Stloc, state);
+        il.Add(CilOpCodes.Br, loop);
+
+        // loop: switch(s & 7) — NON-injective index transform.
+        loop.Instruction = il.Add(CilOpCodes.Ldloc, state);
+        il.Add(CilOpCodes.Ldc_I4, 7);
+        il.Add(CilOpCodes.And);
+        var labels = new List<ICilLabel> { exit, exit, blockA, blockB, exit, exit, exit, exit };
+        il.Add(CilOpCodes.Switch, labels);
+        il.Add(CilOpCodes.Br, exit);
+
+        blockA.Instruction = il.Add(CilOpCodes.Ldloc, acc);
+        il.Add(CilOpCodes.Ldc_I4, 10);
+        il.Add(CilOpCodes.Add);
+        il.Add(CilOpCodes.Stloc, acc);
+        il.Add(CilOpCodes.Ldc_I4, 17);
+        il.Add(CilOpCodes.Call, provider);   // s = P(17) -> 3
+        il.Add(CilOpCodes.Stloc, state);
+        il.Add(CilOpCodes.Br, loop);
+
+        blockB.Instruction = il.Add(CilOpCodes.Ldloc, acc);
+        il.Add(CilOpCodes.Ldc_I4, 20);
         il.Add(CilOpCodes.Add);
         il.Add(CilOpCodes.Stloc, acc);
         il.Add(CilOpCodes.Ldc_I4_0);
