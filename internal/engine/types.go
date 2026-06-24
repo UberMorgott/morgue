@@ -141,4 +141,7 @@ type Options struct {
 	Pause   *PauseGate
 	// AllowDynamic opts into recipe steps that execute target code.
 	AllowDynamic bool
+	// NoCflow disables the control-flow deobfuscation pass (cfxcflow). Default
+	// false means the (static-only, safe) pass runs by default.
+	NoCflow bool
 }

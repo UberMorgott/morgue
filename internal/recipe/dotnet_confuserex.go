@@ -62,6 +62,7 @@ func (d *DotnetConfuserEx) Steps() []StepInfo {
 		{Name: "Extract strings", Required: false},
 		{Name: "Extract embedded", Required: false},
 		{Name: "Recurse extracted", Required: false},
+		{Name: "Unflatten control-flow", Required: false},
 		{Name: "Decompile", Required: true},
 		{Name: "Build indexes", Required: false},
 	}
@@ -77,7 +78,7 @@ func (d *DotnetConfuserEx) RequiredTools() []string {
 // than adding them mid-run. de4dot-cex and cfxstrings also run again per extracted
 // child during the recurse step, but each tool is shown once.
 func (d *DotnetConfuserEx) DisplayTools() []string {
-	return []string{"de4dot-cex", "strings", "cfxextract", "cfxstrings", "ilspycmd"}
+	return []string{"de4dot-cex", "strings", "cfxextract", "cfxstrings", "cfxcflow", "ilspycmd"}
 }
 
 func (d *DotnetConfuserEx) Execute(ctx *Context) error {
@@ -175,8 +176,24 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 		logTool("de4dot-cex", fmt.Sprintf("verification skipped: %v", verr))
 		report(2, Skipped, time.Since(start), nil, "de4dot-cex")
 	} else if residual > 0 {
-		logTool("de4dot-cex", fmt.Sprintf("WARNING: %d residual encrypted (\\ueXXXX) strings remain — string decryption may be incomplete", residual))
+		logTool("de4dot-cex", fmt.Sprintf("WARNING: %d residual encrypted (\\ueXXXX) strings remain after de4dot — running cfxstrings host pass", residual))
 		report(2, Skipped, time.Since(start), nil, "de4dot-cex")
+		// The HOST assembly can carry its OWN custom resource-keyed XOR string
+		// decryptor (the same ConfuserEx family cfxstrings handles for extracted
+		// children, e.g. AutoGRAPHShell's _E05E._E000(string,int)) that de4dot
+		// -p crx leaves encrypted. Hoist the per-child cfxstrings pass to the host
+		// so its \ueXXXX literals come out readable too. Best-effort: updates the
+		// working stage only when the pass actually rewrote sites.
+		if rewritten := d.cfxStringsHost(ctx, current, interDir, logTool); rewritten != current {
+			current = rewritten
+			if post, _, perr := recon.CountPUAUserStrings(current); perr == nil {
+				if post == 0 {
+					logTool("cfxstrings", "host: all residual encrypted strings decrypted")
+				} else {
+					logTool("cfxstrings", fmt.Sprintf("host: %d encrypted strings still remain after cfxstrings", post))
+				}
+			}
+		}
 	} else {
 		logTool("de4dot-cex", "verified: no residual encrypted strings in deobfuscated assembly")
 		report(2, Success, time.Since(start), nil, "de4dot-cex")
@@ -258,17 +275,52 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 		reportCount(5, time.Since(start), "cfxstrings", done, "assemblies")
 	}
 
-	// Step 6: Decompile (host assembly)
-	report(6, Running, 0, nil, "ilspycmd")
+	// Step 6: Unflatten control-flow (host assembly). cfxcflow statically
+	// un-flattens ConfuserEx-family switch-dispatch control flow on the host
+	// `current` stage. Static-only (no target code execution), so it runs by
+	// default; disabled via --no-cflow. Best-effort: any failure (no SDK, build
+	// fails, nothing matched) keeps `current` unchanged and reports Skipped.
+	report(6, Running, 0, nil, "cfxcflow")
+	start = time.Now()
+	if ctx.NoCflow {
+		logTool("cfxcflow", "control-flow deobfuscation disabled (--no-cflow); skipping")
+		report(6, Skipped, time.Since(start), nil, "cfxcflow")
+	} else if dotnet := d.resolveDotnetSDK(ctx); dotnet == "" {
+		logTool("cfxcflow", "no .NET SDK found — skipping control-flow deobfuscation pass")
+		report(6, Skipped, time.Since(start), nil, "cfxcflow")
+	} else if cflowDLL, berr := d.buildCflowPass(ctx, dotnet, logTool); berr != nil {
+		logTool("cfxcflow", fmt.Sprintf("control-flow pass build failed (%v) — skipping", berr))
+		report(6, Skipped, time.Since(start), nil, "cfxcflow")
+	} else {
+		hostCflowOut := filepath.Join(interDir, "host_cflow"+filepath.Ext(current))
+		cflowTSV := filepath.Join(ctx.Output, "cflow_report.tsv")
+		rewritten, deflattened, folded := d.runCflowPass(ctx, dotnet, cflowDLL, current, hostCflowOut, cflowTSV, "host", logTool)
+		if rewritten != current {
+			current = rewritten
+			// Report the dominant transform's count: deflattened methods if any
+			// switch-dispatch was un-flattened, otherwise folded provider(literal)
+			// constant sites (the fold-only case on the real targets).
+			if deflattened > 0 {
+				reportCount(6, time.Since(start), "cfxcflow", deflattened, "methods")
+			} else {
+				reportCount(6, time.Since(start), "cfxcflow", folded, "consts")
+			}
+		} else {
+			report(6, Skipped, time.Since(start), nil, "cfxcflow")
+		}
+	}
+
+	// Step 7: Decompile (host assembly)
+	report(7, Running, 0, nil, "ilspycmd")
 	start = time.Now()
 	ilspyPath, err := ctx.Tools.Resolve("ilspycmd")
 	if err != nil {
-		report(6, Failed, time.Since(start), err, "ilspycmd")
+		report(7, Failed, time.Since(start), err, "ilspycmd")
 		return fmt.Errorf("ilspycmd not available: %w", err)
 	}
 	srcDir := filepath.Join(ctx.Output, "src")
 	if err := os.MkdirAll(srcDir, 0755); err != nil {
-		report(6, Failed, time.Since(start), err, "ilspycmd")
+		report(7, Failed, time.Since(start), err, "ilspycmd")
 		return fmt.Errorf("create src dir: %w", err)
 	}
 	ilspyArgs := []string{"-p", "-o", srcDir, current}
@@ -287,11 +339,11 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 			stderr = result.Stderr
 		}
 		execErr := fmt.Errorf("ilspycmd failed (exit %d): %s", exitCode, stderr)
-		report(6, Failed, time.Since(start), execErr, "ilspycmd")
+		report(7, Failed, time.Since(start), execErr, "ilspycmd")
 		return execErr
 	}
 	csCount := countFilesWithExt(srcDir, ".cs")
-	reportCount(6, time.Since(start), "ilspycmd", csCount, "types")
+	reportCount(7, time.Since(start), "ilspycmd", csCount, "types")
 
 	// Post-decompile residual-string check: ConfuserEx string encryption that
 	// de4dot did not undo surfaces as \ueXXXX (Private-Use-Area) literals in the
@@ -302,22 +354,147 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 		logTool("ilspycmd", "verified: decompiled source contains no residual encrypted strings")
 	}
 
-	// Step 7: Build indexes
-	report(7, Running, 0, nil, "")
+	// Step 8: Build indexes
+	report(8, Running, 0, nil, "")
 	start = time.Now()
 	logTool("ilspycmd", "Building indexes for decompiled output")
 	if _, statErr := os.Stat(srcDir); statErr != nil {
 		logTool("ilspycmd", "No source to index — ilspycmd produced no src/ output, skipping")
-		report(7, Skipped, time.Since(start), nil, "")
+		report(8, Skipped, time.Since(start), nil, "")
 	} else if idx, err := buildIndex(srcDir); err != nil {
 		logTool("ilspycmd", fmt.Sprintf("Build indexes failed: %v", err))
-		report(7, Failed, time.Since(start), err, "")
+		report(8, Failed, time.Since(start), err, "")
 	} else {
 		logTool("ilspycmd", fmt.Sprintf("Indexed %d source files (%d bytes) -> index.json", idx.FileCount, idx.TotalBytes))
-		reportCount(7, time.Since(start), "", idx.FileCount, "files")
+		reportCount(8, time.Since(start), "", idx.FileCount, "files")
 	}
 
 	return nil
+}
+
+// cfxStringsHost runs the cfxstrings custom-string-decryptor pass on the HOST
+// assembly stage (the de4dot output). ConfuserEx host assemblies can carry their
+// OWN custom resource-keyed XOR string decryptor (the same family cfxstrings
+// handles for extracted children) that de4dot -p crx leaves encrypted. Best-effort:
+// returns `stage` unchanged on any failure or when nothing was rewritten. The
+// magic->plaintext TSV is written to <output>/decrypted_strings.tsv. Dynamic
+// reflection-invoke is permitted only under --allow-dynamic (executes target code).
+func (d *DotnetConfuserEx) cfxStringsHost(ctx *Context, stage, interDir string, logTool func(string, string)) string {
+	dotnet := d.resolveDotnetSDK(ctx)
+	if dotnet == "" {
+		logTool("cfxstrings", "host: no .NET SDK found — skipping custom string-decryptor pass")
+		return stage
+	}
+	cfxDLL, berr := d.buildStringsDecryptor(ctx, dotnet, logTool)
+	if berr != nil {
+		logTool("cfxstrings", fmt.Sprintf("host: custom string-decryptor build failed (%v) — skipping", berr))
+		return stage
+	}
+	out := filepath.Join(interDir, "host_cfxstrings"+filepath.Ext(stage))
+	tsv := filepath.Join(ctx.Output, "decrypted_strings.tsv")
+	args := []string{cfxDLL, stage, out, tsv}
+	if ctx.AllowDynamic {
+		args = append(args, "--allow-dynamic")
+	}
+	rewrote, residual := 0, 0
+	r, rerr := util.RunCmdStreaming(ctx.Ctx, dotnet, args, "", func(line string) {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "REWROTE:"):
+			fmt.Sscanf(strings.TrimPrefix(line, "REWROTE:"), "%d", &rewrote)
+		case strings.HasPrefix(line, "RESIDUAL:"):
+			fmt.Sscanf(strings.TrimPrefix(line, "RESIDUAL:"), "%d", &residual)
+		case strings.HasPrefix(line, "MODE:"), strings.HasPrefix(line, "KEY:"),
+			strings.HasPrefix(line, "DECRYPTOR:"), strings.HasPrefix(line, "SHAPE:"),
+			strings.HasPrefix(line, "KEYRES:"), strings.HasPrefix(line, "KEYNOTE:"):
+			logTool("cfxstrings", "host: "+line)
+		}
+	})
+	if rerr != nil || r == nil || r.ExitCode != 0 {
+		stderr := ""
+		if r != nil {
+			stderr = strings.TrimSpace(r.Stderr)
+		}
+		logTool("cfxstrings", fmt.Sprintf("host: string-decryptor pass skipped: %v %s", rerr, stderr))
+		return stage
+	}
+	if _, e := os.Stat(out); e != nil {
+		return stage
+	}
+	if rewrote == 0 {
+		// Nothing rewritten — `out` is just a copy; keep the de4dot stage.
+		return stage
+	}
+	if residual > 0 {
+		logTool("cfxstrings", fmt.Sprintf("host: rewrote %d encrypted strings, %d left (unrecoverable)", rewrote, residual))
+	} else {
+		logTool("cfxstrings", fmt.Sprintf("host: rewrote %d encrypted strings", rewrote))
+	}
+	return out
+}
+
+// runCflowPass runs the cfxcflow control-flow deobfuscation pass on a single
+// assembly stage. cfxcflow statically un-flattens ConfuserEx-family switch
+// dispatch driven by stateless constant-provider methods that de4dot leaves in
+// place. Static-only: it NEVER executes target code (no --allow-dynamic).
+//
+// CLI:  cfxcflow <input.dll> <output.dll> [report.tsv]
+// Markers (exit 0 even when nothing matched): FAMILY/PROVIDERS/METHODS/
+//   DEFLATTENED/BLOCKSREMOVED/FOLDED/WITHHELD/VERIFY:ok|fail/MODE:none.
+//
+// Returns outPath only when the pass did real, verified work — either full
+// deflattening OR pure provider(literal) call-site folding — i.e.
+// ((DEFLATTENED>0 || FOLDED>0) && VERIFY:ok && the output file exists);
+// otherwise it returns `stage` unchanged. Folding (nop+retarget of pure
+// provider(literal) sites to their constant value) is semantics-preserving and
+// is the tool's VERIFY-gated output, so FOLDED-only results are accepted (on the
+// real targets that is the only transform that fires). Best-effort: any error
+// returns `stage`. `label` prefixes the log lines (e.g. "host" for the host
+// assembly, the child name for extracted). Also returns the deflattened and
+// folded counts (0,0 when it returned `stage` unchanged) so callers can report
+// an honest progress count.
+func (d *DotnetConfuserEx) runCflowPass(ctx *Context, dotnet, cflowDLL, stage, outPath, tsvPath, label string, logTool func(string, string)) (string, int, int) {
+	deflattened, blocksRemoved, folded, withheld := 0, 0, 0, 0
+	verifyOK := false
+	r, rerr := util.RunCmdStreaming(ctx.Ctx, dotnet, []string{cflowDLL, stage, outPath, tsvPath}, "", func(line string) {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "DEFLATTENED:"):
+			fmt.Sscanf(strings.TrimPrefix(line, "DEFLATTENED:"), "%d", &deflattened)
+		case strings.HasPrefix(line, "BLOCKSREMOVED:"):
+			fmt.Sscanf(strings.TrimPrefix(line, "BLOCKSREMOVED:"), "%d", &blocksRemoved)
+		case strings.HasPrefix(line, "FOLDED:"):
+			fmt.Sscanf(strings.TrimPrefix(line, "FOLDED:"), "%d", &folded)
+		case strings.HasPrefix(line, "WITHHELD:"):
+			fmt.Sscanf(strings.TrimPrefix(line, "WITHHELD:"), "%d", &withheld)
+		case strings.HasPrefix(line, "VERIFY:"):
+			verifyOK = strings.TrimPrefix(line, "VERIFY:") == "ok"
+			logTool("cfxcflow", label+": "+line)
+		case strings.HasPrefix(line, "FAMILY:"), strings.HasPrefix(line, "PROVIDERS:"),
+			strings.HasPrefix(line, "METHODS:"), strings.HasPrefix(line, "MODE:"):
+			logTool("cfxcflow", label+": "+line)
+		}
+	})
+	if rerr != nil || r == nil || r.ExitCode != 0 {
+		stderr := ""
+		if r != nil {
+			stderr = strings.TrimSpace(r.Stderr)
+		}
+		logTool("cfxcflow", fmt.Sprintf("%s: control-flow pass skipped: %v %s", label, rerr, stderr))
+		return stage, 0, 0
+	}
+	if (deflattened == 0 && folded == 0) || !verifyOK {
+		// Nothing changed (MODE:none — neither deflattened nor folded) or
+		// verification failed — keep the input stage; cfxcflow emits the input
+		// unchanged on VERIFY:fail anyway.
+		return stage, 0, 0
+	}
+	if _, e := os.Stat(outPath); e != nil {
+		return stage, 0, 0
+	}
+	logTool("cfxcflow", fmt.Sprintf("%s: deflattened=%d folded=%d verify=ok (%d blocks removed, %d withheld)",
+		label, deflattened, folded, blocksRemoved, withheld))
+	return outPath, deflattened, folded
 }
 
 // countPUAInSource counts Private-Use-Area characters (U+E000..U+F8FF) across
@@ -456,6 +633,15 @@ func (d *DotnetConfuserEx) buildStringsDecryptor(ctx *Context, dotnet string, lo
 		"cfxstrings", "cfxstrings.csproj", "cfxstrings.dll", cfxStringsAssets, "assets/cfxstrings/",
 		[]string{"cfxstrings.csproj", "Program.cs"},
 		"Building custom string-decryptor pass (dotnet build -c Release, first run restores NuGet ~15s)...")
+}
+
+// buildCflowPass builds (cached) the cfxcflow control-flow deobfuscation pass and
+// returns its dll path. Thin wrapper over buildDotnetTool.
+func (d *DotnetConfuserEx) buildCflowPass(ctx *Context, dotnet string, logTool func(string, string)) (string, error) {
+	return buildDotnetTool(ctx, dotnet, logTool,
+		"cfxcflow", "cfxcflow.csproj", "cfxcflow.dll", cfxCflowAssets, "assets/cfxcflow/",
+		[]string{"cfxcflow.csproj", "Program.cs"},
+		"Building control-flow deobfuscation pass (dotnet build -c Release)...")
 }
 
 // buildDotnetTool writes an embedded .NET tool's source into a cache dir under
@@ -615,6 +801,18 @@ func (d *DotnetConfuserEx) decompileExtracted(
 		cfxStringsDLL = built
 	}
 
+	// Build (cached) the cfxcflow control-flow pass once for the whole batch.
+	// Like cfxstrings it is an enhancement: no SDK / build failure / --no-cflow
+	// just means children are decompiled without the un-flattening pass.
+	cfxCflowDLL := ""
+	if !ctx.NoCflow && dotnet != "" {
+		if built, berr := d.buildCflowPass(ctx, dotnet, logTool); berr != nil {
+			logTool("cfxcflow", fmt.Sprintf("control-flow pass build failed (%v) — decompiling without it", berr))
+		} else {
+			cfxCflowDLL = built
+		}
+	}
+
 	de4dotPath, de4dotErr := ctx.Tools.Resolve("de4dot-cex")
 
 	done := 0
@@ -711,6 +909,15 @@ func (d *DotnetConfuserEx) decompileExtracted(
 					logTool("cfxstrings", fmt.Sprintf("%s: string-decryptor pass skipped: %v %s", name, rerr, stderr))
 				}
 			}
+		}
+
+		// 2b. cfxcflow control-flow un-flattening (static-only). Runs on the child
+		// `stage` after de4dot + cfxstrings; on a no-match/verify-fail it returns
+		// the stage unchanged, so clean children pass through untouched.
+		if cfxCflowDLL != "" {
+			out := filepath.Join(childInter, "cflow"+filepath.Ext(dll))
+			tsv := filepath.Join(childDir, "cflow_report.tsv")
+			stage, _, _ = d.runCflowPass(ctx, dotnet, cfxCflowDLL, stage, out, tsv, name, logTool)
 		}
 
 		// 3. ilspycmd -p → extracted/<name>/src
