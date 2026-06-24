@@ -90,6 +90,10 @@ type Context struct {
 	// embedded-assembly extraction via in-process cctor + Harmony capture).
 	// Off by default for safety.
 	AllowDynamic bool
+	// Cflow opts into the experimental control-flow deobfuscation pass (cfxcflow);
+	// off by default. The pass is a near no-op on typical targets and only does
+	// real work on pure-constant-chain targets, so it is opt-in.
+	Cflow bool
 }
 
 // Recipe is the interface that all decompilation recipes must implement.

@@ -115,6 +115,9 @@ func (s *PipelineService) Run(input, output string) error {
 		Output:       output,
 		Pause:        pauseGate,
 		AllowDynamic: cfg.AllowDynamicExecution,
+		// cflow is OFF by default in the GUI (experimental, near no-op on typical
+		// targets). No config knob for v1; the CLI --cflow flag is the opt-in source.
+		Cflow:        false,
 	}
 
 	err = eng.Run(ctx, opts, events)

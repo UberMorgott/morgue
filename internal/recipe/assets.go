@@ -15,3 +15,12 @@ var cfxExtractAssets embed.FS
 //
 //go:embed assets/cfxstrings/cfxstrings.csproj assets/cfxstrings/Program.cs
 var cfxStringsAssets embed.FS
+
+// cfxCflowAssets holds the embedded source for the ConfuserEx control-flow
+// deobfuscation pass (a small AsmResolver-based .NET tool built on-demand). It
+// statically un-flattens switch-dispatch control flow driven by stateless
+// constant-provider methods that de4dot does not remove (see
+// assets/cfxcflow/Program.cs). Static-only: it never executes target code.
+//
+//go:embed assets/cfxcflow/cfxcflow.csproj assets/cfxcflow/Program.cs
+var cfxCflowAssets embed.FS
