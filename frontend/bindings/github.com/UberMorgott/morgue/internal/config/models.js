@@ -261,6 +261,17 @@ export class Config {
              */
             this["UE5ExportHookable"] = false;
         }
+        if (!("IL2CPPFullExport" in $$source)) {
+            /**
+             * Unity IL2CPP pipeline toggles
+             * IL2CPPFullExport drives AssetRipper's data-layer export mode: false (default)
+             * exports config-only PrimaryContent (ScriptableObjects/MonoBehaviour/TextAsset),
+             * true exports the full Unity project (opt-in; tens of GB).
+             * @member
+             * @type {boolean}
+             */
+            this["IL2CPPFullExport"] = false;
+        }
         if (!("NativeGhidraDecompile" in $$source)) {
             /**
              * Native pipeline step toggles
