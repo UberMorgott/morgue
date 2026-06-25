@@ -35,6 +35,8 @@ type RunOptions struct {
 	Quiet   bool
 	// AllowDynamic opts into recipe steps that execute target code.
 	AllowDynamic bool
+	// Cflow opts into the experimental control-flow deobfuscation pass (default off).
+	Cflow bool
 }
 
 // Run executes the decompilation pipeline from CLI.
@@ -97,6 +99,7 @@ func Run(opts RunOptions) error {
 		Exclude: opts.Exclude,
 
 		AllowDynamic: opts.AllowDynamic,
+		Cflow:        opts.Cflow,
 	}
 
 	if err := eng.Run(ctx, pipeOpts, events); err != nil {
