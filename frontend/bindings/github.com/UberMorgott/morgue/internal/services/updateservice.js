@@ -16,7 +16,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as $models from "./models.js";
 
 /**
- * Apply downloads and installs the latest version.
+ * Apply downloads and installs the latest version, emitting `update:progress`
+ * Wails events throughout so the GUI can render a progress bar. On success it
+ * auto-relaunches the freshly-installed binary and quits the current process.
  * @returns {$CancellablePromise<void>}
  */
 export function Apply() {

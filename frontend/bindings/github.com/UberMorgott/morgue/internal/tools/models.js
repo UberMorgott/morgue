@@ -19,6 +19,7 @@ export const RuntimeKind = {
 
     RuntimeDotnet: "dotnet",
     RuntimeJava: "java",
+    RuntimeAspNet: "dotnet-aspnet10",
 };
 
 /**
