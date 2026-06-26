@@ -1,6 +1,7 @@
 package odin
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strconv"
 )
@@ -76,6 +77,16 @@ func (d *decoder) skipN(n int) {
 	}
 }
 
+// readGuidHex consumes up to 16 guid bytes (position-equivalent to skipN(16),
+// tolerant of truncation) and returns them hex-encoded for structured $ref use.
+func (d *decoder) readGuidHex() string {
+	bs := make([]byte, 0, 16)
+	for k := 0; k < 16 && !d.r.end(); k++ {
+		bs = append(bs, d.r.readByteRaw())
+	}
+	return hex.EncodeToString(bs)
+}
+
 func (d *decoder) run() {
 	for !d.r.end() {
 		t := d.r.readByteRaw()
@@ -147,11 +158,11 @@ func (d *decoder) run() {
 			d.add(tok{kind: "extref", value: id, depth: d.depth})
 		case 0x0D:
 			nm := d.r.readString()
-			d.skipN(16) // guid
-			d.add(tok{kind: "extref", name: nm, depth: d.depth})
+			g := d.readGuidHex() // guid (captured for structured $ref)
+			d.add(tok{kind: "extref", name: nm, value: g, depth: d.depth})
 		case 0x0E:
-			d.skipN(16)
-			d.add(tok{kind: "extref", depth: d.depth})
+			g := d.readGuidHex()
+			d.add(tok{kind: "extref", value: g, depth: d.depth})
 		case 0x0F:
 			nm := d.r.readString()
 			d.addVal("sbyte", nm, d.r.readSByte())
@@ -245,11 +256,11 @@ func (d *decoder) run() {
 			d.add(tok{kind: "eos", depth: d.depth})
 		case 0x32:
 			nm := d.r.readString()
-			d.r.readString()
-			d.add(tok{kind: "extref", name: nm, depth: d.depth})
+			ref := d.r.readString()
+			d.add(tok{kind: "extref", name: nm, value: ref, depth: d.depth})
 		case 0x33:
-			d.r.readString()
-			d.add(tok{kind: "extref", depth: d.depth})
+			ref := d.r.readString()
+			d.add(tok{kind: "extref", value: ref, depth: d.depth})
 		default:
 			d.add(tok{kind: "raw", value: t, depth: d.depth})
 		}

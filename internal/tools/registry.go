@@ -140,6 +140,20 @@ var Registry = []ToolDef{
 		Version:     "1.3.14",
 		Optional:    false,
 	},
+	{
+		Name:        "assetstudiomod",
+		Description: "AssetStudioMod CLI — Unity asset inventory/extractor",
+		Category:    CategoryExtractor,
+		Method:      MethodGitHubRelease,
+		Repo:        "aelurum/AssetStudio",
+		// Self-contained net8 build (no .NET runtime dep). The exe is nested one
+		// level deep inside the zip (AssetStudioModCLI_net8_portable/), which
+		// Resolve() finds via findBinaryRecursive on Binary by name.
+		AssetGlob: "AssetStudioModCLI_net8_portable*",
+		Binary:    "AssetStudioModCLI.exe",
+		Version:   "v0.19.0",
+		Optional:  true,
+	},
 }
 
 // FindByName looks up a tool definition by name.
