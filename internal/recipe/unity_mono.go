@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/UberMorgott/morgue/internal/gamedata"
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/util"
 )
@@ -31,11 +32,16 @@ func (u *UnityMono) Steps() []StepInfo {
 		{Name: "Extract strings", Required: false},
 		{Name: "Decompile managed DLLs", Required: true},
 		{Name: "Build indexes", Required: false},
+		{Name: "Extract game assets (AssetRipper)", Required: false},
+		{Name: "Organize game data", Required: false},
 	}
 }
 
 func (u *UnityMono) RequiredTools() []string {
-	return []string{"ilspycmd", "strings"}
+	// assetstudiomod (inventory) is intentionally NOT required: it is Optional
+	// and the engine aborts the run if ANY RequiredTools entry stays missing
+	// after install. The Organize step degrades gracefully without it.
+	return []string{"ilspycmd", "strings", "assetripper"}
 }
 
 func (u *UnityMono) Execute(ctx *Context) error {
@@ -195,5 +201,110 @@ func (u *UnityMono) Execute(ctx *Context) error {
 		reportCount(3, time.Since(start), "", idx.FileCount, "files")
 	}
 
+	// Step 4: Extract game assets (AssetRipper full UnityProject export). Non-fatal:
+	// the C# decompile is the primary deliverable, so a missing tool / data dir or
+	// an export failure logs + reports but never aborts the run.
+	report(4, Running, 0, nil, "assetripper")
+	start = time.Now()
+	rawExportDir := filepath.Join(ctx.Output, "raw-export")
+	tmpDir := filepath.Join(ctx.Output, ".tmp")
+	rippedMarker := filepath.Join(rawExportDir, ".ripped")
+	gameDataDir := monoGameDataDir(ctx.Target)
+	if ripperPath, rErr := ctx.Tools.Resolve("assetripper"); rErr != nil {
+		logTool("assetripper", fmt.Sprintf("assetripper unavailable, skipping game-asset export: %v", rErr))
+		report(4, Skipped, time.Since(start), nil, "assetripper")
+	} else if gameDataDir == "" {
+		logTool("assetripper", "could not locate Unity *_Data dir, skipping game-asset export")
+		report(4, Skipped, time.Since(start), nil, "assetripper")
+	} else if stageDone(rippedMarker, false) {
+		logTool("assetripper", "game assets already extracted — skipping")
+		reportCount(4, time.Since(start), "assetripper", countAssetFiles(rawExportDir), "assets")
+	} else {
+		logTool("assetripper", fmt.Sprintf("Exporting %s (full=true)", gameDataDir))
+		rLastLog := time.Now().Add(-2 * time.Second)
+		rerr := RunAssetRipperExport(ctx.Ctx, ripperPath, gameDataDir, rawExportDir, tmpDir, true, func(line string) {
+			if time.Since(rLastLog) >= time.Second && strings.TrimSpace(line) != "" {
+				logTool("assetripper", strings.TrimSpace(line))
+				rLastLog = time.Now()
+			}
+		})
+		if rerr != nil {
+			logTool("assetripper", fmt.Sprintf("AssetRipper export failed (non-fatal): %v", rerr))
+			report(4, Failed, time.Since(start), rerr, "assetripper")
+		} else {
+			os.WriteFile(rippedMarker, []byte("ok"), 0644)
+			reportCount(4, time.Since(start), "assetripper", countAssetFiles(rawExportDir), "assets")
+		}
+	}
+
+	// Step 5: Organize game data into a greppable text tree. Non-fatal: an organize
+	// failure logs + reports but never aborts the run.
+	report(5, Running, 0, nil, "gamedata")
+	start = time.Now()
+	exportAssets := filepath.Join(rawExportDir, "ExportedProject", "Assets")
+	if _, statErr := os.Stat(exportAssets); statErr != nil {
+		logTool("gamedata", "no AssetRipper export found, skipping game-data organize")
+		report(5, Skipped, time.Since(start), nil, "gamedata")
+	} else {
+		gameDataOut := ctx.GameDataOut
+		if gameDataOut == "" {
+			gameDataOut = filepath.Join(ctx.Output, "GameData")
+		}
+		inventoryCSV := ""
+		if cand := filepath.Join(ctx.Output, "inventory", "assets.csv"); fileNonEmpty(cand) {
+			inventoryCSV = cand
+		}
+		toolVersions := map[string]string{}
+		if st := ctx.Tools.Check("assetripper"); st.Version != "" {
+			toolVersions["assetripper"] = st.Version
+		}
+		rep, gerr := gamedata.Organize(gamedata.Options{
+			ExportDir:     exportAssets,
+			FullExportDir: exportAssets,
+			OutDir:        gameDataOut,
+			InventoryCSV:  inventoryCSV,
+			ToolVersions:  toolVersions,
+			Log:           func(s string) { logTool("gamedata", s) },
+			Progress: func(d, t int, u string) {
+				if ctx.Progress != nil {
+					ctx.Progress <- StepProgress{
+						Step: 5, Total: total, Name: steps[5].Name,
+						Tool: "gamedata", Status: Running,
+						Count: d, CountTotal: t, Unit: u,
+					}
+				}
+			},
+		})
+		if gerr != nil {
+			logTool("gamedata", fmt.Sprintf("Organize failed (non-fatal): %v", gerr))
+			report(5, Failed, time.Since(start), gerr, "gamedata")
+		} else {
+			defTotal := 0
+			for _, c := range rep.DefCountsByType {
+				defTotal += c
+			}
+			logTool("gamedata", fmt.Sprintf("Organized %d defs, %d actions, %d failed", defTotal, rep.ActionCount, len(rep.Failed)))
+			reportCount(5, time.Since(start), "gamedata", defTotal, "defs")
+		}
+	}
+
 	return nil
+}
+
+// monoGameDataDir returns the Unity *_Data directory for a Mono target. For Mono
+// builds Assembly-CSharp.dll lives at <Data>/Managed/, so the Data dir is two
+// levels up. It is returned only when it looks like a real Unity data dir (name
+// ends in "_Data" or it contains a globalgamemanagers file).
+func monoGameDataDir(target string) string {
+	dir := filepath.Dir(filepath.Dir(target))
+	if dir == "" || dir == "." {
+		return ""
+	}
+	if strings.HasSuffix(strings.ToLower(dir), "_data") {
+		return dir
+	}
+	if _, err := os.Stat(filepath.Join(dir, "globalgamemanagers")); err == nil {
+		return dir
+	}
+	return ""
 }

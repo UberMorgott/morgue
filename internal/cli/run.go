@@ -37,6 +37,9 @@ type RunOptions struct {
 	AllowDynamic bool
 	// Cflow opts into the experimental control-flow deobfuscation pass (default off).
 	Cflow bool
+	// GameDataOut is the destination for the organized game-data tree
+	// (unity-mono recipe). Empty falls back to <target output>/GameData.
+	GameDataOut string
 }
 
 // Run executes the decompilation pipeline from CLI.
@@ -100,6 +103,7 @@ func Run(opts RunOptions) error {
 
 		AllowDynamic: opts.AllowDynamic,
 		Cflow:        opts.Cflow,
+		GameDataOut:  opts.GameDataOut,
 	}
 
 	if err := eng.Run(ctx, pipeOpts, events); err != nil {

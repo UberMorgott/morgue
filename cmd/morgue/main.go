@@ -211,6 +211,7 @@ The user sees all changes in the application window in real-time.`,
 	}
 
 	root.AddCommand(runCmd())
+	root.AddCommand(gamedataCmd())
 	root.AddCommand(infoCmd())
 	root.AddCommand(toolsCmd())
 	root.AddCommand(versionCmd())
@@ -237,6 +238,7 @@ func runCmd() *cobra.Command {
 			exclude, _ := cmd.Flags().GetStringSlice("exclude")
 			allowDynamic, _ := cmd.Flags().GetBool("allow-dynamic")
 			cflow, _ := cmd.Flags().GetBool("cflow")
+			gameDataOut, _ := cmd.Flags().GetString("gamedata-out")
 
 			return cli.Run(cli.RunOptions{
 				Target:       target,
@@ -248,6 +250,7 @@ func runCmd() *cobra.Command {
 				Quiet:        quiet,
 				AllowDynamic: allowDynamic,
 				Cflow:        cflow,
+				GameDataOut:  gameDataOut,
 			})
 		},
 	}
@@ -260,7 +263,32 @@ func runCmd() *cobra.Command {
 	cmd.Flags().StringSlice("exclude", nil, "Additional exclude patterns")
 	cmd.Flags().Bool("allow-dynamic", false, "Allow recipe steps that EXECUTE target code (e.g. ConfuserEx embedded-assembly extraction)")
 	cmd.Flags().Bool("cflow", false, "Enable control-flow deobfuscation pass (experimental, off by default)")
+	cmd.Flags().String("gamedata-out", "", "Destination for the organized game-data tree (unity-mono recipe; default: <output>/GameData)")
 
+	return cmd
+}
+
+func gamedataCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "gamedata [exportDir]",
+		Short: "Organize an existing AssetRipper Unity export into a game-data tree",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			out, _ := cmd.Flags().GetString("out")
+			inventory, _ := cmd.Flags().GetString("inventory")
+			full, _ := cmd.Flags().GetString("full")
+			return cli.GameData(cli.GameDataOptions{
+				ExportDir: args[0],
+				Out:       out,
+				Inventory: inventory,
+				Full:      full,
+			})
+		},
+	}
+	cmd.Flags().StringP("out", "o", "", "Output directory for the organized game-data tree (required)")
+	cmd.Flags().String("inventory", "", "AssetStudio inventory CSV to merge (optional)")
+	cmd.Flags().String("full", "", "Separate full-export dir for prefabs/scenes (optional)")
+	cmd.MarkFlagRequired("out")
 	return cmd
 }
 
