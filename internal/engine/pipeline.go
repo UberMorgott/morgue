@@ -529,6 +529,7 @@ func (e *Engine) executeRecipe(
 		Obfuscator:   reconResult.Obfuscator,
 		AllowDynamic: opts.AllowDynamic,
 		Cflow:        opts.Cflow,
+		GameDataOut:  opts.GameDataOut,
 	}
 
 	execErr := rec.Execute(rctx)
@@ -664,6 +665,7 @@ func (e *Engine) executeRecipeWithFilter(
 		Obfuscator:   reconResult.Obfuscator,
 		AllowDynamic: opts.AllowDynamic,
 		Cflow:        opts.Cflow,
+		GameDataOut:  opts.GameDataOut,
 	}
 
 	execErr := rec.Execute(rctx)

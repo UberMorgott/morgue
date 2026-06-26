@@ -86,6 +86,9 @@ type Context struct {
 	// check this field and skip steps that don't match.
 	// Values: "strings", "ghidra", "" (all).
 	StepFilter string
+	// GameDataOut is the destination for the organized game-data tree
+	// (unity-mono recipe). Empty falls back to <Output>/GameData.
+	GameDataOut string
 	// AllowDynamic opts into steps that execute target code (e.g. ConfuserEx
 	// embedded-assembly extraction via in-process cctor + Harmony capture).
 	// Off by default for safety.

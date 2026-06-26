@@ -144,4 +144,7 @@ type Options struct {
 	// Cflow opts into the experimental control-flow deobfuscation pass (cfxcflow).
 	// Default false = pass is off (opt-in).
 	Cflow bool
+	// GameDataOut is the destination for the organized game-data tree
+	// (unity-mono recipe). Empty falls back to <target output>/GameData.
+	GameDataOut string
 }

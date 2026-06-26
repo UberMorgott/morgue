@@ -62,8 +62,9 @@ func (c *AssetRipperClient) Reset(ctx context.Context) error {
 	return c.post(ctx, "/Reset", nil)
 }
 
-// ExportPrimaryContent runs the config-only export: LoadFolder -> Export/PrimaryContent
-// (scripts/ScriptableObject/TextAsset only; skips textures/meshes/audio/video) -> Reset.
+// ExportPrimaryContent runs the primary-content export: LoadFolder -> Export/PrimaryContent
+// (primary/visual content only: meshes, textures, sprites; skips full project structure
+// including scripts, ScriptableObjects, and TextAssets) -> Reset.
 func (c *AssetRipperClient) ExportPrimaryContent(ctx context.Context, gameDataDir, outDir string) error {
 	if err := c.LoadFolder(ctx, gameDataDir); err != nil {
 		return err
