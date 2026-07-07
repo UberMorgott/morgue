@@ -83,6 +83,10 @@ func RunWatch(opts RunOptions) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
+	if opts.ToolsMirror != "" {
+		cfg.ToolsMirror = opts.ToolsMirror
+	}
+
 	if opts.Output == "" {
 		opts.Output = cfg.DefaultOutputDir
 	}

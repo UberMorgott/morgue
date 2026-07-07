@@ -211,6 +211,27 @@ export class Config {
              */
             this["SandboxWarning"] = false;
         }
+        if (!("GhidraHome" in $$source)) {
+            /**
+             * GhidraHome points at a pre-existing, offline Ghidra install (the directory
+             * containing ghidraRun.bat / support/analyzeHeadless). When set (or the
+             * $GHIDRA_HOME env var), Ghidra resolves with zero download. Empty falls back
+             * to the managed install under BaseDir()/tools/ghidra.
+             * @member
+             * @type {string}
+             */
+            this["GhidraHome"] = "";
+        }
+        if (!("ToolsMirror" in $$source)) {
+            /**
+             * ToolsMirror rewrites the host of tool download URLs (e.g. an internal
+             * GitHub-release mirror) so tools can be fetched offline / behind a firewall.
+             * Empty uses the upstream hosts.
+             * @member
+             * @type {string}
+             */
+            this["ToolsMirror"] = "";
+        }
         if (!("UE5ExtractPAK" in $$source)) {
             /**
              * UE5 pipeline step toggles

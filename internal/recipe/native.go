@@ -91,12 +91,34 @@ func (n *Native) Execute(ctx *Context) error {
 	if runStrings {
 		report(1, Running, 0, nil, "strings")
 		start = time.Now()
+
+		// Always emit pure-Go PE artifacts (imports + section summary) so the
+		// native recipe never yields zero output even with no external tools and
+		// no Ghidra. Read-only PE parsing; logged-not-fatal.
+		if n, ierr := writeImports(ctx.Target, ctx.Output); ierr != nil {
+			logTool("imports", fmt.Sprintf("Import extraction skipped (non-fatal): %v", ierr))
+		} else {
+			logTool("imports", fmt.Sprintf("Extracted %d imported symbols -> imports.txt / imports.json", n))
+		}
+		if n, serr := writeSectionSummary(ctx.Target, filepath.Join(ctx.Output, "sections.txt")); serr != nil {
+			logTool("imports", fmt.Sprintf("Section summary skipped (non-fatal): %v", serr))
+		} else {
+			logTool("imports", fmt.Sprintf("Summarized %d sections -> sections.txt", n))
+		}
+
+		stringsOut := filepath.Join(ctx.Output, "strings.txt")
 		stringsPath, err := ctx.Tools.Resolve("strings")
 		if err != nil {
-			logTool("strings", fmt.Sprintf("strings tool not available: %v", err))
-			report(1, Skipped, time.Since(start), nil, "strings")
+			// Fallback: pure-Go extraction so strings.txt always exists.
+			logTool("strings", fmt.Sprintf("strings tool unavailable (%v) — using built-in extractor", err))
+			if n, ferr := writeStringsFallback(ctx.Target, stringsOut, 4); ferr != nil {
+				logTool("strings", fmt.Sprintf("Built-in string extraction failed: %v", ferr))
+				report(1, Failed, time.Since(start), ferr, "strings")
+			} else {
+				analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
+				reportCount(1, time.Since(start), "strings", n, "strings")
+			}
 		} else {
-			stringsOut := filepath.Join(ctx.Output, "strings.txt")
 			strLineCount := 0
 			strLastLog := time.Now().Add(-2 * time.Second)
 			strLastProgress := time.Now().Add(-2 * time.Second)
@@ -140,38 +162,46 @@ func (n *Native) Execute(ctx *Context) error {
 		start = time.Now()
 		ghidraPath, err := ctx.Tools.Resolve("ghidra")
 		if err != nil {
-			report(2, Failed, time.Since(start), fmt.Errorf("ghidra not available: %w", err), "ghidra")
-			return fmt.Errorf("ghidra not available: %w", err)
+			// Ghidra is OPTIONAL: skip decompilation and CONTINUE. Imports +
+			// strings + sections were already written, so the run never yields
+			// zero output. Surface an actionable offline hint instead of failing.
+			report(2, Skipped, time.Since(start), nil, "ghidra")
+			logTool("ghidra", fmt.Sprintf(
+				"Ghidra unavailable (%v) — skipping decompilation. Imports/strings/sections were still extracted. "+
+					"Set GHIDRA_HOME to a local Ghidra install or configure ToolsMirror for offline use.", err))
+			ghidraPath = ""
 		}
 
-		srcDir := filepath.Join(ctx.Output, "src")
-		funcCount, err := runGhidra(ctx.Ctx, ghidraPath, resolveGhidraJava(ctx.Tools), ctx.Target, srcDir,
-			func(msg string) { logTool("ghidra", msg) },
-			func(name string, count int) {
-				if ctx.Progress != nil {
-					ctx.Progress <- StepProgress{
-						Step: 2, Total: total, Name: name,
-						Tool: "ghidra", Status: Running,
-						Count: count, Unit: "functions",
+		if ghidraPath != "" {
+			srcDir := filepath.Join(ctx.Output, "src")
+			funcCount, err := runGhidra(ctx.Ctx, ghidraPath, resolveGhidraJava(ctx.Tools), ctx.Target, srcDir,
+				func(msg string) { logTool("ghidra", msg) },
+				func(name string, count int) {
+					if ctx.Progress != nil {
+						ctx.Progress <- StepProgress{
+							Step: 2, Total: total, Name: name,
+							Tool: "ghidra", Status: Running,
+							Count: count, Unit: "functions",
+						}
 					}
-				}
-			},
-		)
-		if err != nil {
-			report(2, Failed, time.Since(start), err, "ghidra")
-			return err
-		}
-		reportCount(2, time.Since(start), "ghidra", funcCount, "functions")
+				},
+			)
+			if err != nil {
+				report(2, Failed, time.Since(start), err, "ghidra")
+				return err
+			}
+			reportCount(2, time.Since(start), "ghidra", funcCount, "functions")
 
-		// Split the combined .c into per-function files + emit functions_index.json
-		// + symbols.json (F1/F2). Additive, streaming; failure is logged-not-fatal
-		// so the working decompile path never regresses.
-		if res, splitErr := splitAndIndexDecompiledC(srcDir, ctx.Target); splitErr != nil {
-			logTool("ghidra", fmt.Sprintf("Function split failed (combined .c kept): %v", splitErr))
-		} else if res != nil {
-			logTool("ghidra", fmt.Sprintf("Split %d functions (%d named, %.1f%%) -> functions/ + symbols.json",
-				res.FunctionCount, res.NamedCount, res.NamedPct))
-			reportCount(2, time.Since(start), "ghidra", res.FunctionCount, "functions")
+			// Split the combined .c into per-function files + emit functions_index.json
+			// + symbols.json (F1/F2). Additive, streaming; failure is logged-not-fatal
+			// so the working decompile path never regresses.
+			if res, splitErr := splitAndIndexDecompiledC(srcDir, ctx.Target); splitErr != nil {
+				logTool("ghidra", fmt.Sprintf("Function split failed (combined .c kept): %v", splitErr))
+			} else if res != nil {
+				logTool("ghidra", fmt.Sprintf("Split %d functions (%d named, %.1f%%) -> functions/ + symbols.json",
+					res.FunctionCount, res.NamedCount, res.NamedPct))
+				reportCount(2, time.Since(start), "ghidra", res.FunctionCount, "functions")
+			}
 		}
 	}
 

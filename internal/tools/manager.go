@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -28,7 +29,45 @@ type Manager struct {
 
 // NewManager creates a Manager that stores tools under baseDir.
 func NewManager(baseDir string, cfg config.Config) *Manager {
+	// Route downloads through a configured mirror (offline / firewalled installs).
+	setAssetMirror(cfg.ToolsMirror)
 	return &Manager{baseDir: baseDir, cfg: cfg}
+}
+
+// preSeededGhidraHome returns the ghidraRun.bat path of a pre-existing, offline
+// Ghidra install honoring, in order: $GHIDRA_HOME env → cfg.GhidraHome. A home
+// is accepted when it contains support/analyzeHeadless(.bat) OR ghidraRun(.bat).
+// Returns "" when none is configured or valid. No network is touched.
+func preSeededGhidraHome(cfg config.Config) string {
+	for _, home := range []string{os.Getenv("GHIDRA_HOME"), cfg.GhidraHome} {
+		home = strings.TrimSpace(home)
+		if home == "" {
+			continue
+		}
+		if p := validateGhidraHome(home); p != "" {
+			return p
+		}
+	}
+	return ""
+}
+
+// validateGhidraHome returns the launcher path (home/ghidraRun.bat) if home
+// looks like a Ghidra install, else "". runGhidra only uses Dir(launcher) to
+// locate support/analyzeHeadless, so a home holding either marker is usable.
+func validateGhidraHome(home string) string {
+	ext := ""
+	if runtime.GOOS == "windows" {
+		ext = ".bat"
+	}
+	run := filepath.Join(home, "ghidraRun"+ext)
+	analyze := filepath.Join(home, "support", "analyzeHeadless"+ext)
+	if _, err := os.Stat(run); err == nil {
+		return run
+	}
+	if _, err := os.Stat(analyze); err == nil {
+		return run
+	}
+	return ""
 }
 
 // Resolve returns the full path to a tool's binary, or an error if not installed.
@@ -36,6 +75,14 @@ func (m *Manager) Resolve(name string) (string, error) {
 	tool, ok := FindByName(name)
 	if !ok {
 		return "", fmt.Errorf("unknown tool: %s", name)
+	}
+
+	// Offline unblock: a pre-seeded Ghidra ($GHIDRA_HOME / cfg.GhidraHome) wins
+	// over the managed install so no download is ever needed.
+	if name == "ghidra" {
+		if p := preSeededGhidraHome(m.cfg); p != "" {
+			return p, nil
+		}
 	}
 
 	path := filepath.Join(m.baseDir, name, tool.Binary)
@@ -78,6 +125,15 @@ func (m *Manager) Check(name string) ToolStatus {
 		toolDir := filepath.Join(m.baseDir, name)
 		if found := findBinaryRecursive(toolDir, tool.Binary); found != "" {
 			path = found
+			err = nil
+		}
+	}
+
+	// A pre-seeded offline Ghidra counts as installed so the pipeline never tries
+	// to download it.
+	if err != nil && name == "ghidra" {
+		if p := preSeededGhidraHome(m.cfg); p != "" {
+			path = p
 			err = nil
 		}
 	}

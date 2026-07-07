@@ -11,11 +11,57 @@ import (
 	"strings"
 	"time"
 
-	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/recipe"
+	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/scanner"
 	"github.com/UberMorgott/morgue/internal/tools"
 )
+
+// maxUnpackDepth bounds installer-unpack recursion (e.g. an NSIS installer that
+// bundles another installer). Guards against unpack bombs / cycles.
+const maxUnpackDepth = 3
+
+// maybeRecurseUnpack recurses into an installer's extracted tree. After a
+// successful NSIS task that produced <targetOutput>/extracted, and while under
+// the depth cap, it runs the full pipeline again over the extracted files,
+// writing results to <targetOutput>/decompiled. The nested run shares the same
+// event channel (Depth>0 suppresses its terminal "done").
+func (e *Engine) maybeRecurseUnpack(ctx context.Context, opts *Options, tr TargetResult, em emitter) {
+	if tr.Error != nil || tr.Recon.Kind != recon.NSIS || tr.Output == "" {
+		return
+	}
+	extracted := filepath.Join(tr.Output, "extracted")
+	info, err := os.Stat(extracted)
+	if err != nil || !info.IsDir() {
+		return
+	}
+	if entries, _ := os.ReadDir(extracted); len(entries) == 0 {
+		return // nothing unpacked — don't recurse
+	}
+	if opts.Depth >= maxUnpackDepth {
+		em.emitWarn("unpack", tr.Output, fmt.Sprintf(
+			"max unpack depth (%d) reached — not recursing into extracted tree", maxUnpackDepth))
+		return
+	}
+
+	nested := *opts
+	nested.Input = extracted
+	nested.Output = filepath.Join(tr.Output, "decompiled")
+	nested.Depth = opts.Depth + 1
+	nested.Recipe = "" // auto-match each extracted file
+	_ = os.MkdirAll(nested.Output, 0755)
+
+	em.send(PipelineEvent{
+		Phase:     "unpack",
+		Target:    tr.Output,
+		ReconKind: "NSIS",
+		Message:   fmt.Sprintf("Unpacked installer — recursing into extracted tree (depth %d)", nested.Depth),
+	})
+
+	if err := e.Run(ctx, nested, em.ch); err != nil {
+		em.emitErr("unpack", extracted, err)
+	}
+}
 
 // pauseChecker returns nil interface if pg is nil, avoiding the nil-pointer-in-interface trap.
 func pauseChecker(pg *PauseGate) recipe.PauseChecker {
@@ -38,7 +84,11 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 	startTime := time.Now()
 	em := emitter{ch: events}
 	defer func() {
-		em.send(PipelineEvent{Phase: "done", Done: true, OutputPath: opts.Output})
+		// Only the top-level run signals terminal completion; a nested unpack run
+		// (Depth > 0) must not emit "done" or the UI would finish early.
+		if opts.Depth == 0 {
+			em.send(PipelineEvent{Phase: "done", Done: true, OutputPath: opts.Output})
+		}
 	}()
 
 	// Phase 1: Scan
@@ -215,6 +265,10 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 		// Execute non-native recipes immediately
 		tr := e.executeRecipe(ctx, t.filePath, &opts, t.recipe, t.recon, t.group, em)
 		results = append(results, tr)
+
+		// Installer recipes (NSIS) unpack a nested file tree; recurse into it so
+		// the extracted binaries are themselves classified and decompiled.
+		e.maybeRecurseUnpack(ctx, &opts, tr, em)
 	}
 
 	// Execute native tasks in two phases: strings first, then ghidra.
@@ -434,18 +488,81 @@ func (e *Engine) ensureTools(filePath string, rec recipe.Recipe, em emitter) err
 		if lastErr != nil {
 			// Continue with the remaining tools; the re-check below fails the run
 			// only if a still-missing tool is actually required.
-			em.emitErr("tools", filePath, fmt.Errorf("auto-install %s (after %d attempts): %w", name, installAttempts, lastErr))
+			def, known := tools.FindByName(name)
+			optional := known && def.Optional
+			sev, msg := installFailureSeverity(name, lastErr, optional, installAttempts)
+			if sev == "warn" {
+				em.emitWarn("tools", filePath, msg)
+			} else {
+				em.emitErr("tools", filePath, fmt.Errorf("%s", msg))
+			}
 		}
 	}
 
-	// Re-check after install: only genuinely still-missing tools matter here.
+	// Re-check after install: only genuinely still-missing REQUIRED tools are
+	// fatal. Missing OPTIONAL tools (e.g. ghidra for the native recipe) must not
+	// kill the task — the recipe runs a degraded path (imports/strings fallback).
 	needed = e.tools.ToolsNeeded(rec.RequiredTools())
-	if len(needed) > 0 {
-		err := fmt.Errorf("still missing after install: %v", needed)
+	fatal := fatalMissingTools(needed)
+	for _, name := range needed {
+		if !contains(fatal, name) {
+			em.emitWarn("tools", filePath, fmt.Sprintf(
+				"optional tool %s unavailable — continuing without it (set GHIDRA_HOME or configure ToolsMirror for offline use)", name))
+		}
+	}
+	if len(fatal) > 0 {
+		err := fmt.Errorf("still missing after install: %v", fatal)
 		em.emitErr("tools", filePath, err)
 		return err
 	}
 	return nil
+}
+
+// installFailureSeverity classifies a tool-install failure into a severity
+// ("warn" or "error") and a human-readable message. Benign Windows cert-store
+// noise is always a WARN. A missing OPTIONAL tool is a WARN (the recipe degrades
+// gracefully); a genuine failure of a REQUIRED tool is an ERROR. Network
+// timeouts get an actionable offline hint instead of the raw wsarecv chain.
+func installFailureSeverity(name string, err error, optional bool, attempts int) (severity, msg string) {
+	switch {
+	case tools.IsBenignCertNoise(err):
+		return "warn", fmt.Sprintf("install %s: ignoring benign system cert-store notice", name)
+	case tools.IsNetworkTimeout(err):
+		hint := fmt.Sprintf(
+			"auto-install %s failed: network unreachable — set GHIDRA_HOME to a local Ghidra install or configure ToolsMirror for offline use", name)
+		if optional {
+			return "warn", hint
+		}
+		return "error", hint
+	case optional:
+		return "warn", fmt.Sprintf("auto-install optional tool %s failed (continuing without it): %v", name, err)
+	default:
+		return "error", fmt.Sprintf("auto-install %s (after %d attempts): %v", name, attempts, err)
+	}
+}
+
+// fatalMissingTools filters still-missing tool names down to the ones that are
+// genuinely required (Optional==false). Unknown tools are treated as required.
+// Missing optional tools are non-fatal — the recipe can degrade gracefully.
+func fatalMissingTools(names []string) []string {
+	var fatal []string
+	for _, n := range names {
+		if def, ok := tools.FindByName(n); ok && def.Optional {
+			continue
+		}
+		fatal = append(fatal, n)
+	}
+	return fatal
+}
+
+// contains reports whether s contains v.
+func contains(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
 
 // executeRecipe runs the recipe, forwards progress/log events, saves recon.json.

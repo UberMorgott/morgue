@@ -31,6 +31,11 @@ type PipelineEvent struct {
 	Progress       *recipe.StepProgress `json:"Progress,omitempty"`
 	Done           bool                `json:"Done"`
 	Error          error               `json:"Error,omitempty"`
+	// Severity marks non-error events that still deserve attention. "" is a
+	// normal info event; "warn" is a WARN — non-fatal noise (missing optional
+	// tool, benign cert-store output) that renderers show distinctly from an
+	// ERROR (which sets Error) and which never counts as a failure.
+	Severity string `json:"Severity,omitempty"`
 	// Enriched fields for frontend
 	ReconKind   string   `json:"ReconKind,omitempty"`
 	Compiler    string   `json:"Compiler,omitempty"`
@@ -147,4 +152,9 @@ type Options struct {
 	// GameDataOut is the destination for the organized game-data tree
 	// (unity-mono recipe). Empty falls back to <target output>/GameData.
 	GameDataOut string
+	// Depth is the current unpack-recursion depth. 0 is the top-level run; nested
+	// runs over an unpacked installer tree (e.g. NSIS -> extracted/) increment it
+	// and are bounded by maxUnpackDepth. Only the depth-0 run emits the terminal
+	// "done" event so nested runs don't prematurely signal completion.
+	Depth int
 }

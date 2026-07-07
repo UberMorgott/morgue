@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +18,69 @@ import (
 
 	"github.com/UberMorgott/morgue/internal/util"
 )
+
+// assetMirror, when non-empty, rewrites the scheme+host of every download URL
+// to a configured mirror (see config.ToolsMirror). It is process-global because
+// downloads run through package-level installers reached only via a Manager,
+// and the app uses a single Manager; NewManager keeps it in sync.
+var assetMirror string
+
+// setAssetMirror updates the process-wide download mirror.
+func setAssetMirror(mirror string) { assetMirror = strings.TrimSpace(mirror) }
+
+// IsNetworkTimeout reports whether err looks like a transient network/TLS
+// timeout (exported wrapper for isNetworkTimeout) so callers outside this
+// package can substitute an actionable offline hint for the raw error chain.
+func IsNetworkTimeout(err error) bool { return isNetworkTimeout(err) }
+
+// IsBenignCertNoise is the exported wrapper for isBenignCertNoise, letting the
+// engine downgrade Windows cert-store noise to a WARN instead of an ERROR.
+func IsBenignCertNoise(err error) bool { return isBenignCertNoise(err) }
+
+// isBenignCertNoise reports whether err is nothing but harmless Windows
+// cert-store noise — the "failed to loadSystemRoots" line that surfaces
+// ERROR_ALREADY_EXISTS (0x800700b7) when a system root cert is already present.
+// The HTTPS request still succeeds in that case, so the line must not be shown
+// as a failure. A genuine network/TLS TIMEOUT is never benign, even though it
+// too may be wrapped in a loadSystemRoots line, so those are excluded first.
+func isBenignCertNoise(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	// A real timeout (0x80072ee2 / "timed out" / deadline) is a genuine failure.
+	if strings.Contains(msg, "0x80072ee2") ||
+		strings.Contains(msg, "timed out") ||
+		strings.Contains(msg, "deadline exceeded") {
+		return false
+	}
+	return strings.Contains(msg, "0x800700b7") ||
+		strings.Contains(msg, "already exists") ||
+		strings.Contains(msg, "loadsystemroots")
+}
+
+// rewriteMirror returns rawURL with its scheme+host (and optional base path)
+// replaced by mirror when mirror is set and both URLs parse. On any problem it
+// returns rawURL unchanged.
+func rewriteMirror(rawURL, mirror string) string {
+	if mirror == "" {
+		return rawURL
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	m, err := url.Parse(mirror)
+	if err != nil || m.Host == "" {
+		return rawURL
+	}
+	u.Scheme = m.Scheme
+	u.Host = m.Host
+	if base := strings.TrimRight(m.Path, "/"); base != "" {
+		u.Path = base + u.Path
+	}
+	return u.String()
+}
 
 // downloadMaxAttempts bounds how many times a download is retried on a
 // (likely transient) network failure before giving up.
@@ -48,6 +112,8 @@ func isNetworkTimeout(err error) bool {
 // the returned error carries the target URL plus a network-timeout hint so a
 // failure is actionable in a headless/redirected log.
 func downloadFile(url, destPath string, onProgress func(bytesDown, bytesTotal int64)) error {
+	// Route through a configured mirror (offline / firewalled installs).
+	url = rewriteMirror(url, assetMirror)
 	var lastErr error
 	for attempt := 1; attempt <= downloadMaxAttempts; attempt++ {
 		lastErr = downloadOnce(url, destPath, onProgress)
