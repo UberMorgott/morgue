@@ -232,6 +232,7 @@ func runCmd() *cobra.Command {
 			target := strings.Join(args, " ")
 			output, _ := cmd.Flags().GetString("output")
 			watch, _ := cmd.Flags().GetBool("watch")
+			forceWatch, _ := cmd.Flags().GetBool("force-watch")
 			quiet, _ := cmd.Flags().GetBool("quiet")
 			recipe, _ := cmd.Flags().GetString("recipe")
 			noSkip, _ := cmd.Flags().GetBool("no-skip")
@@ -239,6 +240,7 @@ func runCmd() *cobra.Command {
 			allowDynamic, _ := cmd.Flags().GetBool("allow-dynamic")
 			cflow, _ := cmd.Flags().GetBool("cflow")
 			gameDataOut, _ := cmd.Flags().GetString("gamedata-out")
+			toolsMirror, _ := cmd.Flags().GetString("tools-mirror")
 
 			return cli.Run(cli.RunOptions{
 				Target:       target,
@@ -246,17 +248,20 @@ func runCmd() *cobra.Command {
 				Recipe:       recipe,
 				NoSkip:       noSkip,
 				Exclude:      exclude,
-				Watch:        watch,
+				Watch:        watch || forceWatch,
+				ForceWatch:   forceWatch,
 				Quiet:        quiet,
 				AllowDynamic: allowDynamic,
 				Cflow:        cflow,
 				GameDataOut:  gameDataOut,
+				ToolsMirror:  toolsMirror,
 			})
 		},
 	}
 
 	cmd.Flags().StringP("output", "o", "", "Output directory (default: <binary dir>/output)")
 	cmd.Flags().Bool("watch", false, "Show TUI progress in stderr")
+	cmd.Flags().Bool("force-watch", false, "Force the watch TUI even when stderr is not a terminal")
 	cmd.Flags().BoolP("quiet", "q", false, "Suppress stderr output, only emit JSON to stdout")
 	cmd.Flags().String("recipe", "", "Force specific recipe")
 	cmd.Flags().Bool("no-skip", false, "Disable auto skip-list")
@@ -264,6 +269,7 @@ func runCmd() *cobra.Command {
 	cmd.Flags().Bool("allow-dynamic", false, "Allow recipe steps that EXECUTE target code (e.g. ConfuserEx embedded-assembly extraction)")
 	cmd.Flags().Bool("cflow", false, "Enable control-flow deobfuscation pass (experimental, off by default)")
 	cmd.Flags().String("gamedata-out", "", "Destination for the organized game-data tree (unity-mono recipe; default: <output>/GameData)")
+	cmd.Flags().String("tools-mirror", "", "Rewrite tool download URL hosts to this mirror (offline/firewalled installs)")
 
 	return cmd
 }

@@ -75,6 +75,16 @@ func Classify(ctx context.Context, path string) (Result, error) {
 	} else {
 		r.Kind = Native
 		r.Compiler = classifyNativeCompiler(f)
+
+		// A native PE with an appended NSIS overlay is an installer, not a plain
+		// binary. Detect it here so recon stops classifying installers as "Native"
+		// and the NSIS unpack recipe can take over (unpack → recurse).
+		if subType, _, isNSIS := DetectNSIS(path, f); isNSIS {
+			r.Kind = NSIS
+			r.SubType = subType
+			r.Packed = true
+			r.Compiler = ""
+		}
 	}
 
 	// Extract section and import names for heuristics

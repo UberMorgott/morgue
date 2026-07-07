@@ -16,6 +16,10 @@ const (
 	UnityIL2CPP       // Unity with IL2CPP scripting backend
 	UnrealEngine      // Unreal Engine 4/5
 	Mixed             // Contains both managed and native components
+	// NSIS is a Nullsoft Scriptable Install System installer (a native PE with an
+	// appended NSIS archive overlay). Appended at the END of the enum so the
+	// existing Kind integer values stay stable.
+	NSIS // Nullsoft installer — unpack then recurse into the extracted tree
 )
 
 var kindNames = [...]string{
@@ -26,6 +30,7 @@ var kindNames = [...]string{
 	"UnityIL2CPP",
 	"UnrealEngine",
 	"Mixed",
+	"NSIS",
 }
 
 func (k Kind) String() string {
@@ -59,6 +64,7 @@ type Result struct {
 	Size               int64    `json:"size"`
 	SHA256             string   `json:"sha256"`
 	Kind               Kind     `json:"kind"`
+	SubType            string   `json:"sub_type,omitempty"` // e.g. "NSIS-3 Unicode", "NSIS-2"
 	Runtime            string   `json:"runtime,omitempty"`
 	Compiler           string   `json:"compiler,omitempty"`
 	Obfuscator         string   `json:"obfuscator,omitempty"`

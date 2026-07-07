@@ -38,6 +38,16 @@ type Config struct {
 	AllowDynamicExecution  bool            `json:"AllowDynamicExecution" yaml:"allow_dynamic_execution"`
 	SandboxWarning         bool            `json:"SandboxWarning" yaml:"sandbox_warning"`
 
+	// GhidraHome points at a pre-existing, offline Ghidra install (the directory
+	// containing ghidraRun.bat / support/analyzeHeadless). When set (or the
+	// $GHIDRA_HOME env var), Ghidra resolves with zero download. Empty falls back
+	// to the managed install under BaseDir()/tools/ghidra.
+	GhidraHome string `json:"GhidraHome" yaml:"ghidra_home"`
+	// ToolsMirror rewrites the host of tool download URLs (e.g. an internal
+	// GitHub-release mirror) so tools can be fetched offline / behind a firewall.
+	// Empty uses the upstream hosts.
+	ToolsMirror string `json:"ToolsMirror" yaml:"tools_mirror"`
+
 	// UE5 pipeline step toggles
 	UE5ExtractPAK      bool `json:"UE5ExtractPAK" yaml:"ue5_extract_pak"`
 	UE5SDKDump         bool `json:"UE5SDKDump" yaml:"ue5_sdk_dump"`
