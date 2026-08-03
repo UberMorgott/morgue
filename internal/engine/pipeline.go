@@ -608,9 +608,14 @@ func (e *Engine) executeRecipe(
 				if p.Tool != "" {
 					currentTool = p.Tool
 				}
-				em.send(PipelineEvent{
-					Phase: "execute", Target: filePath, Tool: p.Tool, Progress: &p,
-				})
+				ev := PipelineEvent{Phase: "execute", Target: filePath, Tool: p.Tool, Progress: &p}
+				if p.Status == recipe.Warn {
+					ev.Severity = "warn"
+					if ev.Message == "" && p.Error != nil {
+						ev.Message = p.Error.Error()
+					}
+				}
+				em.send(ev)
 			case msg, ok := <-logCh:
 				if !ok {
 					logOpen = false
@@ -745,9 +750,14 @@ func (e *Engine) executeRecipeWithFilter(
 				if p.Tool != "" {
 					currentTool = p.Tool
 				}
-				em.send(PipelineEvent{
-					Phase: "execute", Target: filePath, Tool: p.Tool, Progress: &p,
-				})
+				ev := PipelineEvent{Phase: "execute", Target: filePath, Tool: p.Tool, Progress: &p}
+				if p.Status == recipe.Warn {
+					ev.Severity = "warn"
+					if ev.Message == "" && p.Error != nil {
+						ev.Message = p.Error.Error()
+					}
+				}
+				em.send(ev)
 			case msg, ok := <-logCh:
 				if !ok {
 					logOpen = false

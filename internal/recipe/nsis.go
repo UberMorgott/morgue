@@ -24,23 +24,26 @@ import (
 // block/entry tables to reconstruct the installed file tree under
 // <Output>/extracted/. Every extracted path is zip-slip guarded.
 //
-// SCOPE — what works vs. what is best-effort (verified against a real signed
-// NSIS-3 Unicode installer, CCleaner 6.41):
+// SCOPE — verified against a real signed NSIS-3 Unicode installer (CCleaner
+// 6.41, solid LZMA):
 //   - Detection incl. a flipped signature byte: WORKS (repairs the tamper).
 //   - Solid-LZMA decompression of the whole archive: WORKS.
-//   - Header block-table parse (handles the NSIS-3 4-byte size prefix): WORKS —
-//     block offsets are consistent (entries block meets the strings block).
+//   - Header block-table parse + entry walk: WORKS. Three details matter and are
+//     all verified against that installer, not guessed:
+//     1. In solid mode the decompressed stream starts with a uint32 repeat of the
+//     header size; every block offset in the header is relative to the byte
+//     AFTER that prefix, and the file data section starts at prefix+headerSize.
+//     2. Entry string params are CHARACTER indices into the string block, so a
+//     Unicode (UTF-16LE) build needs them scaled by 2.
+//     3. Var/shell/lang references inside strings are an escape code followed by
+//     one parameter char (Unicode) or two bytes (ANSI); the parameter must be
+//     consumed, not emitted, or every path turns to mojibake.
 //
-// TODO — full entry-table walking is version-fragile and NOT complete for
-// NSIS-3: the per-entry opcode/param ENCODING differs from the stock EW_*
-// numbers (an NSIS-3 build's dominant opcodes did not map to EW_EXTRACTFILE=20 /
-// EW_CREATEDIR=11), string encoding differs between ANSI (NSIS-2) and UTF-16
-// (NSIS-3), and non-solid archives prefix each block with a compressed size.
-// extractStructured targets the stock-opcode case; when it yields no files the
-// recipe falls back to dumping raw [size][data] records so the actual file BYTES
-// still land on disk (greppable) and records extract_mode="raw-fallback" in the
-// manifest rather than faking success. Completing NSIS-3 entry decoding (porting
-// 7-Zip's NsisIn parser) is follow-up work.
+// Still best-effort: non-solid archives (per-block compressed sizes) are not
+// decompressed — those records are skipped. When the entry walk yields no files
+// the recipe falls back to dumping raw [size][data] records so the file BYTES
+// still land on disk, records extract_mode="raw-fallback", and reports the step
+// as Warn rather than faking success.
 
 // NSIS firstheader / opcode constants.
 const (
@@ -99,6 +102,7 @@ type nsisManifest struct {
 	DecompressedLen   int      `json:"decompressed_len"`
 	Entries           int      `json:"entry_count"`
 	FilesExtracted    int      `json:"files_extracted"`
+	FilesWanted       int      `json:"files_wanted"` // EW_EXTRACTFILE records seen
 	ExtractMode       string   `json:"extract_mode"` // "structured" | "raw-fallback" | "none"
 	Notes             []string `json:"notes,omitempty"`
 }
@@ -116,9 +120,9 @@ func (n *NSISUnpack) Execute(ctx *Context) error {
 			ctx.Log <- "[nsis] " + m
 		}
 	}
-	reportCount := func(step int, dur time.Duration, count int, unit string) {
+	reportCount := func(step int, dur time.Duration, count int, unit string, status StepStatus, err error) {
 		if ctx.Progress != nil {
-			ctx.Progress <- StepProgress{Step: step, Total: total, Name: steps[step].Name, Status: Success, Duration: dur, Count: count, Unit: unit}
+			ctx.Progress <- StepProgress{Step: step, Total: total, Name: steps[step].Name, Status: status, Duration: dur, Count: count, Unit: unit, Error: err}
 		}
 	}
 
@@ -202,7 +206,7 @@ func (n *NSISUnpack) Execute(ctx *Context) error {
 	}
 	man.DecompressedLen = len(dec)
 	logMsg(fmt.Sprintf("decompressed %d bytes via %s", len(dec), method))
-	reportCount(2, time.Since(start), len(dec), "bytes")
+	reportCount(2, time.Since(start), len(dec), "bytes", Success, nil)
 
 	// Step 3: extract files (best-effort, structured with raw fallback).
 	report(3, Running, 0, nil)
@@ -213,12 +217,18 @@ func (n *NSISUnpack) Execute(ctx *Context) error {
 		return err
 	}
 
-	nfiles, unicode, entryCount := extractStructured(dec, int(man.HeaderSize), extractDir, logMsg)
+	nfiles, unicode, entryCount, wanted := extractStructured(dec, int(man.HeaderSize), extractDir, logMsg)
 	man.Unicode = unicode
 	man.Entries = entryCount
 	if nfiles > 0 {
 		man.ExtractMode = "structured"
 		man.FilesExtracted = nfiles
+		man.FilesWanted = wanted
+		if nfiles < wanted {
+			man.Notes = append(man.Notes, fmt.Sprintf(
+				"%d of %d EW_EXTRACTFILE records could not be written (non-solid/compressed data blocks are not supported)",
+				wanted-nfiles, wanted))
+		}
 	} else {
 		// Structured walk found nothing usable — dump raw [size][data] records so
 		// the file bytes still reach disk.
@@ -233,7 +243,14 @@ func (n *NSISUnpack) Execute(ctx *Context) error {
 		_ = os.WriteFile(filepath.Join(ctx.Output, "nsis-strings.txt"), []byte(strings.Join(s, "\n")), 0644)
 	}
 
-	reportCount(3, time.Since(start), man.FilesExtracted, "files")
+	// A fallback mode, or a structured walk that dropped records, is degraded
+	// output — report WARN so the run is not read as a clean success.
+	status, werr := Success, error(nil)
+	if man.ExtractMode != "structured" || man.FilesExtracted < man.FilesWanted {
+		status = Warn
+		werr = fmt.Errorf("NSIS extraction incomplete: %d files, mode %s", man.FilesExtracted, man.ExtractMode)
+	}
+	reportCount(3, time.Since(start), man.FilesExtracted, "files", status, werr)
 	logMsg(fmt.Sprintf("extracted %d files (%s)", man.FilesExtracted, man.ExtractMode))
 	writeNSISManifest(ctx.Output, man, logMsg)
 	return nil
@@ -338,29 +355,33 @@ func readCapped(r io.Reader, hdrSize int) ([]byte, error) {
 // writes the reconstructed file tree. Returns files written, whether the strings
 // looked Unicode, and the entry count. Any parse fault returns (0,...) so the
 // caller can fall back to a raw dump.
-func extractStructured(dec []byte, hdrSize int, outDir string, logMsg func(string)) (int, bool, int) {
+func extractStructured(dec []byte, hdrSize int, outDir string, logMsg func(string)) (files int, unicode bool, entryCount int, wanted int) {
 	if hdrSize < 4+nsisBlocksNum*8 || hdrSize > len(dec) {
-		return 0, false, 0
+		return 0, false, 0, 0
 	}
-	header := dec[:hdrSize]
 
-	// Header layout: an optional 4-byte size prefix (present in NSIS-3 — the
-	// decompressed stream repeats length_of_header) then int32 flags, then 8
-	// block_headers of {int32 offset; int32 num}.
-	blockBase := nsisBlockBase(header, hdrSize)
+	// Header layout: an optional 4-byte size prefix (solid mode repeats
+	// length_of_header at the head of the decompressed stream) then int32 flags,
+	// then 8 block_headers of {int32 offset; int32 num}. EVERY block offset is
+	// relative to hdrBase — the byte after the prefix — not to the stream start.
+	hdrBase := nsisHeaderBase(dec, hdrSize)
+	blockBase := hdrBase + 4
 
 	blockOff := func(i int) (off, num int) {
 		base := blockBase + i*8
-		if base+8 > len(header) {
+		if base+8 > len(dec) {
 			return 0, 0
 		}
-		return int(int32(binary.LittleEndian.Uint32(header[base : base+4]))),
-			int(int32(binary.LittleEndian.Uint32(header[base+4 : base+8])))
+		return int(int32(binary.LittleEndian.Uint32(dec[base : base+4]))),
+			int(int32(binary.LittleEndian.Uint32(dec[base+4 : base+8])))
 	}
 
 	entriesOff, entryCount := blockOff(nbEntries)
 	stringsOff, _ := blockOff(nbStrings)
 	langOff, _ := blockOff(nbLangtables)
+	entriesOff += hdrBase
+	stringsOff += hdrBase
+	langOff += hdrBase
 
 	// String table extent: [stringsOff, langOff).
 	strEnd := langOff
@@ -368,20 +389,24 @@ func extractStructured(dec []byte, hdrSize int, outDir string, logMsg func(strin
 		strEnd = len(dec)
 	}
 	var strTab []byte
-	if stringsOff >= 0 && stringsOff < len(dec) && strEnd <= len(dec) {
+	if stringsOff >= hdrBase && stringsOff < len(dec) && strEnd <= len(dec) {
 		strTab = dec[stringsOff:strEnd]
 	}
-	unicode := looksUnicode(strTab)
+	unicode = looksUnicode(strTab)
 
-	resolve := func(off int) string { return resolveNSISString(strTab, off, unicode) }
+	// String params are CHARACTER indices; UTF-16LE needs them doubled.
+	charSize := 1
+	if unicode {
+		charSize = 2
+	}
+	resolve := func(off int) string { return resolveNSISString(strTab, off*charSize, unicode) }
 
-	if entriesOff < 0 || entryCount <= 0 || entriesOff+entryCount*nsisEntrySize > len(dec) {
-		return 0, unicode, entryCount
+	if entriesOff < hdrBase || entryCount <= 0 || entriesOff+entryCount*nsisEntrySize > len(dec) {
+		return 0, unicode, entryCount, 0
 	}
 
-	dataBase := hdrSize // file data follows the header in the solid stream
+	dataBase := hdrBase + hdrSize // file data follows the header in the solid stream
 	curDir := ""
-	files := 0
 	for i := 0; i < entryCount; i++ {
 		e := dec[entriesOff+i*nsisEntrySize:]
 		which := int(int32(binary.LittleEndian.Uint32(e[0:4])))
@@ -402,6 +427,7 @@ func extractStructured(dec []byte, hdrSize int, outDir string, logMsg func(strin
 			if name == "" || pos < 0 {
 				continue
 			}
+			wanted++
 			abs := dataBase + pos
 			if abs+4 > len(dec) {
 				continue
@@ -412,7 +438,13 @@ func extractStructured(dec []byte, hdrSize int, outDir string, logMsg func(strin
 			if size < 0 || abs+4+size > len(dec) {
 				continue
 			}
-			rel := sanitizeRel(filepath.Join(curDir, name))
+			full := name
+			// A name that already carries its own var root ($INSTDIR\...) is
+			// absolute — don't nest it under the current $OUTDIR.
+			if !strings.HasPrefix(name, "$") {
+				full = filepath.Join(curDir, name)
+			}
+			rel := sanitizeRel(full)
 			if rel == "" {
 				continue
 			}
@@ -428,7 +460,7 @@ func extractStructured(dec []byte, hdrSize int, outDir string, logMsg func(strin
 			}
 		}
 	}
-	return files, unicode, entryCount
+	return files, unicode, entryCount, wanted
 }
 
 // extractRawRecords walks the data region as consecutive [int32 size][bytes]
@@ -460,13 +492,14 @@ func extractRawRecords(dec []byte, hdrSize int, outDir string, logMsg func(strin
 	return n
 }
 
-// nsisBlockBase returns the byte offset within the header at which the 8
-// block_headers begin, accounting for the optional NSIS-3 size prefix.
-func nsisBlockBase(header []byte, hdrSize int) int {
-	if len(header) >= 4 && int(binary.LittleEndian.Uint32(header[0:4])) == hdrSize {
-		return 8 // size-prefix(4) + flags(4)
+// nsisHeaderBase returns the offset of the header proper within the decompressed
+// stream: 4 when the solid-mode uint32 size prefix is present, else 0. All block
+// offsets in the header are relative to this base.
+func nsisHeaderBase(dec []byte, hdrSize int) int {
+	if len(dec) >= 4 && int(binary.LittleEndian.Uint32(dec[0:4])) == hdrSize {
+		return 4
 	}
-	return 4 // flags(4)
+	return 0
 }
 
 // dumpStrings returns the null-terminated strings from the string block.
@@ -474,12 +507,13 @@ func dumpStrings(dec []byte, hdrSize int, unicode bool) []string {
 	if hdrSize < 4+nsisBlocksNum*8 || hdrSize > len(dec) {
 		return nil
 	}
-	bb := nsisBlockBase(dec, hdrSize)
+	hb := nsisHeaderBase(dec, hdrSize)
+	bb := hb + 4
 	base := bb + nbStrings*8
-	stringsOff := int(int32(binary.LittleEndian.Uint32(dec[base : base+4])))
+	stringsOff := hb + int(int32(binary.LittleEndian.Uint32(dec[base : base+4])))
 	baseL := bb + nbLangtables*8
-	langOff := int(int32(binary.LittleEndian.Uint32(dec[baseL : baseL+4])))
-	if stringsOff < 0 || stringsOff >= len(dec) {
+	langOff := hb + int(int32(binary.LittleEndian.Uint32(dec[baseL : baseL+4])))
+	if stringsOff < hb || stringsOff >= len(dec) {
 		return nil
 	}
 	end := langOff
@@ -523,41 +557,114 @@ func looksUnicode(tab []byte) bool {
 	return zeros*3 > (n/2)*2 // > ~66% of odd bytes are zero
 }
 
-// resolveNSISString reads a null-terminated string at off. Control/parameter
-// codes are rendered as underscores so filenames stay filesystem-safe and
-// greppable. Full variable/lang-string resolution is a TODO.
+// NSIS string escape codes (NSIS 3, same numbers in ANSI and Unicode builds).
+// Each is followed by ONE parameter: a single UTF-16 char in a Unicode build,
+// two bytes in an ANSI build. Both encode the value the same way — 7 bits per
+// byte/low-half, high bits in the next.
+const (
+	nsSkipCode  = 0x01
+	nsShellCode = 0x02
+	nsVarCode   = 0x03
+	nsLangCode  = 0x04
+)
+
+// nsisVarName renders a variable index as its $NAME. Indices past the documented
+// built-ins (user vars, $PLUGINSDIR, ...) become $VARn rather than a guess.
+func nsisVarName(idx int) string {
+	switch {
+	case idx >= 0 && idx <= 9:
+		return fmt.Sprintf("$%d", idx)
+	case idx >= 10 && idx <= 19:
+		return fmt.Sprintf("$R%d", idx-10)
+	case idx == 20:
+		return "$CMDLINE"
+	case idx == 21:
+		return "$INSTDIR"
+	case idx == 22:
+		return "$OUTDIR"
+	case idx == 23:
+		return "$EXEDIR"
+	case idx == 24:
+		return "$LANGUAGE"
+	}
+	return fmt.Sprintf("$VAR%d", idx)
+}
+
+// resolveNSISString reads a null-terminated string at byte offset off. Escape
+// codes are expanded to a readable $TOKEN and their parameter is consumed, so
+// paths stay filesystem-safe and greppable.
 func resolveNSISString(tab []byte, off int, unicode bool) string {
 	if off < 0 || off >= len(tab) {
 		return ""
 	}
 	var b strings.Builder
+	writeCode := func(code, param int) {
+		switch code {
+		case nsShellCode:
+			fmt.Fprintf(&b, "$SHELL%d", param)
+		case nsVarCode:
+			b.WriteString(nsisVarName(param))
+		case nsLangCode:
+			fmt.Fprintf(&b, "$LANG%d", param)
+		}
+	}
 	if unicode {
 		for i := off; i+1 < len(tab); i += 2 {
-			c := binary.LittleEndian.Uint16(tab[i : i+2])
+			c := int(binary.LittleEndian.Uint16(tab[i : i+2]))
 			if c == 0 {
 				break
 			}
-			if c < 0x20 || c >= 0xE000 { // control or NSIS param code
+			if c == nsSkipCode { // next char is literal
+				if i+3 >= len(tab) {
+					break
+				}
+				b.WriteRune(rune(binary.LittleEndian.Uint16(tab[i+2 : i+4])))
+				i += 2
+				continue
+			}
+			if c >= nsShellCode && c <= nsLangCode {
+				if i+3 >= len(tab) {
+					break
+				}
+				p := int(binary.LittleEndian.Uint16(tab[i+2 : i+4]))
+				i += 2
+				writeCode(c, (p&0x7F)|((p>>8&0x7F)<<7))
+				continue
+			}
+			if c < 0x20 {
 				b.WriteByte('_')
 				continue
 			}
-			if c < 0x80 {
-				b.WriteByte(byte(c))
-			} else {
-				b.WriteRune(rune(c))
-			}
+			b.WriteRune(rune(c))
 		}
 	} else {
 		for i := off; i < len(tab); i++ {
-			c := tab[i]
+			c := int(tab[i])
 			if c == 0 {
 				break
 			}
-			if c < 0x20 { // NSIS param codes 0x02-0x04 etc.
+			if c == nsSkipCode { // next byte is literal
+				if i+1 >= len(tab) {
+					break
+				}
+				b.WriteByte(tab[i+1])
+				i++
+				continue
+			}
+			if c >= nsShellCode && c <= nsLangCode {
+				if i+2 >= len(tab) {
+					break
+				}
+				p := int(tab[i+1]&0x7F) | int(tab[i+2]&0x7F)<<7
+				i += 2
+				writeCode(c, p)
+				continue
+			}
+			if c < 0x20 {
 				b.WriteByte('_')
 				continue
 			}
-			b.WriteByte(c)
+			b.WriteByte(byte(c))
 		}
 	}
 	return b.String()
