@@ -19,6 +19,9 @@ const (
 	Success
 	Failed
 	Skipped
+	// Warn: the step produced output but it is degraded/incomplete. The engine
+	// forwards it as a WARN-severity event (see emitter.emitWarn).
+	Warn
 )
 
 var stepStatusNames = [...]string{
@@ -27,6 +30,7 @@ var stepStatusNames = [...]string{
 	"Success",
 	"Failed",
 	"Skipped",
+	"Warn",
 }
 
 func (s StepStatus) String() string {
