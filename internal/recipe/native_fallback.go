@@ -71,6 +71,131 @@ func writeImports(target, outDir string) (int, error) {
 	return count, nil
 }
 
+// writePEExtras parses the target PE once and writes four sibling artifacts
+// next to imports.txt: exports.txt, resources.txt, tls.txt and debug.txt.
+// It never fails hard on a non-PE input or a broken/absent data directory —
+// the artifact is still written with a `# ...` note explaining why it is empty
+// and the same note is returned so the caller can log it. Returns the number
+// of exported symbols found (0 for a non-PE / no export directory).
+func writePEExtras(target, outDir string) (int, []string, error) {
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		return 0, nil, err
+	}
+	write := func(name, body string) error {
+		return os.WriteFile(filepath.Join(outDir, name), []byte(body), 0644)
+	}
+
+	f, err := peparser.New(target, nil)
+	if err == nil {
+		defer func() { _ = f.Close() }()
+		err = f.Parse()
+	}
+	if err != nil {
+		note := fmt.Sprintf("not a parsable PE (%v)", err)
+		for _, name := range []string{"exports.txt", "resources.txt", "tls.txt", "debug.txt"} {
+			if werr := write(name, "# "+note+"\n"); werr != nil {
+				return 0, nil, werr
+			}
+		}
+		return 0, []string{note}, nil
+	}
+
+	var notes []string
+	note := func(s string) string { notes = append(notes, s); return "# " + s + "\n" }
+
+	// Exports: name + ordinal (+ forwarder target when the export is a forward).
+	var b strings.Builder
+	if len(f.Export.Functions) == 0 {
+		b.WriteString(note("no export directory"))
+	} else {
+		fmt.Fprintf(&b, "# module=%s\n# ordinal  name\n", f.Export.Name)
+		for _, fn := range f.Export.Functions {
+			name := fn.Name
+			if name == "" {
+				name = fmt.Sprintf("#%d", fn.Ordinal)
+			}
+			fmt.Fprintf(&b, "%-8d %s", fn.Ordinal, name)
+			if fn.Forwarder != "" {
+				fmt.Fprintf(&b, " -> %s", fn.Forwarder)
+			}
+			b.WriteByte('\n')
+		}
+	}
+	if err := write("exports.txt", b.String()); err != nil {
+		return 0, notes, err
+	}
+
+	// Resources: top-level type + per-leaf id/lang/size. Contents are not decoded.
+	b.Reset()
+	if len(f.Resources.Entries) == 0 {
+		b.WriteString(note("no resource directory"))
+	} else {
+		b.WriteString("# type  id  lang  size(bytes)\n")
+		for _, typeEntry := range f.Resources.Entries {
+			typeName := typeEntry.Name
+			if typeName == "" {
+				typeName = peparser.ResourceType(typeEntry.ID).String()
+			}
+			for _, idEntry := range typeEntry.Directory.Entries {
+				for _, langEntry := range idEntry.Directory.Entries {
+					fmt.Fprintf(&b, "%-16s %-8d %-8s %d\n",
+						typeName, idEntry.ID, langEntry.Data.Lang.String(), langEntry.Data.Struct.Size)
+				}
+			}
+		}
+	}
+	if err := write("resources.txt", b.String()); err != nil {
+		return 0, notes, err
+	}
+
+	// TLS: presence + callback count (Callbacks is []uint32 or []uint64).
+	b.Reset()
+	switch cb := f.TLS.Callbacks.(type) {
+	case []uint32:
+		fmt.Fprintf(&b, "tls=present callbacks=%d\n", len(cb))
+		for _, a := range cb {
+			fmt.Fprintf(&b, "callback 0x%x\n", a)
+		}
+	case []uint64:
+		fmt.Fprintf(&b, "tls=present callbacks=%d\n", len(cb))
+		for _, a := range cb {
+			fmt.Fprintf(&b, "callback 0x%x\n", a)
+		}
+	default:
+		if f.TLS.Struct != nil {
+			b.WriteString("tls=present callbacks=0\n")
+		} else {
+			b.WriteString(note("no TLS directory"))
+		}
+	}
+	if err := write("tls.txt", b.String()); err != nil {
+		return 0, notes, err
+	}
+
+	// Debug: entry type + the PDB path when the entry is CodeView.
+	b.Reset()
+	if len(f.Debugs) == 0 {
+		b.WriteString(note("no debug directory"))
+	} else {
+		b.WriteString("# type  pdb\n")
+		for _, d := range f.Debugs {
+			pdb := ""
+			switch info := d.Info.(type) {
+			case peparser.CVInfoPDB70:
+				pdb = info.PDBFileName
+			case peparser.CVInfoPDB20:
+				pdb = info.PDBFileName
+			}
+			fmt.Fprintf(&b, "%-16s %s\n", d.Type, pdb)
+		}
+	}
+	if err := write("debug.txt", b.String()); err != nil {
+		return 0, notes, err
+	}
+
+	return len(f.Export.Functions), notes, nil
+}
+
 // writeStringsFallback extracts printable ASCII and UTF-16LE strings from the
 // target's raw bytes (mirroring recon.extractStrings) and writes them to
 // outPath, one per line. Returns the number of strings written. This is the

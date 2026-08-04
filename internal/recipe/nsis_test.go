@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ulikunitz/xz/lzma"
@@ -108,6 +109,13 @@ func nsisLZMA(t *testing.T, stream []byte) []byte {
 func buildNSISArchive(t *testing.T, flipSig bool) string {
 	t.Helper()
 	stream, hdrSize := buildDecompressedNSIS(t)
+	return wrapNSISArchive(t, stream, hdrSize, flipSig)
+}
+
+// wrapNSISArchive compresses a decompressed stream NSIS-style and writes it
+// behind a firstheader, optionally flipping one signature byte.
+func wrapNSISArchive(t *testing.T, stream []byte, hdrSize int, flipSig bool) string {
+	t.Helper()
 	comp := nsisLZMA(t, stream)
 
 	sig := append([]byte{}, nsisSignature...)
@@ -127,6 +135,65 @@ func buildNSISArchive(t *testing.T, flipSig bool) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// TestNSISUnpack_ExtractSeverity: a run that fell back to the raw dump is
+// DEGRADED output and must be reported Warn, not a silent success — the full
+// structured run right above it stays Success.
+func TestNSISUnpack_ExtractSeverity(t *testing.T) {
+	runExtract := func(t *testing.T, target string) (StepProgress, nsisManifest) {
+		t.Helper()
+		outDir := t.TempDir()
+		prog := make(chan StepProgress, 64)
+		ctx := &Context{Target: target, Output: outDir, Progress: prog, Ctx: context.Background()}
+		if err := (&NSISUnpack{}).Execute(ctx); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		close(prog)
+		var last StepProgress
+		for p := range prog {
+			if p.Step == 3 && p.Status != Running {
+				last = p
+			}
+		}
+		var man nsisManifest
+		mdata, err := os.ReadFile(filepath.Join(outDir, "nsis-manifest.json"))
+		if err != nil {
+			t.Fatalf("manifest: %v", err)
+		}
+		if err := json.Unmarshal(mdata, &man); err != nil {
+			t.Fatalf("manifest json: %v", err)
+		}
+		return last, man
+	}
+
+	t.Run("structured-complete", func(t *testing.T) {
+		p, man := runExtract(t, buildNSISArchive(t, false))
+		if man.ExtractMode != "structured" || man.FilesExtracted != man.FilesWanted {
+			t.Fatalf("setup: mode=%q %d/%d", man.ExtractMode, man.FilesExtracted, man.FilesWanted)
+		}
+		if p.Status != Success {
+			t.Errorf("status = %v (%v), want Success", p.Status, p.Error)
+		}
+	})
+
+	t.Run("raw-fallback", func(t *testing.T) {
+		// Same stream, but the entries block claims zero instructions: the walk
+		// finds no files and the recipe dumps raw records instead.
+		stream, hdrSize := buildDecompressedNSIS(t)
+		binary.LittleEndian.PutUint32(stream[4+nbEntries*8+4:], 0)
+
+		p, man := runExtract(t, wrapNSISArchive(t, stream, hdrSize, false))
+		if man.ExtractMode != "raw-fallback" {
+			t.Fatalf("ExtractMode = %q, want raw-fallback", man.ExtractMode)
+		}
+		if p.Status != Warn {
+			t.Fatalf("status = %v, want Warn (raw fallback is not a success)", p.Status)
+		}
+		if p.Error == nil || !strings.Contains(p.Error.Error(), "raw-fallback") {
+			t.Errorf("warn message = %v, want it to name the fallback mode", p.Error)
+		}
+	})
 }
 
 func TestNSISUnpack_Match(t *testing.T) {

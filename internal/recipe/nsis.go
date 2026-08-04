@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -39,11 +40,17 @@ import (
 //     one parameter char (Unicode) or two bytes (ANSI); the parameter must be
 //     consumed, not emitted, or every path turns to mojibake.
 //
-// Still best-effort: non-solid archives (per-block compressed sizes) are not
-// decompressed — those records are skipped. When the entry walk yields no files
-// the recipe falls back to dumping raw [size][data] records so the file BYTES
-// still land on disk, records extract_mode="raw-fallback", and reports the step
-// as Warn rather than faking success.
+// Still best-effort: an individually-compressed (non-solid) data block is
+// decompressed with the archive's own method, and a block that fails is counted
+// in the manifest notes rather than aborting the walk. When the entry walk
+// yields no files the recipe falls back to dumping raw [size][data] records so
+// the file BYTES still land on disk, records extract_mode="raw-fallback", and
+// reports the step as Warn rather than faking success.
+//
+// The entry walk is table-driven (nsisOps) and LINEAR — see the nsisWalk doc for
+// what that costs. File-tree opcodes mutate <Output>/extracted/; metadata
+// opcodes (registry, shortcuts, plugin/DLL registration, exec, ini) are recorded
+// to <Output>/nsis-actions.txt instead of being executed.
 
 // NSIS firstheader / opcode constants.
 const (
@@ -54,9 +61,85 @@ const (
 	nbLangtables        = 4 // block index: language tables (follows strings)
 	nbData              = 7 // block index: file data
 	nsisEntrySize       = 28
-	ewCreateDir         = 11      // EW_CREATEDIR (also SetOutPath when param[1] != 0)
-	ewExtractFile       = 20      // EW_EXTRACTFILE
 	nsisMaxDecompressed = 2 << 30 // 2 GiB decompression ceiling (anti-bomb)
+)
+
+// NSIS instruction opcodes (exehead/fileform.h, stock NSIS 3 makensis).
+// CAVEAT: the enum shifts when NSIS is built with non-default NSIS_SUPPORT_*
+// defines, so a custom-built installer can misnumber. An opcode we do not know
+// is counted and skipped, never fatal — see nsisOps.
+const (
+	ewRet                = 1
+	ewJmp                = 2
+	ewAbort              = 3
+	ewQuit               = 4
+	ewCall               = 5
+	ewUpdateText         = 6
+	ewSleep              = 7
+	ewBringToFront       = 8
+	ewChDetailsView      = 9
+	ewSetFileAttributes  = 10
+	ewCreateDir          = 11 // also SetOutPath when param[1] != 0
+	ewIfFileExists       = 12
+	ewSetFlag            = 13
+	ewIfFlag             = 14
+	ewGetFlag            = 15
+	ewRename             = 16
+	ewGetFullPathName    = 17
+	ewSearchPath         = 18
+	ewGetTempFileName    = 19
+	ewExtractFile        = 20
+	ewDeleteFile         = 21
+	ewMessageBox         = 22
+	ewRmDir              = 23
+	ewStrLen             = 24
+	ewAssignVar          = 25 // StrCpy
+	ewStrCmp             = 26
+	ewReadEnvStr         = 27
+	ewIntCmp             = 28
+	ewIntOp              = 29
+	ewIntFmt             = 30
+	ewPushPop            = 31
+	ewFindWindow         = 32
+	ewSendMessage        = 33
+	ewIsWindow           = 34
+	ewGetDlgItem         = 35
+	ewSetCtlColors       = 36
+	ewSetBrandingImage   = 37
+	ewCreateFont         = 38
+	ewShowWindow         = 39
+	ewShellExec          = 40
+	ewExecute            = 41
+	ewGetFileTime        = 42
+	ewGetDLLVersion      = 43
+	ewRegisterDLL        = 44
+	ewCreateShortcut     = 45
+	ewCopyFiles          = 46
+	ewReboot             = 47
+	ewWriteINI           = 48
+	ewReadINIStr         = 49
+	ewDelReg             = 50
+	ewWriteReg           = 51
+	ewReadRegStr         = 52
+	ewRegEnum            = 53
+	ewFClose             = 54
+	ewFOpen              = 55
+	ewFPuts              = 56
+	ewFGets              = 57
+	ewFSeek              = 58
+	ewFindClose          = 59
+	ewFindNext           = 60
+	ewFindFirst          = 61
+	ewWriteUninstaller   = 62
+	ewLog                = 63
+	ewSectionSet         = 64
+	ewInstTypeSet        = 65
+	ewGetOSInfo          = 66
+	ewReservedOpcode     = 67
+	ewLockWindow         = 68
+	ewFPutWS             = 69
+	ewFGetWS             = 70
+	ewGetFunctionAddress = 71
 )
 
 var nsisSignature = []byte{
@@ -177,10 +260,6 @@ func (n *NSISUnpack) Execute(ctx *Context) error {
 		man.SignatureRepaired = true
 		logMsg("repaired tampered firstheader signature on scratch copy")
 	}
-	tmpDir := filepath.Join(ctx.Output, ".tmp")
-	if err := os.MkdirAll(tmpDir, 0755); err == nil {
-		_ = os.WriteFile(filepath.Join(tmpDir, "repaired.bin"), repaired, 0644)
-	}
 	report(1, Success, time.Since(start), nil)
 
 	// Step 2: decompress the solid archive block.
@@ -188,7 +267,13 @@ func (n *NSISUnpack) Execute(ctx *Context) error {
 	start = time.Now()
 	end := fhOff + int64(man.ArchiveSize)
 	if end > int64(len(data)) || man.ArchiveSize == 0 {
+		// Fall back to the file tail, but stop before the Authenticode overlay —
+		// the certificate table is appended AFTER the NSIS archive.
 		end = int64(len(data))
+		if cert := peCertOffset(data); cert > fhOff+nsisFirstHeaderSize && cert < end {
+			end = cert
+			man.Notes = append(man.Notes, fmt.Sprintf("archive tail trimmed at Authenticode overlay (offset %d)", cert))
+		}
 	}
 	comp := repaired[fhOff+nsisFirstHeaderSize : end]
 	dec, method, derr := decompressNSIS(comp, int(man.HeaderSize))
@@ -217,29 +302,43 @@ func (n *NSISUnpack) Execute(ctx *Context) error {
 		return err
 	}
 
-	nfiles, unicode, entryCount, wanted := extractStructured(dec, int(man.HeaderSize), extractDir, logMsg)
-	man.Unicode = unicode
-	man.Entries = entryCount
-	if nfiles > 0 {
+	walk := extractStructured(dec, int(man.HeaderSize), method, extractDir, logMsg)
+	man.Unicode = walk.Unicode
+	man.Entries = walk.Entries
+	if walk.Entries > 0 {
+		man.Notes = append(man.Notes, fmt.Sprintf(
+			"entry walk: %d instructions, %d handled, %d unknown opcodes skipped, %d control-flow instructions counted but not followed (linear walk — every branch is taken)",
+			walk.Entries, walk.Known, walk.Unknown, walk.Control))
+	}
+	if len(walk.Meta) > 0 {
+		_ = os.WriteFile(filepath.Join(ctx.Output, "nsis-actions.txt"),
+			[]byte(strings.Join(walk.Meta, "\n")+"\n"), 0644)
+		logMsg(fmt.Sprintf("recorded %d registry/shortcut/plugin actions to nsis-actions.txt", len(walk.Meta)))
+	}
+	if walk.Files > 0 {
 		man.ExtractMode = "structured"
-		man.FilesExtracted = nfiles
-		man.FilesWanted = wanted
-		if nfiles < wanted {
+		man.FilesExtracted = walk.Files
+		man.FilesWanted = walk.Wanted
+		if walk.Files < walk.Wanted {
 			man.Notes = append(man.Notes, fmt.Sprintf(
-				"%d of %d EW_EXTRACTFILE records could not be written (non-solid/compressed data blocks are not supported)",
-				wanted-nfiles, wanted))
+				"%d of %d file records could not be written (unreadable or undecompressable data block)",
+				walk.Wanted-walk.Files, walk.Wanted))
 		}
 	} else {
 		// Structured walk found nothing usable — dump raw [size][data] records so
 		// the file bytes still reach disk.
-		raw := extractRawRecords(dec, int(man.HeaderSize), extractDir, logMsg)
+		raw, skipped := extractRawRecords(dec, int(man.HeaderSize), extractDir, logMsg)
 		man.ExtractMode = "raw-fallback"
 		man.FilesExtracted = raw
 		man.Notes = append(man.Notes, "structured entry-walk found no files; dumped raw data records (names/paths unavailable)")
+		if skipped > 0 {
+			man.Notes = append(man.Notes, fmt.Sprintf("raw fallback resynchronised past %d unreadable record header(s)", skipped))
+		}
 	}
 
-	// Always dump the string table for greppability.
-	if s := dumpStrings(dec, int(man.HeaderSize), unicode); len(s) > 0 {
+	// Always dump the string table for greppability (encoding detected on its own,
+	// so a failed entry-walk cannot turn the dump into mojibake).
+	if s := dumpStrings(dec, int(man.HeaderSize)); len(s) > 0 {
 		_ = os.WriteFile(filepath.Join(ctx.Output, "nsis-strings.txt"), []byte(strings.Join(s, "\n")), 0644)
 	}
 
@@ -351,13 +450,300 @@ func readCapped(r io.Reader, hdrSize int) ([]byte, error) {
 	}
 }
 
+// nsisWalkResult is what one pass over the entries table produced.
+type nsisWalkResult struct {
+	Files   int
+	Wanted  int      // EW_EXTRACTFILE records seen
+	Entries int      // instructions in the table
+	Unicode bool     // string table encoding
+	Known   int      // instructions with a handler
+	Control int      // branch/compare instructions, counted not executed
+	Unknown int      // opcodes without a handler
+	Meta    []string // registry / shortcut / plugin lines for nsis-actions.txt
+}
+
+// nsisWalk carries the state one linear pass mutates.
+//
+// LIMITATION (deliberate): the walk is LINEAR — instructions execute in table
+// order and every branch is taken as if it were straight-line code. There is no
+// control flow: EW_JMP / EW_IFFILEEXISTS / EW_INTCMP / EW_STRCMP are counted and
+// reported, never followed. So a path assembled inside a conditional may reflect
+// a branch the installer would not have taken. That is the right trade for a
+// static unpacker — the goal is to see every file the installer CAN write, not
+// to reproduce one particular run.
+type nsisWalk struct {
+	dec      []byte
+	dataBase int
+	method   string
+	outDir   string
+	resolve  func(int) string
+	vars     map[string]string // "$INSTDIR" -> resolved value, from EW_ASSIGNVAR
+	varKeys  []string          // longest-first so $VAR25 never eats $VAR250
+	curDir   string
+	log      func(string)
+	res      nsisWalkResult
+}
+
+// str resolves a string param and substitutes every variable the walk has seen
+// assigned. Unresolved variables survive as $TOKEN and are handled downstream by
+// nsisVarSegment, which maps them onto a safe fixed segment.
+func (w *nsisWalk) str(off int) string {
+	s := w.resolve(off)
+	if !strings.Contains(s, "$") {
+		return s
+	}
+	for _, k := range w.varKeys {
+		s = strings.ReplaceAll(s, k, w.vars[k])
+	}
+	return s
+}
+
+func (w *nsisWalk) setVar(idx int, val string) {
+	name := nsisVarName(idx)
+	if _, ok := w.vars[name]; !ok {
+		w.varKeys = append(w.varKeys, name)
+		sort.Slice(w.varKeys, func(i, j int) bool { return len(w.varKeys[i]) > len(w.varKeys[j]) })
+	}
+	w.vars[name] = val
+}
+
+// dst turns a resolved NSIS path into an absolute path under outDir, or "" if it
+// is empty or the zip-slip guard rejects it.
+func (w *nsisWalk) dst(name string) string {
+	if name == "" {
+		return ""
+	}
+	full := name
+	// A rooted name ($INSTDIR\…, C:\…, \…) carries its own root — don't nest it
+	// under the current $OUTDIR.
+	rooted := strings.HasPrefix(name, "$") || strings.HasPrefix(name, "\\") ||
+		strings.HasPrefix(name, "/") || (len(name) > 1 && name[1] == ':')
+	if !rooted {
+		full = filepath.Join(w.curDir, name)
+	}
+	rel := sanitizeRel(full)
+	if rel == "" {
+		return ""
+	}
+	return safeJoin(w.outDir, rel)
+}
+
+// writeData writes the data-block record at pos to dst, inflating it first when
+// it is individually compressed (non-solid).
+func (w *nsisWalk) writeData(pos int, dst string) bool {
+	abs := w.dataBase + pos
+	if pos < 0 || abs+4 > len(w.dec) {
+		return false
+	}
+	raw := binary.LittleEndian.Uint32(w.dec[abs : abs+4])
+	size := int(raw &^ 0x80000000)
+	if size <= 0 || abs+4+size > len(w.dec) {
+		return false
+	}
+	payload := w.dec[abs+4 : abs+4+size]
+	if raw&0x80000000 != 0 { // high bit => this block carries its own compression
+		p, err := decompressBlock(payload, w.method)
+		if err != nil {
+			w.log("non-solid block decompression failed for " + dst + ": " + err.Error())
+			return false
+		}
+		payload = p
+	}
+	if os.MkdirAll(filepath.Dir(dst), 0755) != nil {
+		return false
+	}
+	return os.WriteFile(dst, payload, 0644) == nil
+}
+
+func (w *nsisWalk) meta(format string, a ...any) {
+	w.res.Meta = append(w.res.Meta, fmt.Sprintf(format, a...))
+}
+
+var nsisRegRoots = []string{"HKCR", "HKCU", "HKLM", "HKU", "HKPD", "HKCC", "HKDD"}
+
+func nsisRegRoot(v int) string {
+	if v >= 0 && v < len(nsisRegRoots) {
+		return nsisRegRoots[v]
+	}
+	return fmt.Sprintf("HK?%d", v)
+}
+
+// countControl is the handler for branch/compare opcodes: recorded, never taken.
+func countControl(w *nsisWalk, p func(int) int) { w.res.Control++ }
+
+// nsisNoop is the handler for opcodes that cannot touch the extracted tree and
+// carry nothing an operator wants (UI, stack, integer and string arithmetic).
+// Having them here rather than in the unknown bucket keeps the unknown counter
+// meaningful: it then means "opcode we could not identify", not "opcode we did
+// not bother to list".
+func nsisNoop(w *nsisWalk, p func(int) int) {}
+
+// nsisOps maps an opcode to its handler. Adding an instruction is one line here.
+// File-tree opcodes mutate the extracted tree; metadata opcodes only record a
+// line for nsis-actions.txt; control opcodes are counted by countControl.
+var nsisOps = map[int]func(w *nsisWalk, p func(int) int){
+	// --- file tree ---
+	ewCreateDir: func(w *nsisWalk, p func(int) int) {
+		dir := sanitizeRel(w.str(p(0)))
+		if p(1) != 0 { // SetOutPath
+			w.curDir = dir
+		}
+		if dir != "" {
+			_ = os.MkdirAll(safeJoin(w.outDir, dir), 0755)
+		}
+	},
+	ewExtractFile: func(w *nsisWalk, p func(int) int) {
+		dst := w.dst(w.str(p(1)))
+		if dst == "" {
+			return
+		}
+		w.res.Wanted++
+		if w.writeData(p(2), dst) {
+			w.res.Files++
+		}
+	},
+	ewWriteUninstaller: func(w *nsisWalk, p func(int) int) {
+		dst := w.dst(w.str(p(0)))
+		if dst == "" {
+			return
+		}
+		w.res.Wanted++
+		// ponytail: writes only the appended data block. The real uninstaller also
+		// gets a copy of the installer's exehead stub prepended; add that if anyone
+		// actually needs to RUN the reconstructed uninstaller.
+		if w.writeData(p(1), dst) {
+			w.res.Files++
+			w.meta("uninstaller: %s (data block only, exe stub not prepended)", dst)
+		}
+	},
+	ewRename: func(w *nsisWalk, p func(int) int) {
+		from, to := w.dst(w.str(p(0))), w.dst(w.str(p(1)))
+		if from == "" || to == "" {
+			return
+		}
+		if os.MkdirAll(filepath.Dir(to), 0755) == nil {
+			_ = os.Rename(from, to)
+		}
+	},
+	ewDeleteFile: func(w *nsisWalk, p func(int) int) {
+		if d := w.dst(w.str(p(0))); d != "" {
+			_ = os.Remove(d)
+		}
+	},
+	ewRmDir: func(w *nsisWalk, p func(int) int) {
+		if d := w.dst(w.str(p(0))); d != "" {
+			_ = os.RemoveAll(d)
+		}
+	},
+
+	// --- variables: this is what makes $INSTDIR & co resolve for real ---
+	ewAssignVar: func(w *nsisWalk, p func(int) int) { w.setVar(p(0), w.str(p(1))) },
+
+	// --- metadata: recorded, never executed ---
+	ewWriteReg: func(w *nsisWalk, p func(int) int) {
+		val := w.str(p(3))
+		if p(4) == 4 { // REG_DWORD: param3 is the integer itself
+			val = fmt.Sprintf("0x%X", p(3))
+		}
+		w.meta("reg write: %s\\%s [%s] = %s", nsisRegRoot(p(0)), w.str(p(1)), w.str(p(2)), val)
+	},
+	ewDelReg: func(w *nsisWalk, p func(int) int) {
+		w.meta("reg delete: %s\\%s [%s]", nsisRegRoot(p(0)), w.str(p(1)), w.str(p(2)))
+	},
+	ewCreateShortcut: func(w *nsisWalk, p func(int) int) {
+		w.meta("shortcut: %s -> %s %s (icon %s)", w.str(p(0)), w.str(p(1)), w.str(p(2)), w.str(p(3)))
+	},
+	ewRegisterDLL: func(w *nsisWalk, p func(int) int) {
+		w.meta("plugin/dll: %s!%s", w.str(p(0)), w.str(p(1)))
+	},
+	ewShellExec: func(w *nsisWalk, p func(int) int) {
+		w.meta("shellexec: %s %s %s", w.str(p(0)), w.str(p(1)), w.str(p(2)))
+	},
+	ewExecute: func(w *nsisWalk, p func(int) int) { w.meta("exec: %s", w.str(p(0))) },
+	ewWriteINI: func(w *nsisWalk, p func(int) int) {
+		w.meta("ini write: %s [%s] %s = %s", w.str(p(3)), w.str(p(0)), w.str(p(1)), w.str(p(2)))
+	},
+	ewReadINIStr: func(w *nsisWalk, p func(int) int) {
+		w.meta("ini read: %s [%s] %s -> %s", w.str(p(3)), w.str(p(1)), w.str(p(2)), nsisVarName(p(0)))
+	},
+	ewReadRegStr: func(w *nsisWalk, p func(int) int) {
+		w.meta("reg read: %s\\%s [%s] -> %s", nsisRegRoot(p(1)), w.str(p(2)), w.str(p(3)), nsisVarName(p(0)))
+	},
+	ewCopyFiles: func(w *nsisWalk, p func(int) int) {
+		w.meta("copy files: %s -> %s", w.str(p(0)), w.str(p(1)))
+	},
+	ewSetFileAttributes: func(w *nsisWalk, p func(int) int) {
+		w.meta("attributes: %s = 0x%X", w.str(p(0)), p(1))
+	},
+	ewMessageBox: func(w *nsisWalk, p func(int) int) { w.meta("messagebox: %s", w.str(p(1))) },
+	ewReboot:     func(w *nsisWalk, p func(int) int) { w.meta("reboot requested") },
+
+	// --- control flow: counted, not followed (see nsisWalk doc) ---
+	ewRet:          countControl,
+	ewJmp:          countControl,
+	ewCall:         countControl,
+	ewIfFileExists: countControl,
+	ewIfFlag:       countControl,
+	ewStrCmp:       countControl,
+	ewIntCmp:       countControl,
+
+	// --- no effect on the tree, nothing worth recording: identified, then dropped.
+	// Everything from ewLog up is UI/bookkeeping and its exact numbering drifts
+	// most between custom NSIS builds — listing it costs nothing since the handler
+	// does nothing either way.
+	ewAbort:              nsisNoop,
+	ewQuit:               nsisNoop,
+	ewUpdateText:         nsisNoop,
+	ewSleep:              nsisNoop,
+	ewBringToFront:       nsisNoop,
+	ewChDetailsView:      nsisNoop,
+	ewSetFlag:            nsisNoop,
+	ewGetFlag:            nsisNoop,
+	ewGetFullPathName:    nsisNoop,
+	ewSearchPath:         nsisNoop,
+	ewGetTempFileName:    nsisNoop,
+	ewStrLen:             nsisNoop,
+	ewReadEnvStr:         nsisNoop,
+	ewIntOp:              nsisNoop,
+	ewIntFmt:             nsisNoop,
+	ewPushPop:            nsisNoop,
+	ewFindWindow:         nsisNoop,
+	ewSendMessage:        nsisNoop,
+	ewIsWindow:           nsisNoop,
+	ewGetDlgItem:         nsisNoop,
+	ewSetCtlColors:       nsisNoop,
+	ewSetBrandingImage:   nsisNoop,
+	ewCreateFont:         nsisNoop,
+	ewShowWindow:         nsisNoop,
+	ewGetFileTime:        nsisNoop,
+	ewGetDLLVersion:      nsisNoop,
+	ewRegEnum:            nsisNoop,
+	ewFClose:             nsisNoop,
+	ewFOpen:              nsisNoop,
+	ewFPuts:              nsisNoop,
+	ewFGets:              nsisNoop,
+	ewFSeek:              nsisNoop,
+	ewFindClose:          nsisNoop,
+	ewFindNext:           nsisNoop,
+	ewFindFirst:          nsisNoop,
+	ewLog:                nsisNoop,
+	ewSectionSet:         nsisNoop,
+	ewInstTypeSet:        nsisNoop,
+	ewGetOSInfo:          nsisNoop,
+	ewReservedOpcode:     nsisNoop,
+	ewLockWindow:         nsisNoop,
+	ewFPutWS:             nsisNoop,
+	ewFGetWS:             nsisNoop,
+	ewGetFunctionAddress: nsisNoop,
+}
+
 // extractStructured parses the NSIS header block, walks the entries table, and
-// writes the reconstructed file tree. Returns files written, whether the strings
-// looked Unicode, and the entry count. Any parse fault returns (0,...) so the
-// caller can fall back to a raw dump.
-func extractStructured(dec []byte, hdrSize int, outDir string, logMsg func(string)) (files int, unicode bool, entryCount int, wanted int) {
+// writes the reconstructed file tree. Any parse fault returns a zero-Files
+// result so the caller can fall back to a raw dump.
+func extractStructured(dec []byte, hdrSize int, method, outDir string, logMsg func(string)) nsisWalkResult {
+	var res nsisWalkResult
 	if hdrSize < 4+nsisBlocksNum*8 || hdrSize > len(dec) {
-		return 0, false, 0, 0
+		return res
 	}
 
 	// Header layout: an optional 4-byte size prefix (solid mode repeats
@@ -377,6 +763,7 @@ func extractStructured(dec []byte, hdrSize int, outDir string, logMsg func(strin
 	}
 
 	entriesOff, entryCount := blockOff(nbEntries)
+	res.Entries = entryCount
 	stringsOff, _ := blockOff(nbStrings)
 	langOff, _ := blockOff(nbLangtables)
 	entriesOff += hdrBase
@@ -392,93 +779,66 @@ func extractStructured(dec []byte, hdrSize int, outDir string, logMsg func(strin
 	if stringsOff >= hdrBase && stringsOff < len(dec) && strEnd <= len(dec) {
 		strTab = dec[stringsOff:strEnd]
 	}
-	unicode = looksUnicode(strTab)
+	res.Unicode = looksUnicode(strTab)
 
 	// String params are CHARACTER indices; UTF-16LE needs them doubled.
 	charSize := 1
-	if unicode {
+	if res.Unicode {
 		charSize = 2
 	}
-	resolve := func(off int) string { return resolveNSISString(strTab, off*charSize, unicode) }
 
 	if entriesOff < hdrBase || entryCount <= 0 || entriesOff+entryCount*nsisEntrySize > len(dec) {
-		return 0, unicode, entryCount, 0
+		return res
 	}
 
-	dataBase := hdrBase + hdrSize // file data follows the header in the solid stream
-	curDir := ""
+	w := &nsisWalk{
+		dec:      dec,
+		dataBase: hdrBase + hdrSize, // file data follows the header in the solid stream
+		method:   method,
+		outDir:   outDir,
+		resolve:  func(off int) string { return resolveNSISString(strTab, off*charSize, res.Unicode) },
+		vars:     map[string]string{},
+		log:      logMsg,
+		res:      res,
+	}
 	for i := 0; i < entryCount; i++ {
 		e := dec[entriesOff+i*nsisEntrySize:]
 		which := int(int32(binary.LittleEndian.Uint32(e[0:4])))
 		p := func(k int) int { return int(int32(binary.LittleEndian.Uint32(e[4+k*4 : 8+k*4]))) }
 
-		switch which {
-		case ewCreateDir:
-			dir := sanitizeRel(resolve(p(0)))
-			if p(1) != 0 { // SetOutPath
-				curDir = dir
-			}
-			if dir != "" {
-				_ = os.MkdirAll(safeJoin(outDir, dir), 0755)
-			}
-		case ewExtractFile:
-			name := resolve(p(1))
-			pos := p(2)
-			if name == "" || pos < 0 {
-				continue
-			}
-			wanted++
-			abs := dataBase + pos
-			if abs+4 > len(dec) {
-				continue
-			}
-			size := int(int32(binary.LittleEndian.Uint32(dec[abs : abs+4])))
-			// High bit set => this block is individually compressed (non-solid).
-			// Not handled here; skip so we don't write garbage.
-			if size < 0 || abs+4+size > len(dec) {
-				continue
-			}
-			full := name
-			// A name that already carries its own var root ($INSTDIR\...) is
-			// absolute — don't nest it under the current $OUTDIR.
-			if !strings.HasPrefix(name, "$") {
-				full = filepath.Join(curDir, name)
-			}
-			rel := sanitizeRel(full)
-			if rel == "" {
-				continue
-			}
-			dst := safeJoin(outDir, rel)
-			if dst == "" {
-				continue // zip-slip guard rejected it
-			}
-			if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
-				continue
-			}
-			if err := os.WriteFile(dst, dec[abs+4:abs+4+size], 0644); err == nil {
-				files++
-			}
+		fn, ok := nsisOps[which]
+		if !ok {
+			w.res.Unknown++
+			continue
 		}
+		w.res.Known++
+		fn(w, p)
 	}
-	return files, unicode, entryCount, wanted
+	return w.res
 }
 
 // extractRawRecords walks the data region as consecutive [int32 size][bytes]
 // records and dumps each as file_NNNN.bin. A last-resort so the actual file
-// bytes reach disk even when the entry table could not be parsed.
-func extractRawRecords(dec []byte, hdrSize int, outDir string, logMsg func(string)) int {
+// bytes reach disk even when the entry table could not be parsed. A bogus size
+// no longer ends the walk: the cursor slides forward 4 bytes and retries, so one
+// corrupt header does not cost every record behind it. Returns records written
+// and how many headers were skipped during resynchronisation.
+func extractRawRecords(dec []byte, hdrSize int, outDir string, logMsg func(string)) (int, int) {
 	pos := hdrSize
 	if pos < 0 || pos >= len(dec) {
 		pos = 0
 	}
 	rawDir := filepath.Join(outDir, "_raw")
 	_ = os.MkdirAll(rawDir, 0755)
-	n := 0
-	for pos+4 <= len(dec) && n < 100000 {
-		size := int(int32(binary.LittleEndian.Uint32(dec[pos : pos+4])))
-		size &= 0x7FFFFFFF // ignore the compression flag bit
+	n, skipped := 0, 0
+	for pos+4 <= len(dec) && n < 100000 && skipped < 100000 {
+		size := int(binary.LittleEndian.Uint32(dec[pos:pos+4]) &^ 0x80000000)
 		if size <= 0 || pos+4+size > len(dec) {
-			break
+			// ponytail: naive 4-byte resync, no content sniffing — good enough
+			// for a last-resort dump; upgrade only if real archives need it.
+			pos += 4
+			skipped++
+			continue
 		}
 		name := filepath.Join(rawDir, fmt.Sprintf("file_%04d.bin", n))
 		if err := os.WriteFile(name, dec[pos+4:pos+4+size], 0644); err == nil {
@@ -487,9 +847,55 @@ func extractRawRecords(dec []byte, hdrSize int, outDir string, logMsg func(strin
 		pos += 4 + size
 	}
 	if n > 0 {
-		logMsg(fmt.Sprintf("raw fallback dumped %d data records to extracted/_raw/", n))
+		logMsg(fmt.Sprintf("raw fallback dumped %d data records to extracted/_raw/ (%d header(s) skipped)", n, skipped))
 	}
-	return n
+	return n, skipped
+}
+
+// decompressBlock inflates one individually-compressed (non-solid) data block
+// using the method already identified for the archive.
+func decompressBlock(b []byte, method string) ([]byte, error) {
+	switch method {
+	case "LZMA":
+		return tryLZMA(b, 0)
+	case "deflate":
+		return tryInflate(b, 0)
+	case "bzip2":
+		return tryBzip2(b, 0)
+	}
+	return nil, fmt.Errorf("unsupported block compression %q", method)
+}
+
+// peCertOffset returns the file offset of the Authenticode certificate table
+// (PE security data directory), or -1 when the file is not a PE or is unsigned.
+func peCertOffset(data []byte) int64 {
+	if len(data) < 0x40 || data[0] != 'M' || data[1] != 'Z' {
+		return -1
+	}
+	pe := int(binary.LittleEndian.Uint32(data[0x3C:0x40]))
+	if pe < 0 || pe+0x18 > len(data) || string(data[pe:pe+4]) != "PE\x00\x00" {
+		return -1
+	}
+	opt := pe + 0x18
+	if opt+2 > len(data) {
+		return -1
+	}
+	// Security directory is entry 4; the directory array starts at 0x60 (PE32) or
+	// 0x70 (PE32+) into the optional header.
+	dirs := opt + 0x60
+	if binary.LittleEndian.Uint16(data[opt:opt+2]) == 0x20B {
+		dirs = opt + 0x70
+	}
+	e := dirs + 4*8
+	if e+8 > len(data) {
+		return -1
+	}
+	off := int64(binary.LittleEndian.Uint32(data[e : e+4]))
+	size := int64(binary.LittleEndian.Uint32(data[e+4 : e+8]))
+	if off <= 0 || size <= 0 || off > int64(len(data)) {
+		return -1
+	}
+	return off
 }
 
 // nsisHeaderBase returns the offset of the header proper within the decompressed
@@ -502,17 +908,19 @@ func nsisHeaderBase(dec []byte, hdrSize int) int {
 	return 0
 }
 
-// dumpStrings returns the null-terminated strings from the string block.
-func dumpStrings(dec []byte, hdrSize int, unicode bool) []string {
+// dumpStrings returns the null-terminated strings from the string block. The
+// encoding is detected from the table itself, independently of whether the entry
+// walk succeeded.
+func dumpStrings(dec []byte, hdrSize int) []string {
 	if hdrSize < 4+nsisBlocksNum*8 || hdrSize > len(dec) {
 		return nil
 	}
 	hb := nsisHeaderBase(dec, hdrSize)
 	bb := hb + 4
 	base := bb + nbStrings*8
-	stringsOff := hb + int(int32(binary.LittleEndian.Uint32(dec[base : base+4])))
+	stringsOff := hb + int(int32(binary.LittleEndian.Uint32(dec[base:base+4])))
 	baseL := bb + nbLangtables*8
-	langOff := hb + int(int32(binary.LittleEndian.Uint32(dec[baseL : baseL+4])))
+	langOff := hb + int(int32(binary.LittleEndian.Uint32(dec[baseL:baseL+4])))
 	if stringsOff < hb || stringsOff >= len(dec) {
 		return nil
 	}
@@ -521,6 +929,7 @@ func dumpStrings(dec []byte, hdrSize int, unicode bool) []string {
 		end = len(dec)
 	}
 	tab := dec[stringsOff:end]
+	unicode := looksUnicode(tab)
 	var out []string
 	off := 0
 	for off < len(tab) {
@@ -568,8 +977,84 @@ const (
 	nsLangCode  = 0x04
 )
 
+// nsisShellCSIDL maps a Windows CSIDL onto the NSIS constant that carries it.
+// A shell reference stores TWO CSIDLs — the per-user folder and its all-users
+// twin — so both ids of a pair map to the same NSIS name (e.g. CSIDL_PROGRAMS
+// 0x02 and CSIDL_COMMON_PROGRAMS 0x17 are both $SMPROGRAMS).
+//
+// $QUICKLAUNCH is deliberately absent: NSIS builds it from $APPDATA plus a fixed
+// subpath rather than giving it a CSIDL of its own, so it never reaches here.
+var nsisShellCSIDL = map[int]string{
+	0x00: "DESKTOP", 0x10: "DESKTOP", 0x19: "DESKTOP",
+	0x02: "SMPROGRAMS", 0x17: "SMPROGRAMS",
+	0x05: "DOCUMENTS", 0x2E: "DOCUMENTS",
+	0x06: "FAVORITES", 0x1F: "FAVORITES",
+	0x07: "SMSTARTUP", 0x18: "SMSTARTUP",
+	0x08: "RECENT",
+	0x09: "SENDTO",
+	0x0B: "STARTMENU", 0x16: "STARTMENU",
+	0x0D: "MUSIC", 0x35: "MUSIC",
+	0x0E: "VIDEOS", 0x37: "VIDEOS",
+	0x13: "NETHOOD",
+	0x14: "FONTS",
+	0x15: "TEMPLATES", 0x2D: "TEMPLATES",
+	0x1A: "APPDATA", 0x23: "APPDATA",
+	0x1B: "PRINTHOOD",
+	0x1C: "LOCALAPPDATA",
+	0x1D: "ALTSTARTUP",
+	0x20: "INTERNET_CACHE",
+	0x21: "COOKIES",
+	0x22: "HISTORY",
+	0x24: "WINDIR",
+	0x25: "SYSDIR",
+	0x26: "PROGRAMFILES",
+	0x27: "PICTURES", 0x36: "PICTURES",
+	0x28: "PROFILE",
+	0x2B: "COMMONFILES",
+	0x2F: "ADMINTOOLS", 0x30: "ADMINTOOLS",
+	0x38: "RESOURCES",
+	0x39: "RESOURCES_LOCALIZED",
+	0x3B: "CDBURN_AREA",
+}
+
+// nsisShellNames is the set of names nsisShellCSIDL can produce, so a path
+// segment can be recognised as a shell folder rather than an opaque variable.
+var nsisShellNames = func() map[string]bool {
+	m := make(map[string]bool, len(nsisShellCSIDL))
+	for _, v := range nsisShellCSIDL {
+		m[v] = true
+	}
+	return m
+}()
+
+// nsisShellName renders a NS_SHELL_CODE parameter as its NSIS constant.
+//
+// The parameter packs two CSIDLs, seven bits each: the low half is the
+// per-user folder, the high half its all-users twin (0x17<<7|0x02 = 2946 is
+// $SMPROGRAMS — the pair that produced the "$SHELL2946" this replaces). Seven
+// bits is enough because every CSIDL NSIS emits is below 0x80. The per-user id
+// names the folder; if it is a marker NSIS uses for "no such variant", the
+// all-users id does.
+func nsisShellName(param int) string {
+	cur, all := param&0x7F, param>>7
+	if n, ok := nsisShellCSIDL[cur]; ok {
+		return "$" + n
+	}
+	if n, ok := nsisShellCSIDL[all]; ok {
+		return "$" + n
+	}
+	return fmt.Sprintf("$SHELL%d_%d", cur, all)
+}
+
 // nsisVarName renders a variable index as its $NAME. Indices past the documented
 // built-ins (user vars, $PLUGINSDIR, ...) become $VARn rather than a guess.
+//
+// A $VARn that survives to the extracted tree as a _varN directory is EXPECTED,
+// not a parse failure: indices ≥25 are script-declared user variables, and a
+// linear walk can only resolve one whose value came from a literal EW_ASSIGNVAR
+// (StrCpy). Anything filled at RUN time — ReadRegStr, GetTempFileName, a
+// System::Call, a plugin, or a Pop off the stack — has no static value, so the
+// placeholder is the honest answer rather than an invented path.
 func nsisVarName(idx int) string {
 	switch {
 	case idx >= 0 && idx <= 9:
@@ -601,7 +1086,7 @@ func resolveNSISString(tab []byte, off int, unicode bool) string {
 	writeCode := func(code, param int) {
 		switch code {
 		case nsShellCode:
-			fmt.Fprintf(&b, "$SHELL%d", param)
+			b.WriteString(nsisShellName(param))
 		case nsVarCode:
 			b.WriteString(nsisVarName(param))
 		case nsLangCode:
@@ -689,8 +1174,46 @@ func nextStringLen(tab []byte, off int, unicode bool) int {
 	return len(tab) - off
 }
 
-// sanitizeRel strips drive letters, leading separators and "." components,
-// leaving a safe relative path.
+// nsisVarSegment maps a resolved NSIS variable token ($INSTDIR, $PLUGINSDIR, …)
+// occupying a whole path segment onto a safe relative segment. "" means the
+// segment collapses to the output root. The result is always a single plain
+// name, so a variable can never contribute a traversal component.
+func nsisVarSegment(seg string) string {
+	switch strings.ToUpper(seg) {
+	case "$INSTDIR", "$OUTDIR", "$EXEDIR":
+		return "" // installation root == extraction root
+	case "$PLUGINSDIR":
+		return "_plugins"
+	case "$TEMP", "$PLUGINSDIR_TEMP":
+		return "_temp"
+	}
+	name := strings.TrimPrefix(seg, "$")
+	// A shell folder gets its own readable segment ($SMPROGRAMS → _shell_SMPROGRAMS).
+	// The name comes from nsisShellCSIDL, so it is always a plain [A-Z_] token and
+	// cannot contribute a traversal component.
+	if nsisShellNames[strings.ToUpper(name)] {
+		return "_shell_" + strings.ToUpper(name)
+	}
+	// $VAR25 → _var25; anything else ($0, $R1, $SHELL23_2, …) → _var_<name>.
+	if rest := strings.TrimPrefix(name, "VAR"); rest != name && rest != "" {
+		name = rest
+	} else {
+		name = "_" + name
+	}
+	var b strings.Builder
+	b.WriteString("_var")
+	for _, r := range name {
+		if r == '.' || r == '/' || r == '\\' || r == ':' {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// sanitizeRel strips drive letters, leading separators and "." components, maps
+// NSIS variable segments to safe names, and leaves a relative path that cannot
+// escape the output directory.
 func sanitizeRel(p string) string {
 	p = strings.ReplaceAll(p, "\\", "/")
 	p = strings.TrimSpace(p)
@@ -704,6 +1227,11 @@ func sanitizeRel(p string) string {
 		seg = strings.TrimSpace(seg)
 		if seg == "" || seg == "." || seg == ".." {
 			continue
+		}
+		if strings.HasPrefix(seg, "$") {
+			if seg = nsisVarSegment(seg); seg == "" {
+				continue
+			}
 		}
 		parts = append(parts, seg)
 	}

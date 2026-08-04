@@ -153,10 +153,34 @@ func (n *Native) Execute(ctx *Context) error {
 		}
 	}
 
+	// Whenever Ghidra does not run, still emit the pure-Go PE artifacts
+	// (exports/resources/tls/debug) and report the step as Skipped-with-data
+	// rather than a silent Skipped: the run does produce usable output.
+	extrasFallback := func(reason string) {
+		n, notes, err := writePEExtras(ctx.Target, ctx.Output)
+		if err != nil {
+			logTool("ghidra", fmt.Sprintf("Native fallback artifacts failed: %v", err))
+			report(2, Skipped, 0, nil, "ghidra")
+			return
+		}
+		for _, note := range notes {
+			logTool("ghidra", "Native fallback: "+note)
+		}
+		logTool("ghidra", fmt.Sprintf(
+			"%s — wrote native fallback artifacts (%d exports) -> exports.txt / resources.txt / tls.txt / debug.txt", reason, n))
+		if ctx.Progress != nil {
+			ctx.Progress <- StepProgress{
+				Step: 2, Total: total, Name: steps[2].Name,
+				Tool: "ghidra", Status: Skipped,
+				Count: n, Unit: "exports",
+			}
+		}
+	}
+
 	// Step 2: Decompile with Ghidra
 	if doGhidra && ctx.Config != nil && !ctx.Config.NativeGhidraDecompile {
-		report(2, Skipped, 0, nil, "ghidra")
 		logTool("ghidra", "Ghidra decompilation disabled in settings")
+		extrasFallback("Ghidra disabled in settings")
 	} else if doGhidra {
 		report(2, Running, 0, nil, "ghidra")
 		start = time.Now()
@@ -165,10 +189,10 @@ func (n *Native) Execute(ctx *Context) error {
 			// Ghidra is OPTIONAL: skip decompilation and CONTINUE. Imports +
 			// strings + sections were already written, so the run never yields
 			// zero output. Surface an actionable offline hint instead of failing.
-			report(2, Skipped, time.Since(start), nil, "ghidra")
 			logTool("ghidra", fmt.Sprintf(
 				"Ghidra unavailable (%v) — skipping decompilation. Imports/strings/sections were still extracted. "+
 					"Set GHIDRA_HOME to a local Ghidra install or configure ToolsMirror for offline use.", err))
+			extrasFallback("Ghidra unavailable")
 			ghidraPath = ""
 		}
 

@@ -105,6 +105,54 @@ func TestWriteSectionSummary(t *testing.T) {
 	}
 }
 
+func TestWritePEExtras(t *testing.T) {
+	out := t.TempDir()
+	_, _, err := writePEExtras(testPEPath(t), out)
+	if err != nil {
+		t.Fatalf("writePEExtras: %v", err)
+	}
+	// Every artifact must exist and carry either data or an explanatory note.
+	for _, name := range []string{"exports.txt", "resources.txt", "tls.txt", "debug.txt"} {
+		requireNonEmpty(t, filepath.Join(out, name))
+	}
+	// The Go test binary is not stripped, so it always has a TLS directory.
+	tls, _ := os.ReadFile(filepath.Join(out, "tls.txt"))
+	if !strings.Contains(string(tls), "callbacks=") && !strings.Contains(string(tls), "#") {
+		t.Errorf("tls.txt should report callbacks or a note; got: %.120q", string(tls))
+	}
+}
+
+// TestWritePEExtrasNonPE proves a non-PE input neither panics nor errors: the
+// artifacts are still written, each carrying a skip note.
+func TestWritePEExtrasNonPE(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "not-a-pe.bin")
+	if err := os.WriteFile(src, []byte("definitely not a PE file at all"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "out")
+
+	n, notes, err := writePEExtras(src, out)
+	if err != nil {
+		t.Fatalf("writePEExtras on non-PE should not error, got: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0 exports for a non-PE, got %d", n)
+	}
+	if len(notes) == 0 {
+		t.Error("expected a skip note for a non-PE input")
+	}
+	for _, name := range []string{"exports.txt", "resources.txt", "tls.txt", "debug.txt"} {
+		got, rerr := os.ReadFile(filepath.Join(out, name))
+		if rerr != nil {
+			t.Fatalf("expected %s to exist: %v", name, rerr)
+		}
+		if !strings.HasPrefix(string(got), "#") {
+			t.Errorf("%s should start with a skip note; got: %.80q", name, string(got))
+		}
+	}
+}
+
 // TestNativeExecuteWithoutGhidra proves the native recipe produces non-zero
 // output (imports + strings) even when neither the strings tool nor Ghidra is
 // available — the Issue 2 unblock.
@@ -132,4 +180,9 @@ func TestNativeExecuteWithoutGhidra(t *testing.T) {
 	requireNonEmpty(t, filepath.Join(outDir, "imports.json"))
 	requireNonEmpty(t, filepath.Join(outDir, "strings.txt"))
 	requireNonEmpty(t, filepath.Join(outDir, "sections.txt"))
+	// Ghidra absent => the native fallback artifacts must still be written.
+	requireNonEmpty(t, filepath.Join(outDir, "exports.txt"))
+	requireNonEmpty(t, filepath.Join(outDir, "resources.txt"))
+	requireNonEmpty(t, filepath.Join(outDir, "tls.txt"))
+	requireNonEmpty(t, filepath.Join(outDir, "debug.txt"))
 }
