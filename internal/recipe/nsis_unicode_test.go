@@ -27,7 +27,7 @@ func varRef(idx int) []byte {
 }
 
 // TestExtractStructured_UnicodePrefixed covers the real NSIS-3 solid layout that
-// the CCleaner installer uses: a uint32 header-size prefix ahead of the header
+// a real signed commercial installer uses: a uint32 header-size prefix ahead of the header
 // (all block offsets relative to the byte AFTER it), UTF-16LE strings addressed
 // by CHARACTER index, and a $VAR escape inside the path.
 func TestExtractStructured_UnicodePrefixed(t *testing.T) {

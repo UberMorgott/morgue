@@ -24,8 +24,8 @@ import (
 // block/entry tables to reconstruct the installed file tree under
 // <Output>/extracted/. Every extracted path is zip-slip guarded.
 //
-// SCOPE — verified against a real signed NSIS-3 Unicode installer (CCleaner
-// 6.41, solid LZMA):
+// SCOPE — verified against a real signed NSIS-3 Unicode installer from a
+// commercial vendor (solid LZMA, ~2024 build):
 //   - Detection incl. a flipped signature byte: WORKS (repairs the tamper).
 //   - Solid-LZMA decompression of the whole archive: WORKS.
 //   - Header block-table parse + entry walk: WORKS. Three details matter and are
