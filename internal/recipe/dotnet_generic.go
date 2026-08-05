@@ -297,13 +297,13 @@ func countFilesWithExt(dir, ext string) int {
 
 // copyFile copies src to dst.
 func copyFile(src, dst string) error {
-	in, err := os.Open(src)
+	in, err := os.Open(util.LongPath(src))
 	if err != nil {
 		return err
 	}
 	defer in.Close()
 
-	out, err := os.Create(dst)
+	out, err := os.Create(util.LongPath(dst))
 	if err != nil {
 		return err
 	}

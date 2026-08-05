@@ -206,6 +206,27 @@ func runGhidra(
 	baseName := strings.TrimSuffix(filepath.Base(binaryPath), filepath.Ext(binaryPath))
 	outputFile := filepath.Join(outDir, baseName+".c")
 
+	// analyzeHeadless runs in a JVM, which is not long-path aware: an input or
+	// output path near MAX_PATH fails with "<path> is not a valid directory or
+	// file". Go's own \\?\ handling cannot help a child process, so stage the
+	// binary (and the .c it produces) under a short temp dir, keeping the file
+	// name — it appears in Ghidra's output — and move the result back after.
+	runBinary, runOutput := binaryPath, outputFile
+	if util.NearMaxPath(binaryPath) || util.NearMaxPath(outputFile) {
+		stage, mkErr := os.MkdirTemp("", "morgue-gh-*")
+		if mkErr != nil {
+			return 0, mkErr
+		}
+		defer os.RemoveAll(stage)
+		runBinary = filepath.Join(stage, filepath.Base(binaryPath))
+		runOutput = filepath.Join(stage, baseName+".c")
+		if cpErr := copyFile(binaryPath, runBinary); cpErr != nil {
+			return 0, fmt.Errorf("stage %s for ghidra: %w", filepath.Base(binaryPath), cpErr)
+		}
+		log(fmt.Sprintf("Output path is %d chars (near the %d-char Windows limit) — "+
+			"running Ghidra in a short temp dir (%s)", len(outputFile), util.MaxPath, stage))
+	}
+
 	// Run Ghidra analyzeHeadless with streaming for real-time progress
 	log(fmt.Sprintf("Running Ghidra analyzeHeadless on %s", filepath.Base(binaryPath)))
 	ghidraFuncCount := 0
@@ -218,8 +239,8 @@ func runGhidra(
 	// breakaway the JVM OOM-crashes on the large binaries we target.
 	result, runErr := util.RunCmdStreamingEnvBreakaway(ctx, ghidraEnv, analyzeHeadless, []string{
 		projDir, "MorgueProject",
-		"-import", binaryPath,
-		"-postScript", scriptPath, outputFile,
+		"-import", runBinary,
+		"-postScript", scriptPath, runOutput,
 		"-scriptPath", filepath.Dir(scriptPath),
 		"-deleteProject",
 	}, "", func(line string) {
@@ -267,8 +288,16 @@ func runGhidra(
 		return 0, execErr
 	}
 
+	// Bring the staged .c back to its real (possibly long) home. Go handles the
+	// long destination itself; a plain rename would fail across volumes.
+	if runOutput != outputFile {
+		if cpErr := copyFile(runOutput, outputFile); cpErr != nil {
+			log(fmt.Sprintf("staged output copy back failed: %v", cpErr))
+		}
+	}
+
 	// Verify output file exists and is non-empty
-	info, statErr := os.Stat(outputFile)
+	info, statErr := os.Stat(util.LongPath(outputFile))
 	if statErr != nil || info.Size() == 0 {
 		// analyzeHeadless can exit 0 even when the postScript dies (e.g. a JVM
 		// OutOfMemoryError on a huge binary): import/analyze already succeeded,

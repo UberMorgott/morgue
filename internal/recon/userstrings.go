@@ -4,6 +4,8 @@ import (
 	"unicode/utf16"
 
 	peparser "github.com/saferwall/pe"
+
+	"github.com/UberMorgott/morgue/internal/util"
 )
 
 // CountPUAUserStrings parses a managed PE and returns how many entries in its
@@ -17,7 +19,7 @@ import (
 // (no PUA in #US); for those this returns 0 and verification relies on the
 // post-decompile source scan instead.
 func CountPUAUserStrings(path string) (pua int, total int, err error) {
-	f, err := peparser.New(path, nil)
+	f, err := peparser.New(util.LongPath(path), nil)
 	if err != nil {
 		return 0, 0, err
 	}

@@ -2,8 +2,37 @@ package engine
 
 import (
 	"errors"
+	"runtime"
+	"strings"
 	"testing"
 )
+
+// TestWarnDeepOutput: a normal output dir stays silent (every platform); a path
+// near MAX_PATH warns instead of letting external tools fail cryptically.
+func TestWarnDeepOutput(t *testing.T) {
+	warned := func(out string) bool {
+		ch := make(chan PipelineEvent, 1)
+		warnDeepOutput(out, emitter{ch: ch})
+		select {
+		case ev := <-ch:
+			return ev.Severity == "warn" && ev.Error == nil
+		default:
+			return false
+		}
+	}
+
+	if warned(t.TempDir()) {
+		t.Error("short output dir must not warn")
+	}
+	if warned("") {
+		t.Error("empty output must not warn")
+	}
+
+	deep := t.TempDir() + strings.Repeat("/verylongdirectorynamesegment", 8)
+	if got := warned(deep); got != (runtime.GOOS == "windows") {
+		t.Errorf("warned(deep) = %v on %s", got, runtime.GOOS)
+	}
+}
 
 // TestInstallFailureSeverity verifies Issue 4's classification: benign cert
 // noise and missing OPTIONAL tools are WARN; genuine failures of REQUIRED tools

@@ -15,6 +15,7 @@ import (
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/scanner"
 	"github.com/UberMorgott/morgue/internal/tools"
+	"github.com/UberMorgott/morgue/internal/util"
 )
 
 // maxUnpackDepth bounds installer-unpack recursion (e.g. an NSIS installer that
@@ -63,6 +64,32 @@ func (e *Engine) maybeRecurseUnpack(ctx context.Context, opts *Options, tr Targe
 	}
 }
 
+// outputHeadroom is how many characters a run needs below MaxPath for the
+// per-target subtree it builds (<target>/extracted/<vendor dir>/<file>...).
+// Morgue itself copes with longer paths via util.LongPath, but the external
+// tools it drives mostly do not — so say it up front instead of failing later
+// with a bare "The system cannot find the path specified".
+const outputHeadroom = 110
+
+// warnDeepOutput emits a WARN when the output directory is deep enough that
+// external tools are likely to hit the Windows MAX_PATH limit.
+func warnDeepOutput(output string, em emitter) {
+	if output == "" {
+		return
+	}
+	abs, err := filepath.Abs(output)
+	if err != nil {
+		abs = output
+	}
+	if !util.NearMaxPath(abs + strings.Repeat("x", outputHeadroom)) {
+		return
+	}
+	em.emitWarn("scan", abs, fmt.Sprintf(
+		"output path is %d characters deep; Windows limits paths to %d and external tools "+
+			"(Ghidra, decompilers) fail past it — extraction may be incomplete. "+
+			"Re-run with a short output dir, e.g. -o D:\\out", len(abs), util.MaxPath))
+}
+
 // pauseChecker returns nil interface if pg is nil, avoiding the nil-pointer-in-interface trap.
 func pauseChecker(pg *PauseGate) recipe.PauseChecker {
 	if pg == nil {
@@ -90,6 +117,8 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			em.send(PipelineEvent{Phase: "done", Done: true, OutputPath: opts.Output})
 		}
 	}()
+
+	warnDeepOutput(opts.Output, em)
 
 	// Phase 1: Scan
 	em.emit("scan", opts.Input, "Scanning for binaries...")
