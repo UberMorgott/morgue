@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	peparser "github.com/saferwall/pe"
+
+	"github.com/UberMorgott/morgue/internal/util"
 )
 
 // native_fallback.go provides pure-Go, tool-free artifacts for the native
@@ -26,7 +28,7 @@ type importEntry struct {
 // <outDir>/imports.txt (one `DLL!Func` line per symbol) and
 // <outDir>/imports.json (structured). Returns the number of imported symbols.
 func writeImports(target, outDir string) (int, error) {
-	f, err := peparser.New(target, nil)
+	f, err := peparser.New(util.LongPath(target), nil)
 	if err != nil {
 		return 0, fmt.Errorf("pe.New: %w", err)
 	}
@@ -85,7 +87,7 @@ func writePEExtras(target, outDir string) (int, []string, error) {
 		return os.WriteFile(filepath.Join(outDir, name), []byte(body), 0644)
 	}
 
-	f, err := peparser.New(target, nil)
+	f, err := peparser.New(util.LongPath(target), nil)
 	if err == nil {
 		defer func() { _ = f.Close() }()
 		err = f.Parse()
@@ -205,7 +207,7 @@ func writeStringsFallback(target, outPath string, minLen int) (int, error) {
 	if minLen <= 0 {
 		minLen = 4
 	}
-	data, err := os.ReadFile(target)
+	data, err := os.ReadFile(util.LongPath(target))
 	if err != nil {
 		return 0, fmt.Errorf("read %s: %w", filepath.Base(target), err)
 	}
@@ -260,7 +262,7 @@ func writeStringsFallback(target, outPath string, minLen int) (int, error) {
 // writeSectionSummary writes <outPath> (sections.txt) listing each PE section's
 // name, raw size and Shannon entropy. Returns the number of sections.
 func writeSectionSummary(target, outPath string) (int, error) {
-	f, err := peparser.New(target, nil)
+	f, err := peparser.New(util.LongPath(target), nil)
 	if err != nil {
 		return 0, fmt.Errorf("pe.New: %w", err)
 	}

@@ -14,7 +14,7 @@ import (
 
 // parsePE opens and parses a PE file, returning the parsed structure.
 func parsePE(path string) (*peparser.File, error) {
-	f, err := peparser.New(path, nil)
+	f, err := peparser.New(util.LongPath(path), nil)
 	if err != nil {
 		return nil, fmt.Errorf("pe.New: %w", err)
 	}
@@ -103,7 +103,7 @@ func Classify(ctx context.Context, path string) (Result, error) {
 	// Read capped file data for embedded signal detection (max 10MB to avoid OOM)
 	const maxHeuristicScan = 10 * 1024 * 1024
 	var fileData []byte
-	if hf, err := os.Open(path); err == nil {
+	if hf, err := os.Open(util.LongPath(path)); err == nil {
 		buf := make([]byte, maxHeuristicScan)
 		n, _ := hf.Read(buf)
 		fileData = buf[:n]

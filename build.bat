@@ -69,14 +69,16 @@ echo       Frontend OK
 echo.
 
 :: --- Step 3: Generate Windows icon resource ---
-echo [3/4] Generating icon resource...
+:: Icon + application manifest (winres\winres.json). The manifest sets
+:: longPathAware, without which every Win32 path over 260 chars fails.
+echo [3/4] Generating icon + manifest resource...
 pushd "%ROOT%cmd\morgue"
-go-winres simply --icon appicon.png >nul 2>&1
+go-winres make --arch amd64,386,arm64 --out rsrc >nul 2>&1
 if errorlevel 1 (
-    echo WARNING: go-winres not found or failed. EXE will have no icon.
+    echo WARNING: go-winres not found or failed. EXE will have no icon/manifest.
     echo Install: go install github.com/tc-hib/go-winres@latest
 ) else (
-    echo       Icon resource OK
+    echo       Icon + manifest resource OK
 )
 popd
 echo.
