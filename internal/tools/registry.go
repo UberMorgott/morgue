@@ -59,6 +59,7 @@ var Registry = []ToolDef{
 			"https://github.com/timnboys/NoFuserEx/releases/download/1.0.11/dnlib.dll",
 		},
 		Binary:      "NoFuserEx.exe",
+		Version:     "1.0.11",
 		RuntimeDeps: []RuntimeKind{RuntimeDotnet},
 	},
 	{
@@ -68,6 +69,7 @@ var Registry = []ToolDef{
 		Method:      MethodDirectURL,
 		URL:         "https://github.com/wwh1004/ConfuserExTools/releases/download/v0.1.0.0-beta/ConfuserExTools.zip",
 		Binary:      "ConfuserExKiller.dll",
+		Version:     "v0.1.0.0-beta",
 		RuntimeDeps: []RuntimeKind{RuntimeDotnet},
 	},
 	{
@@ -77,6 +79,7 @@ var Registry = []ToolDef{
 		Method:      MethodDirectURL,
 		URL:         "https://github.com/wwh1004/ConfuserExTools/releases/download/v0.1.0.0-beta/ConfuserExTools.zip",
 		Binary:      "ProxyKiller.dll",
+		Version:     "v0.1.0.0-beta",
 		RuntimeDeps: []RuntimeKind{RuntimeDotnet},
 	},
 	{
