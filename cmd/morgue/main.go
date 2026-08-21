@@ -304,25 +304,31 @@ func toolsCmd() *cobra.Command {
 		Short: "Manage external tool dependencies",
 	}
 
-	cmd.AddCommand(&cobra.Command{
+	checkCmd := &cobra.Command{
 		Use:   "check",
 		Short: "Check which tools are installed",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cli.ToolsCheck()
+			updates, _ := cmd.Flags().GetBool("updates")
+			return cli.ToolsCheck(updates)
 		},
-	})
+	}
+	checkCmd.Flags().BoolP("updates", "u", false, "Also query upstream versions and show available updates (network)")
+	cmd.AddCommand(checkCmd)
 
-	cmd.AddCommand(&cobra.Command{
+	installCmd := &cobra.Command{
 		Use:   "install [name]",
 		Short: "Download and install required tools (all missing, or a specific one)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			force, _ := cmd.Flags().GetBool("force")
 			if len(args) == 1 {
-				return cli.ToolsInstallOne(args[0])
+				return cli.ToolsInstallOne(args[0], force)
 			}
-			return cli.ToolsInstall()
+			return cli.ToolsInstall(force)
 		},
-	})
+	}
+	installCmd.Flags().BoolP("force", "f", false, "Remove and reinstall even if already installed (update)")
+	cmd.AddCommand(installCmd)
 
 	return cmd
 }

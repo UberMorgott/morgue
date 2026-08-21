@@ -11,16 +11,32 @@ import (
 )
 
 // ToolsCheck prints a table of all tools and their installation status.
-func ToolsCheck() error {
+// With updates=true it also queries upstream versions (network) and adds an UPDATE column.
+func ToolsCheck(updates bool) error {
 	cfg, _ := config.Load(util.ConfigPath())
 	mgr := tools.NewManager(util.ToolsBaseDir(), cfg)
 
+	statuses := make(map[string]tools.ToolStatus, len(tools.Registry))
+	if updates {
+		for _, st := range mgr.CheckAllWithUpdates() {
+			statuses[st.Name] = st
+		}
+	}
+
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "TOOL\tCATEGORY\tINSTALLED\tVERSION\tPATH")
-	fmt.Fprintln(w, "----\t--------\t---------\t-------\t----")
+	if updates {
+		fmt.Fprintln(w, "TOOL\tCATEGORY\tINSTALLED\tVERSION\tLATEST\tUPDATE\tPATH")
+		fmt.Fprintln(w, "----\t--------\t---------\t-------\t------\t------\t----")
+	} else {
+		fmt.Fprintln(w, "TOOL\tCATEGORY\tINSTALLED\tVERSION\tPATH")
+		fmt.Fprintln(w, "----\t--------\t---------\t-------\t----")
+	}
 
 	for _, def := range tools.Registry {
-		status := mgr.Check(def.Name)
+		status, ok := statuses[def.Name]
+		if !ok {
+			status = mgr.Check(def.Name)
+		}
 		installed := "no"
 		if status.Installed {
 			installed = "yes"
@@ -32,6 +48,19 @@ func ToolsCheck() error {
 		path := status.Path
 		if !status.Installed {
 			path = "-"
+		}
+		if updates {
+			latest := status.LatestVersion
+			if latest == "" {
+				latest = "-"
+			}
+			update := "-"
+			if status.UpdateAvailable {
+				update = "yes"
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				def.Name, def.Category, installed, version, latest, update, path)
+			continue
 		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 			def.Name, def.Category, installed, version, path)
@@ -60,14 +89,15 @@ func cliCallbacks() *tools.InstallCallbacks {
 	}
 }
 
-// ToolsInstall installs all missing tools.
-func ToolsInstall() error {
+// ToolsInstall installs all missing tools. With force=true every tool is
+// removed and reinstalled.
+func ToolsInstall(force bool) error {
 	cfg, _ := config.Load(util.ConfigPath())
 	mgr := tools.NewManager(util.ToolsBaseDir(), cfg)
 
 	var needed []string
 	for _, def := range tools.Registry {
-		if !mgr.IsInstalled(def.Name) {
+		if force || !mgr.IsInstalled(def.Name) {
 			needed = append(needed, def.Name)
 		}
 	}
@@ -80,6 +110,12 @@ func ToolsInstall() error {
 	cb := cliCallbacks()
 	fmt.Printf("Installing %d tools...\n", len(needed))
 	for _, name := range needed {
+		if force {
+			if err := mgr.Delete(name); err != nil {
+				fmt.Fprintf(os.Stderr, "Removing %s... FAILED: %v\n", name, err)
+				continue
+			}
+		}
 		version, err := mgr.Install(name, cb)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\rInstalling %s... FAILED: %v\n", name, err)
@@ -91,8 +127,9 @@ func ToolsInstall() error {
 	return nil
 }
 
-// ToolsInstallOne installs a single tool by name.
-func ToolsInstallOne(name string) error {
+// ToolsInstallOne installs a single tool by name. With force=true an already
+// installed tool is removed and reinstalled (i.e. updated).
+func ToolsInstallOne(name string, force bool) error {
 	cfg, _ := config.Load(util.ConfigPath())
 	mgr := tools.NewManager(util.ToolsBaseDir(), cfg)
 
@@ -102,8 +139,13 @@ func ToolsInstallOne(name string) error {
 	}
 
 	if mgr.IsInstalled(name) {
-		fmt.Printf("Tool %s is already installed.\n", name)
-		return nil
+		if !force {
+			fmt.Printf("Tool %s is already installed (use --force to reinstall/update).\n", name)
+			return nil
+		}
+		if err := mgr.Delete(name); err != nil {
+			return fmt.Errorf("remove %s: %w", name, err)
+		}
 	}
 
 	cb := cliCallbacks()
