@@ -246,10 +246,14 @@ func (m *Manager) Install(name string, cb *InstallCallbacks) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		ver := tool.Version
+		if ver == "" {
+			ver = "latest"
+		}
 		versionFile := filepath.Join(destDir, ".version")
-		os.WriteFile(versionFile, []byte("latest"), 0644)
-		_ = m.RecordInstall(name, "latest")
-		return "latest", nil
+		os.WriteFile(versionFile, []byte(ver), 0644)
+		_ = m.RecordInstall(name, ver)
+		return ver, nil
 	case MethodDotnetTool:
 		err := installDotnetTool(tool, destDir)
 		if err != nil {
