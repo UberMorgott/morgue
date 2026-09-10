@@ -681,6 +681,7 @@ func (e *Engine) executeRecipe(
 		AllowDynamic: opts.AllowDynamic,
 		Cflow:        opts.Cflow,
 		GameDataOut:  opts.GameDataOut,
+		SharedOut:    opts.Output,
 	}
 
 	execErr := rec.Execute(rctx)
@@ -822,6 +823,7 @@ func (e *Engine) executeRecipeWithFilter(
 		AllowDynamic: opts.AllowDynamic,
 		Cflow:        opts.Cflow,
 		GameDataOut:  opts.GameDataOut,
+		SharedOut:    opts.Output,
 	}
 
 	execErr := rec.Execute(rctx)
