@@ -206,10 +206,16 @@ func (u *UnityMono) Execute(ctx *Context) error {
 	// an export failure logs + reports but never aborts the run.
 	report(4, Running, 0, nil, "assetripper")
 	start = time.Now()
-	rawExportDir := filepath.Join(ctx.Output, "raw-export")
-	tmpDir := filepath.Join(ctx.Output, ".tmp")
-	rippedMarker := filepath.Join(rawExportDir, ".ripped")
+	// The AssetRipper export is per-GAME, not per-assembly: it dumps the whole
+	// *_Data asset tree (10-20 GB on a real title). Writing it under ctx.Output
+	// made every managed assembly re-export an identical copy (141 assemblies of
+	// Valheim projected to ~2.5 TB). Keyed by the *_Data dir under the run-wide
+	// root instead, so the second and later assemblies hit the .ripped marker.
 	gameDataDir := monoGameDataDir(ctx.Target)
+	assetRoot := sharedAssetDir(ctx, gameDataDir)
+	rawExportDir := filepath.Join(assetRoot, "raw-export")
+	tmpDir := filepath.Join(assetRoot, ".tmp")
+	rippedMarker := filepath.Join(rawExportDir, ".ripped")
 	if ripperPath, rErr := ctx.Tools.Resolve("assetripper"); rErr != nil {
 		logTool("assetripper", fmt.Sprintf("assetripper unavailable, skipping game-asset export: %v", rErr))
 		report(4, Skipped, time.Since(start), nil, "assetripper")
@@ -248,7 +254,15 @@ func (u *UnityMono) Execute(ctx *Context) error {
 	} else {
 		gameDataOut := ctx.GameDataOut
 		if gameDataOut == "" {
-			gameDataOut = filepath.Join(ctx.Output, "GameData")
+			// Same per-game reasoning as the export: organizing a shared export
+			// once per assembly would rebuild an identical tree N times.
+			gameDataOut = filepath.Join(assetRoot, "GameData")
+		}
+		organizedMarker := filepath.Join(gameDataOut, ".organized")
+		if stageDone(organizedMarker, false) {
+			logTool("gamedata", "game data already organized — skipping")
+			report(5, Skipped, time.Since(start), nil, "gamedata")
+			return nil
 		}
 		inventoryCSV := ""
 		if cand := filepath.Join(ctx.Output, "inventory", "assets.csv"); fileNonEmpty(cand) {
@@ -283,12 +297,30 @@ func (u *UnityMono) Execute(ctx *Context) error {
 			for _, c := range rep.DefCountsByType {
 				defTotal += c
 			}
+			os.WriteFile(organizedMarker, []byte("ok"), 0644)
 			logTool("gamedata", fmt.Sprintf("Organized %d defs, %d actions, %d failed", defTotal, rep.ActionCount, len(rep.Failed)))
 			reportCount(5, time.Since(start), "gamedata", defTotal, "defs")
 		}
 	}
 
 	return nil
+}
+
+// sharedAssetDir returns the run-wide directory holding the AssetRipper export
+// for one game, e.g. <run root>/_assets/Valheim_Data. Every target of the same
+// game resolves to the same path, so the export runs once and later targets see
+// the .ripped marker. Falls back to the per-target output when there is no run
+// root (direct recipe use) or no *_Data dir.
+func sharedAssetDir(ctx *Context, gameDataDir string) string {
+	root := ctx.SharedOut
+	if root == "" {
+		root = filepath.Dir(ctx.Output)
+	}
+	if root == "" || root == "." || gameDataDir == "" {
+		return ctx.Output
+	}
+	// gameDataDir is an existing directory, so its base is already a legal segment.
+	return filepath.Join(root, "_assets", filepath.Base(gameDataDir))
 }
 
 // monoGameDataDir returns the Unity *_Data directory for a Mono target. For Mono

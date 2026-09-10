@@ -93,6 +93,11 @@ type Context struct {
 	// GameDataOut is the destination for the organized game-data tree
 	// (unity-mono recipe). Empty falls back to <Output>/GameData.
 	GameDataOut string
+	// SharedOut is the run-wide output root (parent of every per-target Output).
+	// Steps whose product is per-GAME rather than per-target — the Unity asset
+	// export — write here so N assemblies of one game don't each re-export the
+	// same multi-GB asset tree. Empty falls back to the parent of Output.
+	SharedOut string
 	// AllowDynamic opts into steps that execute target code (e.g. ConfuserEx
 	// embedded-assembly extraction via in-process cctor + Harmony capture).
 	// Off by default for safety.
