@@ -14,14 +14,6 @@ import (
 	"github.com/UberMorgott/morgue/internal/util"
 )
 
-// APICommand represents a queued command from HTTP API to frontend. Uses explicit json tags (lowercase).
-type APICommand struct {
-	Action string `json:"action"` // "install", "install-all", "delete", "run"
-	Tool   string `json:"tool"`
-	Path   string `json:"path,omitempty"`   // for "run" action
-	Output string `json:"output,omitempty"` // for "run" action
-}
-
 // OpState tracks a currently active tool operation.
 type OpState struct {
 	Action       string    `json:"action"`
@@ -48,7 +40,6 @@ type EnrichedToolsResponse struct {
 type ToolsService struct {
 	manager    *tools.Manager
 	appVersion string
-	apiQueue   chan APICommand
 
 	mu        sync.RWMutex
 	activeOps map[string]*OpState
@@ -62,7 +53,6 @@ func NewToolsService(appVersion string) *ToolsService {
 	svc := &ToolsService{
 		manager:    mgr,
 		appVersion: appVersion,
-		apiQueue:   make(chan APICommand, 32),
 		activeOps:  make(map[string]*OpState),
 		changeCh:   make(chan struct{}),
 	}
@@ -125,25 +115,6 @@ func (s *ToolsService) WaitForChange(timeout time.Duration) bool {
 		return true
 	case <-time.After(timeout):
 		return false
-	}
-}
-
-// PushAPICommand enqueues a command from the HTTP API for the frontend to pick up.
-func (s *ToolsService) PushAPICommand(cmd APICommand) {
-	select {
-	case s.apiQueue <- cmd:
-	default: // drop if queue is full
-	}
-}
-
-// PollAPICommand returns the next pending API command, or nil if the queue is empty.
-// The frontend calls this on a timer to receive commands from the HTTP API.
-func (s *ToolsService) PollAPICommand() *APICommand {
-	select {
-	case cmd := <-s.apiQueue:
-		return &cmd
-	default:
-		return nil
 	}
 }
 

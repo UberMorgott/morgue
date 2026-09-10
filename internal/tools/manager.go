@@ -301,6 +301,19 @@ func cleanVersionTag(tag string) string {
 	return tag
 }
 
+// pinnedVersion reports the version a pinned tool will always install, and
+// whether the tool is pinned at all. Install resolves a non-empty tool.Version
+// verbatim (a fixed release tag for GitHub tools, a fixed asset URL for direct
+// downloads), so for those tools there is no upstream question to ask: the
+// answer would only ever advertise an update the installer cannot perform.
+// Unpinned tools keep their real upstream lookup below.
+func pinnedVersion(t ToolDef) (string, bool) {
+	if t.Version == "" {
+		return "", false
+	}
+	return cleanVersionTag(t.Version), true
+}
+
 // CheckAllWithUpdates returns status of all tools including latest GitHub versions.
 // Uses HTTP redirect to check versions — no GitHub API calls, no rate limit.
 func (m *Manager) CheckAllWithUpdates() []ToolStatus {
@@ -310,6 +323,12 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 
 		// Clean up stored version for display
 		st.Version = cleanVersionTag(st.Version)
+
+		if pin, ok := pinnedVersion(t); ok {
+			st.LatestVersion = pin
+			statuses = append(statuses, st)
+			continue
+		}
 
 		switch {
 		case t.Method == MethodGitHubRelease && t.Repo != "":
@@ -369,6 +388,10 @@ func (m *Manager) CheckLatestVersionSingle(name string) (latestVersion string, u
 
 	st := m.Check(name)
 	installedVersion := cleanVersionTag(st.Version)
+
+	if pin, ok := pinnedVersion(tool); ok {
+		return pin, false
+	}
 
 	switch {
 	case tool.Method == MethodGitHubRelease && tool.Repo != "":

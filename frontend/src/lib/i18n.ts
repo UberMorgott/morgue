@@ -167,6 +167,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'tools.upToDate': { en: 'Up to date', ru: 'Актуален' },
   'tools.checking': { en: 'Checking updates...', ru: 'Проверка обновлений...' },
   'tools.checkUpdates': { en: 'Check updates', ru: 'Проверить обновления' },
+  'tools.actionFailed': { en: 'Action failed —', ru: 'Действие не выполнено —' },
   'tools.filterPlaceholder': { en: 'Filter tools...', ru: 'Фильтр инструментов...' },
   'tools.noMatch': { en: 'No tools match the filter', ru: 'Нет инструментов по фильтру' },
   'tools.ready': { en: 'Ready', ru: 'Готов' },

@@ -5,7 +5,7 @@
   import PipelineHistory from '../components/PipelineHistory.svelte';
   import { t, type Lang } from '../lib/i18n';
   import { PipelineService, ToolsService } from '../lib/api';
-  import { apiRunSeq, lastRunPath, lastApiRunSeq } from '../lib/stores';
+  import { lastRunPath } from '../lib/stores';
 
   import {
     pipelineState,
@@ -111,19 +111,6 @@
     if (inputPath && inputPath !== $lastRunPath && !running && !startupBusy && phase === 'idle') {
       $lastRunPath = inputPath;
       runPipeline();
-    }
-  });
-
-  // API run signal. lastApiRunSeq persists in a store so a remount (returning
-  // to Home) does not re-fire an already-processed run command.
-  $effect(() => {
-    if ($apiRunSeq > $lastApiRunSeq) {
-      $lastApiRunSeq = $apiRunSeq;
-      if (inputPath) {
-        resetSections();
-        $lastRunPath = inputPath;
-        runPipeline();
-      }
     }
   });
 

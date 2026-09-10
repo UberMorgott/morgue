@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/UberMorgott/morgue/internal/recipe"
 	"github.com/UberMorgott/morgue/internal/recon"
-	"github.com/UberMorgott/morgue/internal/services"
 )
 
 // --- Pipeline handlers ---
@@ -31,32 +31,19 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Direct execution: run pipeline in a background goroutine.
-	// Progress is available via GET /api/run/status and SSE /api/events.
-	// Opt-in via ?direct=true — used by CLI --wait to poll completion.
-	if r.URL.Query().Get("direct") == "true" {
-		//nolint:contextcheck // the run must outlive this HTTP request; PipelineService.Run
-		// owns its own cancellable context, cancelled by Stop(), not by the response returning.
-		go func() {
-			if err := s.pipeline.Run(req.Path, req.Output); err != nil {
-				s.events.Broadcast("pipeline:error", marshalJSON(map[string]string{
-					"error": err.Error(),
-				}))
-			}
-		}()
-		writeJSON(w, http.StatusOK, map[string]string{"status": "started"})
-		return
-	}
-
-	// Default: push to command queue for frontend polling (GUI-coordinated runs).
-	// Direct execution from HTTP goroutines emits Wails events that don't reach the
-	// webview, so the frontend must pick these up and execute via Wails bindings.
-	s.tools.PushAPICommand(services.APICommand{
-		Action: "run",
-		Path:   req.Path,
-		Output: req.Output,
-	})
-	writeJSON(w, http.StatusOK, map[string]string{"status": "queued"})
+	// Run the pipeline in a background goroutine. Wails events emitted from it
+	// reach the webview (Emit marshals to the main thread), so the GUI follows
+	// along live; CLI clients poll GET /api/run/status or SSE /api/events.
+	//nolint:contextcheck // the run must outlive this HTTP request; PipelineService.Run
+	// owns its own cancellable context, cancelled by Stop(), not by the response returning.
+	go func() {
+		if err := s.pipeline.Run(req.Path, req.Output); err != nil {
+			s.events.Broadcast("pipeline:error", marshalJSON(map[string]string{
+				"error": err.Error(),
+			}))
+		}
+	}()
+	writeJSON(w, http.StatusOK, map[string]string{"status": "started"})
 }
 
 func (s *Server) handleGetPipelineStatus(w http.ResponseWriter, _ *http.Request) {
@@ -95,17 +82,24 @@ func (s *Server) handleInstallTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Push command to the queue for the frontend to pick up and execute through
-	// Wails bindings. This ensures progress events are emitted in the Wails
-	// context and reliably reach the webview.
 	if req.Name == "" {
-		s.tools.PushAPICommand(services.APICommand{Action: "install-all"})
+		//nolint:contextcheck // the install must outlive this HTTP request.
+		go func() {
+			if err := s.tools.InstallAll(); err != nil {
+				log.Printf("api: install all: %v", err)
+			}
+		}()
 		s.events.Broadcast("tool:install:start", marshalJSON(map[string]string{"tool": "all"}))
 		writeJSON(w, http.StatusOK, map[string]string{"status": "installing all"})
 		return
 	}
 
-	s.tools.PushAPICommand(services.APICommand{Action: "install", Tool: req.Name})
+	//nolint:contextcheck // the install must outlive this HTTP request.
+	go func() {
+		if err := s.tools.Install(req.Name); err != nil {
+			log.Printf("api: install %s: %v", req.Name, err)
+		}
+	}()
 	s.events.Broadcast("tool:install:start", marshalJSON(map[string]string{"tool": req.Name}))
 	writeJSON(w, http.StatusOK, map[string]string{"status": "installing", "name": req.Name})
 }
@@ -121,9 +115,11 @@ func (s *Server) handleDeleteTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Push command to the queue for the frontend to pick up and execute through
-	// Wails bindings, keeping it consistent with the install path.
-	s.tools.PushAPICommand(services.APICommand{Action: "delete", Tool: req.Name})
+	go func() {
+		if err := s.tools.Delete(req.Name); err != nil {
+			log.Printf("api: delete %s: %v", req.Name, err)
+		}
+	}()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleting", "name": req.Name})
 }
 

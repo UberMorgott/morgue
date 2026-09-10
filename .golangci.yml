@@ -119,6 +119,17 @@ linters:
       - 'vendor/'
       # - '^cmd/scratch/'
     rules:
+      # gosec's taint-analysis rules (G7xx) come out of a pass nolintlint does not
+      # account for: a `//nolint:gosec` on such a finding DOES suppress it, and is
+      # then reported as `directive is unused for linter "gosec"`. With
+      # nolintlint.allow-unused=false the two linters cannot both be satisfied —
+      # the finding is fatal with the directive and without it. Reported upstream;
+      # until it is fixed, G703 is excluded for the two writers whose "tainted"
+      # path is the run's own output destination (the -o flag / the API's output
+      # field), which this tool exists to write into.
+      - linters: [gosec]
+        text: 'G703'
+        path: 'internal/recipe/(strings_analyze|dotnet_confuserex)\.go'
       # ---------------------------------------------------------------------
       # ADOPTING THIS ON AN EXISTING CODEBASE
       #

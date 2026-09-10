@@ -48,8 +48,7 @@ The GUI is running and the user can see your actions in real-time.
 
   GET  /api/status              — {"port":"19876","running":true}
   GET  /api/info?path=<file>    — binary classification JSON
-  POST /api/run                 — queue decompilation (GUI shows progress)
-  POST /api/run?direct=true     — start decompilation directly
+  POST /api/run                 — start decompilation (GUI shows progress)
   GET  /api/run/status          — pipeline progress (phase, step, files)
   GET  /api/tools               — tool list with install status
   GET  /api/tools?wait=30       — long-poll until tool state changes (max 120s)

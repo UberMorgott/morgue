@@ -231,7 +231,9 @@ export function updateFromEvent(data: any) {
 
     if (phase === 'skip' && target && message) {
       const fname = target.split(/[\\/]/).pop() || target;
-      next.reconResults = [...s.reconResults, { file: fname, kind: 'Skipped', reconKind: '', compiler: '', obfuscator: '', size: 0 }];
+      // next, not s: a recon entry added earlier in this same update would be
+      // dropped by rebuilding the list from the pre-update state.
+      next.reconResults = [...next.reconResults, { file: fname, kind: 'Skipped', reconKind: '', compiler: '', obfuscator: '', size: 0 }];
     }
 
     if (phase === 'download' && message) {

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/cavaliergopher/grab/v3"
@@ -23,10 +24,19 @@ import (
 // to a configured mirror (see config.ToolsMirror). It is process-global because
 // downloads run through package-level installers reached only via a Manager,
 // and the app uses a single Manager; NewManager keeps it in sync.
-var assetMirror string
+// Atomic because a Manager can now be constructed while another goroutine is
+// downloading: API handlers run the pipeline (and its own NewManager) in a
+// background goroutine, which raced against a plain string here.
+var assetMirror atomic.Value // string
 
 // setAssetMirror updates the process-wide download mirror.
-func setAssetMirror(mirror string) { assetMirror = strings.TrimSpace(mirror) }
+func setAssetMirror(mirror string) { assetMirror.Store(strings.TrimSpace(mirror)) }
+
+// currentAssetMirror returns the configured mirror, empty before the first set.
+func currentAssetMirror() string {
+	m, _ := assetMirror.Load().(string)
+	return m
+}
 
 // IsNetworkTimeout reports whether err looks like a transient network/TLS
 // timeout (exported wrapper for isNetworkTimeout) so callers outside this
@@ -113,7 +123,7 @@ func isNetworkTimeout(err error) bool {
 // failure is actionable in a headless/redirected log.
 func downloadFile(url, destPath string, onProgress func(bytesDown, bytesTotal int64)) error {
 	// Route through a configured mirror (offline / firewalled installs).
-	url = rewriteMirror(url, assetMirror)
+	url = rewriteMirror(url, currentAssetMirror())
 	var lastErr error
 	for attempt := 1; attempt <= downloadMaxAttempts; attempt++ {
 		lastErr = downloadOnce(url, destPath, onProgress)

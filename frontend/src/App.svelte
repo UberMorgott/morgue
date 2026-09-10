@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy, tick } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import Header from './components/Header.svelte';
   import Sidebar from './components/Sidebar.svelte';
   import UpdateOverlay from './components/UpdateOverlay.svelte';
@@ -9,10 +9,10 @@
   import SettingsPage from './pages/SettingsPage.svelte';
   import AboutPage from './pages/AboutPage.svelte';
   import { ReconService, UpdateService, ToolsService } from './lib/api';
-  import { currentLang, startupBusy, apiRunSeq, updateProgress, resetUpdateProgress } from './lib/stores';
+  import { currentLang, startupBusy, lastRunPath, updateProgress, resetUpdateProgress } from './lib/stores';
 
   import { onEvent } from './lib/events';
-  import { pipelineState, updateFromEvent, addHistoryEntry, resetPipeline } from './lib/pipeline';
+  import { updateFromEvent } from './lib/pipeline';
   import type { Lang } from './lib/i18n';
 
   let currentPage = $state('home');
@@ -23,100 +23,10 @@
   // Keep lang in sync with store
   const unsubLang = currentLang.subscribe(v => lang = v);
 
-  // --- API command poll: runs at App level so commands are received on any tab ---
-  let apiPollTimer: ReturnType<typeof setTimeout> | null = null;
-  let pollDelay = 500;
-  let processingApiCommand = false;
-
-  function schedulePoll() {
-    apiPollTimer = setTimeout(async () => {
-      if (processingApiCommand) { schedulePoll(); return; }
-      try {
-        const cmd = await ToolsService.PollAPICommand();
-        pollDelay = 500;
-        if (cmd && cmd.action) {
-          processingApiCommand = true;
-          try {
-            switch (cmd.action) {
-              case 'install': {
-                const name = cmd.tool || '';
-                if (!name) break;
-                try {
-                  await ToolsService.Install(name);
-                } catch (err: any) {
-                  console.error(`API install ${name} failed:`, err);
-                }
-                break;
-              }
-              case 'install-all': {
-                try {
-                  const statuses = await ToolsService.CheckAll();
-                  const missing = (statuses || []).filter((s: any) => !s.Installed);
-                  for (const s of missing) {
-                    const name = s.Name ?? '';
-                    if (!name) continue;
-                    try {
-                      await ToolsService.Install(name);
-                    } catch (e: any) {
-                      console.error(`API install ${name} failed:`, e);
-                    }
-                  }
-                } catch (err: any) {
-                  console.error('API install-all failed:', err);
-                }
-                break;
-              }
-              case 'delete': {
-                const name = cmd.tool || '';
-                if (!name) break;
-                try {
-                  await ToolsService.Delete(name);
-                } catch (err: any) {
-                  console.error(`API delete ${name} failed:`, err);
-                }
-                break;
-              }
-              case 'run': {
-                const path = cmd.path || '';
-                if (!path) break;
-                resetPipeline();
-                pipelineInputPath = path;
-                pipelineOutputPath = cmd.output || '';
-                currentPage = 'home';
-                await tick();
-                apiRunSeq.update(n => n + 1);
-                break;
-              }
-            }
-          } finally {
-            processingApiCommand = false;
-          }
-        }
-      } catch (e) {
-        pollDelay = Math.min(pollDelay * 2, 30000);
-        console.error('API poll failed:', e);
-      }
-      schedulePoll();
-    }, pollDelay);
-  }
-
-  function startApiPoll() {
-    if (apiPollTimer) return;
-    schedulePoll();
-  }
-
-  function stopApiPoll() {
-    if (apiPollTimer) {
-      clearTimeout(apiPollTimer);
-      apiPollTimer = null;
-    }
-  }
-
   let cleanupPipelineProgress: (() => void) | null = null;
   let cleanupUpdateProgress: (() => void) | null = null;
 
   onDestroy(() => {
-    stopApiPoll();
     cleanupPipelineProgress?.();
     cleanupUpdateProgress?.();
     unsubLang();
@@ -127,10 +37,19 @@
       console.error('Unhandled promise rejection:', e.reason);
     });
 
-    startApiPoll();
-
     cleanupPipelineProgress = onEvent('pipeline:progress', (data: any) => {
       updateFromEvent(data);
+      // A run started from the HTTP API has no local input path and can arrive
+      // while the user sits on another tab. Adopt its target and switch to Home
+      // so the pipeline stays visible. updateFromEvent has already moved the
+      // phase off 'idle', so HomePage's auto-start effect won't re-launch it —
+      // lastRunPath is set as a second guard.
+      const d = data?.data?.[0] ?? data?.data ?? data;
+      if (!pipelineInputPath && d?.Target) {
+        pipelineInputPath = d.Target;
+        $lastRunPath = d.Target;
+      }
+      currentPage = 'home';
     });
 
     // App self-update progress. Backend emits selfupdate.Progress; we surface it

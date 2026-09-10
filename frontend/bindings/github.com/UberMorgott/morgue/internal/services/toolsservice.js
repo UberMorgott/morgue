@@ -118,26 +118,6 @@ export function MarkUpdateChecked() {
 }
 
 /**
- * PollAPICommand returns the next pending API command, or nil if the queue is empty.
- * The frontend calls this on a timer to receive commands from the HTTP API.
- * @returns {$CancellablePromise<$models.APICommand | null>}
- */
-export function PollAPICommand() {
-    return $Call.ByID(3843837653).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType7($result);
-    }));
-}
-
-/**
- * PushAPICommand enqueues a command from the HTTP API for the frontend to pick up.
- * @param {$models.APICommand} cmd
- * @returns {$CancellablePromise<void>}
- */
-export function PushAPICommand(cmd) {
-    return $Call.ByID(443146784, cmd);
-}
-
-/**
  * ShouldCheckUpdates returns true if enough time has passed since the last update check.
  * @returns {$CancellablePromise<boolean>}
  */
@@ -172,5 +152,3 @@ const $$createType2 = $Create.Map($Create.Any, $Create.Any);
 const $$createType3 = tools$0.RuntimeStatus.createFrom;
 const $$createType4 = $Create.Array($$createType3);
 const $$createType5 = $models.EnrichedToolsResponse.createFrom;
-const $$createType6 = $models.APICommand.createFrom;
-const $$createType7 = $Create.Nullable($$createType6);

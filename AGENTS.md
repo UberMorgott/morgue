@@ -75,8 +75,8 @@ Theme: "Molten Forge" — dark charcoal + amber glass + neon orange.
 ## Hybrid Mode
 - GUI starts HTTP API on `localhost:19876` automatically
 - CLI: `morgue api status|run|tools|settings` — control running GUI
-- Command queue: API pushes commands → frontend polls `PollAPICommand()` → executes via Wails binding (ensures progress events reach webview)
-- Wails events from HTTP goroutines DON'T reach webview — always use command queue pattern
+- API handlers run work directly in a goroutine (`go s.pipeline.Run(...)`, `go s.tools.Install(...)`)
+- Wails events emitted from any goroutine DO reach the webview since v3 beta (`Emit` → `DispatchWailsEvent` → `ExecJS`/`InvokeSync` marshals to the main thread) — the old `PollAPICommand()` command queue is gone
 - SSE endpoint `/api/events` works for external clients (curl/CLI), NOT from Wails webview
 
 ## Build & Test

@@ -65,6 +65,27 @@
   src: url('/fonts/orbitron-variable.woff2') format('woff2');
 }
 
+/* Orbitron draws a slashed zero (three contours) which at counter size reads as
+   a missing-glyph box rather than a digit. Digits therefore come from Play,
+   which the rest of the UI already uses; letters stay Orbitron. Declared after
+   the family above so it wins for this unicode-range only. */
+@font-face {
+  font-family: 'Orbitron';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('/fonts/play-400-latin.woff2') format('woff2');
+  unicode-range: U+0030-0039;
+}
+@font-face {
+  font-family: 'Orbitron';
+  font-style: normal;
+  font-weight: 601 900;
+  font-display: swap;
+  src: url('/fonts/play-700-latin.woff2') format('woff2');
+  unicode-range: U+0030-0039;
+}
+
 :root {
   color-scheme: dark;
 
