@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -75,7 +76,9 @@ func runCmdStreaming(ctx context.Context, name string, args []string, dir string
 		x64Dotnet := filepath.Join(os.Getenv("ProgramW6432"), "dotnet", "dotnet.exe")
 		if _, err := os.Stat(localDotnet); err == nil {
 			name = localDotnet
-		} else if _, err := os.Stat(x64Dotnet); err == nil {
+			// G703: path is os.Getenv("ProgramW6432") (set by Windows itself, not by
+			// user input) joined with fixed segments; only stat'ed, never opened.
+		} else if _, err := os.Stat(x64Dotnet); err == nil { //nolint:gosec // see comment above
 			name = x64Dotnet
 		} else {
 			name = "dotnet"
@@ -85,6 +88,8 @@ func runCmdStreaming(ctx context.Context, name string, args []string, dir string
 
 	start := time.Now()
 
+	//nolint:gosec // G204: running an arbitrary external tool IS this helper's contract;
+	// callers pass tool paths resolved by tools.Manager, and args are never shell-parsed.
 	cmd := exec.CommandContext(ctx, name, args...)
 	if dir != "" {
 		cmd.Dir = dir
@@ -135,7 +140,7 @@ func runCmdStreaming(ctx context.Context, name string, args []string, dir string
 	}
 
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			result.ExitCode = exitErr.ExitCode()
 		} else {
 			result.ExitCode = -1
@@ -156,7 +161,9 @@ func runCmd(ctx context.Context, name string, args []string, dir string, env []s
 		x64Dotnet := filepath.Join(os.Getenv("ProgramW6432"), "dotnet", "dotnet.exe")
 		if _, err := os.Stat(localDotnet); err == nil {
 			name = localDotnet
-		} else if _, err := os.Stat(x64Dotnet); err == nil {
+			// G703: path is os.Getenv("ProgramW6432") (set by Windows itself, not by
+			// user input) joined with fixed segments; only stat'ed, never opened.
+		} else if _, err := os.Stat(x64Dotnet); err == nil { //nolint:gosec // see comment above
 			name = x64Dotnet
 		} else {
 			name = "dotnet"
@@ -168,6 +175,8 @@ func runCmd(ctx context.Context, name string, args []string, dir string, env []s
 
 	start := time.Now()
 
+	//nolint:gosec // G204: running an arbitrary external tool IS this helper's contract;
+	// callers pass tool paths resolved by tools.Manager, and args are never shell-parsed.
 	cmd := exec.CommandContext(ctx, name, args...)
 	if dir != "" {
 		cmd.Dir = dir
@@ -196,7 +205,7 @@ func runCmd(ctx context.Context, name string, args []string, dir string, env []s
 	}
 
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			result.ExitCode = exitErr.ExitCode()
 		} else {
 			result.ExitCode = -1

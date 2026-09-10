@@ -29,7 +29,7 @@ func TestAnalyzeStringsURLTokenization(t *testing.T) {
 
 	analyzeStrings(in, out)
 
-	data, err := os.ReadFile(out)
+	data, err := os.ReadFile(out) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("strings.json not written: %v", err)
 	}

@@ -29,7 +29,7 @@ func organizeLoc(opts Options, i2Sources []map[string]any, rep *Report) map[stri
 	if opts.ExportDir != "" {
 		_ = filepath.WalkDir(opts.ExportDir, func(path string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
-				return nil
+				return nil //nolint:nilerr // an unreadable entry is skipped so the rest of the export still contributes
 			}
 			switch strings.ToLower(filepath.Ext(d.Name())) {
 			case ".csv", ".txt":
@@ -108,11 +108,11 @@ func parseLocCSV(path string, langs map[string]map[string]string, rep *Report) {
 			rep.Failed = append(rep.Failed, path+": loc parse panic")
 		}
 	}()
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // path comes from WalkDir over the caller's local export dir
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	r := csv.NewReader(f)
 	r.FieldsPerRecord = -1

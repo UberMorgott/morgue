@@ -75,7 +75,8 @@ func NewServer(pipeline *services.PipelineService, tools *services.ToolsService,
 // Start begins listening on 127.0.0.1:19876. It returns once the listener
 // is ready (or on error). The server runs in a background goroutine.
 func (s *Server) Start() error {
-	ln, err := net.Listen("tcp", listenAddr)
+	var lc net.ListenConfig
+	ln, err := lc.Listen(context.Background(), "tcp", listenAddr)
 	if err != nil {
 		return fmt.Errorf("api: listen: %w", err)
 	}

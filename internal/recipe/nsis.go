@@ -416,7 +416,7 @@ func tryLZMA(comp []byte, hdrSize int) ([]byte, error) {
 
 func tryInflate(comp []byte, hdrSize int) ([]byte, error) {
 	r := flate.NewReader(bytes.NewReader(comp))
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	return readCapped(r, hdrSize)
 }
 
@@ -758,6 +758,7 @@ func extractStructured(dec []byte, hdrSize int, method, outDir string, logMsg fu
 		if base+8 > len(dec) {
 			return 0, 0
 		}
+		//nolint:gosec // G115: NSIS block offsets/counts are signed int32 on the wire; the int32() is a deliberate two's-complement reinterpretation
 		return int(int32(binary.LittleEndian.Uint32(dec[base : base+4]))),
 			int(int32(binary.LittleEndian.Uint32(dec[base+4 : base+8])))
 	}
@@ -801,10 +802,11 @@ func extractStructured(dec []byte, hdrSize int, method, outDir string, logMsg fu
 		log:      logMsg,
 		res:      res,
 	}
-	for i := 0; i < entryCount; i++ {
+	for i := range entryCount {
 		e := dec[entriesOff+i*nsisEntrySize:]
+		//nolint:gosec // G115: NSIS entry opcode and params are signed int32 on the wire; the int32() is a deliberate two's-complement reinterpretation
 		which := int(int32(binary.LittleEndian.Uint32(e[0:4])))
-		p := func(k int) int { return int(int32(binary.LittleEndian.Uint32(e[4+k*4 : 8+k*4]))) }
+		p := func(k int) int { return int(int32(binary.LittleEndian.Uint32(e[4+k*4 : 8+k*4]))) } //nolint:gosec // G115: same signed int32 wire format as `which` above
 
 		fn, ok := nsisOps[which]
 		if !ok {
@@ -841,7 +843,7 @@ func extractRawRecords(dec []byte, hdrSize int, outDir string, logMsg func(strin
 			continue
 		}
 		name := filepath.Join(rawDir, fmt.Sprintf("file_%04d.bin", n))
-		if err := os.WriteFile(name, dec[pos+4:pos+4+size], 0644); err == nil {
+		if err := os.WriteFile(name, dec[pos+4:pos+4+size], 0644); err == nil { //nolint:gosec // G703: name is a generated file_NNNN.bin under outDir/_raw; no archive-controlled component reaches it
 			n++
 		}
 		pos += 4 + size
@@ -918,9 +920,9 @@ func dumpStrings(dec []byte, hdrSize int) []string {
 	hb := nsisHeaderBase(dec, hdrSize)
 	bb := hb + 4
 	base := bb + nbStrings*8
-	stringsOff := hb + int(int32(binary.LittleEndian.Uint32(dec[base:base+4])))
+	stringsOff := hb + int(int32(binary.LittleEndian.Uint32(dec[base:base+4]))) //nolint:gosec // G115: NSIS block offsets are signed int32 on the wire; deliberate two's-complement reinterpretation
 	baseL := bb + nbLangtables*8
-	langOff := hb + int(int32(binary.LittleEndian.Uint32(dec[baseL:baseL+4])))
+	langOff := hb + int(int32(binary.LittleEndian.Uint32(dec[baseL:baseL+4]))) //nolint:gosec // G115: NSIS block offsets are signed int32 on the wire; deliberate two's-complement reinterpretation
 	if stringsOff < hb || stringsOff >= len(dec) {
 		return nil
 	}
@@ -954,10 +956,7 @@ func looksUnicode(tab []byte) bool {
 		return false
 	}
 	zeros := 0
-	n := len(tab)
-	if n > 512 {
-		n = 512
-	}
+	n := min(len(tab), 512)
 	for i := 1; i < n; i += 2 {
 		if tab[i] == 0x00 {
 			zeros++
@@ -1095,7 +1094,8 @@ func resolveNSISString(tab []byte, off int, unicode bool) string {
 	}
 	if unicode {
 		for i := off; i+1 < len(tab); i += 2 {
-			c := int(binary.LittleEndian.Uint16(tab[i : i+2]))
+			u := binary.LittleEndian.Uint16(tab[i : i+2])
+			c := int(u)
 			if c == 0 {
 				break
 			}
@@ -1120,7 +1120,7 @@ func resolveNSISString(tab []byte, off int, unicode bool) string {
 				b.WriteByte('_')
 				continue
 			}
-			b.WriteRune(rune(c))
+			b.WriteRune(rune(u))
 		}
 	} else {
 		for i := off; i < len(tab); i++ {
@@ -1149,7 +1149,7 @@ func resolveNSISString(tab []byte, off int, unicode bool) string {
 				b.WriteByte('_')
 				continue
 			}
-			b.WriteByte(byte(c))
+			b.WriteByte(tab[i])
 		}
 	}
 	return b.String()
@@ -1223,7 +1223,7 @@ func sanitizeRel(p string) string {
 	}
 	p = strings.TrimLeft(p, "/")
 	var parts []string
-	for _, seg := range strings.Split(p, "/") {
+	for seg := range strings.SplitSeq(p, "/") {
 		seg = strings.TrimSpace(seg)
 		if seg == "" || seg == "." || seg == ".." {
 			continue

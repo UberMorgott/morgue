@@ -136,6 +136,10 @@ func (ip *InputPicker) Update(msg tea.Msg) tea.Cmd {
 			ip.phase = phaseDone
 			ip.done = true
 			return nil
+
+		case phaseDone:
+			// Both directories are chosen; ignore any further picks.
+			return nil
 		}
 	}
 
@@ -160,10 +164,13 @@ func (ip *InputPicker) View() string {
 	case phasePickOutput:
 		b.WriteString(titleStyle.Render("Select output directory"))
 		b.WriteString("\n")
-		b.WriteString(selectedStyle.Render("Input: "+ip.inputDir))
+		b.WriteString(selectedStyle.Render("Input: " + ip.inputDir))
 		b.WriteString("\n")
 		b.WriteString(hintStyle.Render("Navigate with arrows, enter to select  |  esc: go back"))
 		b.WriteString("\n\n")
+
+	case phaseDone:
+		// Selection is finished; the parent model swaps this view out, so no header.
 	}
 
 	b.WriteString(ip.fp.View())

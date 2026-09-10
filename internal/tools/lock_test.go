@@ -44,7 +44,7 @@ func TestConcurrentRecordInstallPreservesEntries(t *testing.T) {
 	m := NewManager(dir, config.Config{})
 	const n = 25
 	var wg sync.WaitGroup
-	for i := 0; i < n; i++ {
+	for i := range n {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -61,7 +61,7 @@ func TestConcurrentRecordInstallPreservesEntries(t *testing.T) {
 	if len(lk.Tools) != n {
 		t.Fatalf("lock has %d entries, want %d (entries clobbered): %v", len(lk.Tools), n, lk.Tools)
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		key := fmt.Sprintf("tool-%02d", i)
 		if got := lk.Tools[key]; got != fmt.Sprintf("v%d", i) {
 			t.Fatalf("entry %s = %q, want v%d", key, got, i)

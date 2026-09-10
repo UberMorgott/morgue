@@ -137,13 +137,13 @@ func writeSDKDump(outDir string, m *UsmapData, source string) (sdkResult, error)
 // giant single buffer (the class/enum slices are already in RAM, but the encoded
 // form is written incrementally).
 func writeSDKJSON(sdkDir string, m *UsmapData, source string, classes []sdkClass, enums []sdkEnum) error {
-	f, err := os.Create(filepath.Join(sdkDir, "sdk.json"))
+	f, err := os.Create(filepath.Join(sdkDir, "sdk.json")) //nolint:gosec // G304: fixed file name under the pipeline's own sdk/ output tree, not user input
 	if err != nil {
 		return fmt.Errorf("sdk: create sdk.json: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	w := bufio.NewWriterSize(f, 256*1024)
-	defer w.Flush()
+	defer func() { _ = w.Flush() }()
 
 	dump := sdkDump{
 		Source:       filepath.ToSlash(source),
@@ -164,18 +164,18 @@ func writeSDKJSON(sdkDir string, m *UsmapData, source string, classes []sdkClass
 // writeSDKHeaders renders classes.hpp: one C++-like declaration per class with a
 // :public super and field members. Streamed line-by-line.
 func writeSDKHeaders(sdkDir string, classes []sdkClass) error {
-	f, err := os.Create(filepath.Join(sdkDir, "classes.hpp"))
+	f, err := os.Create(filepath.Join(sdkDir, "classes.hpp")) //nolint:gosec // G304: fixed file name under the pipeline's own sdk/ output tree, not user input
 	if err != nil {
 		return fmt.Errorf("sdk: create classes.hpp: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	w := bufio.NewWriterSize(f, 256*1024)
-	defer w.Flush()
+	defer func() { _ = w.Flush() }()
 
-	fmt.Fprintln(w, "// SDK classes reconstructed offline from .usmap mappings.")
-	fmt.Fprintln(w, "// Fields only — .usmap carries UPROPERTYs, not methods/offsets/sizes.")
-	fmt.Fprintln(w, "// Engine boilerplate classes are annotated with a // [engine] comment.")
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "// SDK classes reconstructed offline from .usmap mappings.")
+	_, _ = fmt.Fprintln(w, "// Fields only — .usmap carries UPROPERTYs, not methods/offsets/sizes.")
+	_, _ = fmt.Fprintln(w, "// Engine boilerplate classes are annotated with a // [engine] comment.")
+	_, _ = fmt.Fprintln(w)
 
 	for _, c := range classes {
 		tag := ""
@@ -183,43 +183,43 @@ func writeSDKHeaders(sdkDir string, classes []sdkClass) error {
 			tag = " // [engine]"
 		}
 		if c.Super != "" {
-			fmt.Fprintf(w, "class %s : public %s {%s\n", c.Name, c.Super, tag)
+			_, _ = fmt.Fprintf(w, "class %s : public %s {%s\n", c.Name, c.Super, tag)
 		} else {
-			fmt.Fprintf(w, "class %s {%s\n", c.Name, tag)
+			_, _ = fmt.Fprintf(w, "class %s {%s\n", c.Name, tag)
 		}
 		for _, p := range c.Properties {
 			dim := ""
 			if p.ArrayDim > 1 {
 				dim = fmt.Sprintf("[%d]", p.ArrayDim)
 			}
-			fmt.Fprintf(w, "    %s %s%s;\n", p.CppType, p.Name, dim)
+			_, _ = fmt.Fprintf(w, "    %s %s%s;\n", p.CppType, p.Name, dim)
 		}
-		fmt.Fprintln(w, "};")
-		fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w, "};")
+		_, _ = fmt.Fprintln(w)
 	}
 	return nil
 }
 
 // writeSDKEnums renders enums.hpp: one `enum class` per enum with value = name.
 func writeSDKEnums(sdkDir string, enums []sdkEnum) error {
-	f, err := os.Create(filepath.Join(sdkDir, "enums.hpp"))
+	f, err := os.Create(filepath.Join(sdkDir, "enums.hpp")) //nolint:gosec // G304: fixed file name under the pipeline's own sdk/ output tree, not user input
 	if err != nil {
 		return fmt.Errorf("sdk: create enums.hpp: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	w := bufio.NewWriterSize(f, 256*1024)
-	defer w.Flush()
+	defer func() { _ = w.Flush() }()
 
-	fmt.Fprintln(w, "// SDK enums reconstructed offline from .usmap mappings.")
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "// SDK enums reconstructed offline from .usmap mappings.")
+	_, _ = fmt.Fprintln(w)
 
 	for _, e := range enums {
-		fmt.Fprintf(w, "enum class %s {\n", e.Name)
+		_, _ = fmt.Fprintf(w, "enum class %s {\n", e.Name)
 		for _, v := range e.Values {
-			fmt.Fprintf(w, "    %s = %d,\n", v.Name, v.Value)
+			_, _ = fmt.Fprintf(w, "    %s = %d,\n", v.Name, v.Value)
 		}
-		fmt.Fprintln(w, "};")
-		fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w, "};")
+		_, _ = fmt.Fprintln(w)
 	}
 	return nil
 }
@@ -321,7 +321,7 @@ func buildUsmapResolution(m *UsmapData, srcDir, outDir string) *usmapResolution 
 
 	// --- Join against Ghidra symbol classes ---
 	if symJSON := filepath.Join(srcDir, "symbols.json"); fileExists(symJSON) {
-		if data, err := os.ReadFile(symJSON); err == nil {
+		if data, err := os.ReadFile(symJSON); err == nil { //nolint:gosec // G304: fixed file name under the pipeline's own sdk/ output tree, not user input
 			var sm symbolMap
 			if json.Unmarshal(data, &sm) == nil {
 				ur.SymbolClassesTotal = len(sm.Classes)
@@ -348,7 +348,7 @@ func buildUsmapResolution(m *UsmapData, srcDir, outDir string) *usmapResolution 
 
 	// --- Join against parsed asset name tables ---
 	if aiPath := filepath.Join(outDir, "assets_index.json"); fileExists(aiPath) {
-		if data, err := os.ReadFile(aiPath); err == nil {
+		if data, err := os.ReadFile(aiPath); err == nil { //nolint:gosec // G304: fixed file name under the pipeline's own sdk/ output tree, not user input
 			var ai assetsIndex
 			if json.Unmarshal(data, &ai) == nil {
 				matched := map[string]bool{}
@@ -395,7 +395,7 @@ func sdkFallbackFromSymbols(outDir string, log func(string)) int {
 	if !fileExists(symJSON) {
 		return 0
 	}
-	data, err := os.ReadFile(symJSON)
+	data, err := os.ReadFile(symJSON) //nolint:gosec // G304: fixed file name under the pipeline's own sdk/ output tree, not user input
 	if err != nil {
 		if log != nil {
 			log(fmt.Sprintf("SDK fallback: read symbols.json: %v", err))

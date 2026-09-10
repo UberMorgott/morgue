@@ -13,11 +13,11 @@ func fetchNuGetLatestVersion(packageID string) (string, error) {
 	url := fmt.Sprintf("https://api.nuget.org/v3-flatcontainer/%s/index.json", strings.ToLower(packageID))
 
 	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Get(url)
+	resp, err := httpDo(client, http.MethodGet, url)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("nuget API returned %d for %s", resp.StatusCode, packageID)

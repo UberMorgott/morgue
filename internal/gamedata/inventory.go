@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/csv"
 	"encoding/xml"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -88,13 +89,13 @@ func organizeInventoryXML(opts Options, rep *Report) {
 		rep.Failed = append(rep.Failed, "inventory: "+err.Error())
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	w, out, ok := newInventoryWriter(opts, rep)
 	if !ok {
 		return
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 	defer w.Flush()
 	_ = w.Write(invXMLColumns)
 
@@ -102,7 +103,7 @@ func organizeInventoryXML(opts Options, rep *Report) {
 	count := 0
 	for {
 		tok, terr := dec.Token()
-		if terr == io.EOF {
+		if errors.Is(terr, io.EOF) {
 			break
 		}
 		if terr != nil {
@@ -152,7 +153,7 @@ func newInventoryWriter(opts Options, rep *Report) (*csv.Writer, *os.File, bool)
 		rep.Failed = append(rep.Failed, "inventory: "+err.Error())
 		return nil, nil, false
 	}
-	out, err := os.Create(outPath)
+	out, err := os.Create(outPath) //nolint:gosec // outPath is OutDir plus fixed literal segments, not caller-supplied
 	if err != nil {
 		logf(opts, "inventory: "+err.Error())
 		rep.Failed = append(rep.Failed, "inventory: "+err.Error())
@@ -172,7 +173,7 @@ func organizeInventoryCSV(opts Options, rep *Report) {
 		rep.Failed = append(rep.Failed, "inventory: "+err.Error())
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	r := csv.NewReader(f)
 	r.FieldsPerRecord = -1
@@ -189,7 +190,7 @@ func organizeInventoryCSV(opts Options, rep *Report) {
 	if !ok {
 		return
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 	defer w.Flush()
 
 	idx := mapInventoryColumns(rows[0])

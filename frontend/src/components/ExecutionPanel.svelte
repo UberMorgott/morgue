@@ -60,12 +60,15 @@
     return list.sort((a, b) => (toolOrder[a] ?? 999) - (toolOrder[b] ?? 999));
   });
 
-  let logEl: HTMLDivElement | null = $state(null);
+  let logEl = $state<HTMLDivElement | null>(null);
 
   // Auto-scroll log
   $effect(() => {
-    if (logs.length && logEl) {
-      setTimeout(() => { if (logEl) logEl.scrollTop = logEl.scrollHeight; }, 0);
+    // Capture the node: inside the timeout callback the compiler cannot keep the
+    // narrowing on the reactive binding, and reads it as never.
+    const el = logEl;
+    if (logs.length && el) {
+      setTimeout(() => { el.scrollTop = el.scrollHeight; }, 0);
     }
   });
 

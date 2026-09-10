@@ -224,7 +224,7 @@ func systemDotNetHasAspNet10(dotnetPath string) bool {
 // it returns true when a Microsoft.AspNetCore.App 10.x runtime line is present.
 // Lines look like: "Microsoft.AspNetCore.App 10.0.9 [C:\Program Files\dotnet\...]".
 func listRuntimesHasAspNet10(listRuntimesOutput string) bool {
-	for _, line := range strings.Split(listRuntimesOutput, "\n") {
+	for line := range strings.SplitSeq(listRuntimesOutput, "\n") {
 		fields := strings.Fields(strings.TrimSpace(line))
 		if len(fields) < 2 {
 			continue
@@ -314,7 +314,7 @@ func (m *Manager) installDotnetSDK(cb *InstallCallbacks) error {
 	if err := downloadFile(url, zipPath, progressCb); err != nil {
 		return fmt.Errorf("download .NET SDK: %w", err)
 	}
-	defer os.Remove(zipPath)
+	defer func() { _ = os.Remove(zipPath) }()
 
 	if err := extractZip(zipPath, destDir); err != nil {
 		return fmt.Errorf("extract .NET SDK: %w", err)
@@ -359,7 +359,7 @@ func (m *Manager) installJavaJRE(cb *InstallCallbacks) error {
 	if err != nil {
 		return fmt.Errorf("fetch adoptium API: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("adoptium API: HTTP %d", resp.StatusCode)
@@ -395,15 +395,15 @@ func (m *Manager) installJavaJRE(cb *InstallCallbacks) error {
 	if err := downloadFile(downloadURL, zipPath, progressCb); err != nil {
 		return fmt.Errorf("download Java JRE: %w", err)
 	}
-	defer os.Remove(zipPath)
+	defer func() { _ = os.Remove(zipPath) }()
 
 	// Extract to temp dir first — Adoptium zips have a top-level dir
 	tmpDir := filepath.Join(m.baseDir, "runtimes", "java-tmp")
-	os.RemoveAll(tmpDir)
+	_ = os.RemoveAll(tmpDir)
 	if err := os.MkdirAll(tmpDir, 0755); err != nil {
 		return fmt.Errorf("create java tmp dir: %w", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	if err := extractZip(zipPath, tmpDir); err != nil {
 		return fmt.Errorf("extract Java JRE: %w", err)
@@ -427,7 +427,7 @@ func (m *Manager) installJavaJRE(cb *InstallCallbacks) error {
 	}
 
 	// Move contents to destDir
-	os.RemoveAll(destDir)
+	_ = os.RemoveAll(destDir)
 	if err := os.Rename(topDir, destDir); err != nil {
 		return fmt.Errorf("move java JRE: %w", err)
 	}
@@ -468,7 +468,7 @@ func (m *Manager) installAspNetRuntime(cb *InstallCallbacks) error {
 	if err := downloadFile(url, zipPath, progressCb); err != nil {
 		return fmt.Errorf("download .NET ASP.NET runtime: %w", err)
 	}
-	defer os.Remove(zipPath)
+	defer func() { _ = os.Remove(zipPath) }()
 
 	if err := extractZip(zipPath, destDir); err != nil {
 		return fmt.Errorf("extract .NET ASP.NET runtime: %w", err)

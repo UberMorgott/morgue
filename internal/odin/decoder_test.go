@@ -4,16 +4,18 @@ import "testing"
 
 // buildBlob hand-encodes: NamedStartOfStructNode "root", NamedInt "x"=7, EndOfNode.
 func buildBlob() []byte {
+	// The byte() truncations below are the little-endian encoding itself; the
+	// inputs are short literals from this file.
 	str := func(s string) []byte {
-		out := []byte{0x01} // utf16 flag
-		n := int32(len(s))
-		out = append(out, byte(n), byte(n>>8), byte(n>>16), byte(n>>24))
+		out := []byte{0x01}                                              // utf16 flag
+		n := int32(len(s))                                               //nolint:gosec // fixed-length test literal
+		out = append(out, byte(n), byte(n>>8), byte(n>>16), byte(n>>24)) //nolint:gosec // little-endian byte split
 		for _, c := range s {
-			out = append(out, byte(c), 0x00)
+			out = append(out, byte(c), 0x00) //nolint:gosec // ASCII test literal
 		}
 		return out
 	}
-	i32 := func(v int32) []byte { return []byte{byte(v), byte(v >> 8), byte(v >> 16), byte(v >> 24)} }
+	i32 := func(v int32) []byte { return []byte{byte(v), byte(v >> 8), byte(v >> 16), byte(v >> 24)} } //nolint:gosec // little-endian byte split
 	var b []byte
 	b = append(b, 0x03)           // NamedStartOfStructNode
 	b = append(b, str("root")...) // name
@@ -34,7 +36,8 @@ func TestDecoderStructIntEnd(t *testing.T) {
 	if d.toks[0].kind != "node-start" || d.toks[0].name != "root" {
 		t.Fatalf("tok0 = %+v", d.toks[0])
 	}
-	if d.toks[1].kind != "int" || d.toks[1].name != "x" || d.toks[1].value.(int32) != 7 {
+	v, ok := d.toks[1].value.(int32)
+	if d.toks[1].kind != "int" || d.toks[1].name != "x" || !ok || v != 7 {
 		t.Fatalf("tok1 = %+v", d.toks[1])
 	}
 	if d.toks[2].kind != "node-end" {

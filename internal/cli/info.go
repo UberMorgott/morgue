@@ -83,25 +83,25 @@ func Info(opts InfoOptions) error {
 
 func printInfoText(r infoResult) error {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "Path:\t%s\n", r.Path)
-	fmt.Fprintf(w, "Size:\t%d\n", r.Size)
-	fmt.Fprintf(w, "SHA256:\t%s\n", r.SHA256)
-	fmt.Fprintf(w, "Kind:\t%s\n", r.Kind)
+	_, _ = fmt.Fprintf(w, "Path:\t%s\n", r.Path)
+	_, _ = fmt.Fprintf(w, "Size:\t%d\n", r.Size)
+	_, _ = fmt.Fprintf(w, "SHA256:\t%s\n", r.SHA256)
+	_, _ = fmt.Fprintf(w, "Kind:\t%s\n", r.Kind)
 	if r.Runtime != "" {
-		fmt.Fprintf(w, "Runtime:\t%s\n", r.Runtime)
+		_, _ = fmt.Fprintf(w, "Runtime:\t%s\n", r.Runtime)
 	}
 	if r.Compiler != "" {
-		fmt.Fprintf(w, "Compiler:\t%s\n", r.Compiler)
+		_, _ = fmt.Fprintf(w, "Compiler:\t%s\n", r.Compiler)
 	}
 	if r.Obfuscator != "" {
-		fmt.Fprintf(w, "Obfuscator:\t%s\n", r.Obfuscator)
+		_, _ = fmt.Fprintf(w, "Obfuscator:\t%s\n", r.Obfuscator)
 	}
 	if r.Packed {
-		fmt.Fprintf(w, "Packed:\tyes\n")
+		_, _ = fmt.Fprintf(w, "Packed:\tyes\n")
 	}
 	if r.EmbeddedSuspected {
-		fmt.Fprintf(w, "Embedded:\tsuspected\n")
+		_, _ = fmt.Fprintf(w, "Embedded:\tsuspected\n")
 	}
-	fmt.Fprintf(w, "Recipe:\t%s\n", r.Recipe)
+	_, _ = fmt.Fprintf(w, "Recipe:\t%s\n", r.Recipe)
 	return w.Flush()
 }

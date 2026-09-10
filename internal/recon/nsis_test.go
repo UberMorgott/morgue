@@ -48,10 +48,10 @@ func TestDetectNSIS(t *testing.T) {
 		wantOff int64
 	}{
 		{"clean signature", nil, true, 0},
-		{"1-byte flip in magic (NullsoftInst)", []int{8}, true, 0},        // "N" -> flipped; DEADBEEF intact
-		{"1-byte flip in DEADBEEF", []int{1}, true, 0},                    // 0xBE flipped; NullsoftInst intact
-		{"2-byte flip rejected", []int{8, 9}, false, 0},                   // Hamming 2 over intact-DEADBEEF anchor
-		{"2-byte flip split rejected", []int{1, 8}, false, 0},             // both anchors broken
+		{"1-byte flip in magic (NullsoftInst)", []int{8}, true, 0}, // "N" -> flipped; DEADBEEF intact
+		{"1-byte flip in DEADBEEF", []int{1}, true, 0},             // 0xBE flipped; NullsoftInst intact
+		{"2-byte flip rejected", []int{8, 9}, false, 0},            // Hamming 2 over intact-DEADBEEF anchor
+		{"2-byte flip split rejected", []int{1, 8}, false, 0},      // both anchors broken
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

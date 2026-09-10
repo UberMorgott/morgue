@@ -1,6 +1,7 @@
 package recipe
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -54,11 +55,5 @@ func TestInspectorEnv(t *testing.T) {
 }
 
 func hasEnv(env []string, key, val string) bool {
-	want := key + "=" + val
-	for _, e := range env {
-		if e == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(env, key+"="+val)
 }

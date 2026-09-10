@@ -67,7 +67,7 @@ func (s *PipelineService) Run(input, output string) error {
 		// output or configured DefaultOutputDir still wins above.
 		output = util.AutoOutputRoot()
 	}
-	os.MkdirAll(output, 0755)
+	_ = os.MkdirAll(output, 0755)
 
 	eng := engine.New(cfg, util.ToolsBaseDir())
 	events := make(chan engine.PipelineEvent, 100)
@@ -119,7 +119,7 @@ func (s *PipelineService) Run(input, output string) error {
 		AllowDynamic: cfg.AllowDynamicExecution,
 		// cflow is OFF by default in the GUI (experimental, near no-op on typical
 		// targets). No config knob for v1; the CLI --cflow flag is the opt-in source.
-		Cflow:        false,
+		Cflow: false,
 	}
 
 	err = eng.Run(ctx, opts, events)

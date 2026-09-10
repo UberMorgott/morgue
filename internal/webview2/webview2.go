@@ -1,6 +1,7 @@
 package webview2
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -58,10 +59,10 @@ func CheckAvailable() (version string, isLocal bool) {
 // ShowInstallDialog displays a Win32 MessageBox asking the user how to install WebView2.
 func ShowInstallDialog() int {
 	const (
-		mbYesNoCancel  = 0x00000003
-		mbIconWarning  = 0x00000030
-		idYes          = 6
-		idNo           = 7
+		mbYesNoCancel = 0x00000003
+		mbIconWarning = 0x00000030
+		idYes         = 6
+		idNo          = 7
 	)
 
 	msgBoxW := user32.NewProc("MessageBoxW")
@@ -79,6 +80,8 @@ func ShowInstallDialog() int {
 	textPtr, _ := syscall.UTF16PtrFromString(text)
 	titlePtr, _ := syscall.UTF16PtrFromString(title)
 
+	//nolint:gosec // G103: MessageBoxW takes UTF-16 text/title as raw pointers;
+	// syscall.UTF16PtrFromString results are kept alive by locals.
 	ret, _, _ := msgBoxW.Call(
 		0,
 		uintptr(unsafe.Pointer(textPtr)),
@@ -112,7 +115,8 @@ func showErrorDialog(message string) {
 	textPtr, _ := syscall.UTF16PtrFromString(message)
 	titlePtr, _ := syscall.UTF16PtrFromString("Morgue — Error")
 
-	msgBoxW.Call(
+	//nolint:gosec // G103: same MessageBoxW UTF-16 pointer convention as above.
+	_, _, _ = msgBoxW.Call(
 		0,
 		uintptr(unsafe.Pointer(textPtr)),
 		uintptr(unsafe.Pointer(titlePtr)),
@@ -123,7 +127,7 @@ func showErrorDialog(message string) {
 // InstallSystem downloads and runs the WebView2 bootstrapper for system-wide installation.
 func InstallSystem() error {
 	tmpPath := filepath.Join(util.BaseDir(), "MicrosoftEdgeWebview2Setup.exe")
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	pw := showProgress("Installing WebView2")
 	pw.SetStatus("Downloading installer...")
@@ -184,6 +188,8 @@ func InstallSystem() error {
 	}
 	sei.cbSize = uint32(unsafe.Sizeof(sei))
 
+	//nolint:gosec // G103: SHELLEXECUTEINFO is passed by pointer — ShellExecuteExW's
+	// calling convention; no pointer arithmetic.
 	ret, _, _ := shellExecuteEx.Call(uintptr(unsafe.Pointer(&sei)))
 	if ret == 0 {
 		return fmt.Errorf("failed to launch installer\n\nManual download: %s", manualDownloadURL)
@@ -191,8 +197,8 @@ func InstallSystem() error {
 
 	// Wait for the installer process to finish
 	if sei.hProcess != 0 {
-		syscall.WaitForSingleObject(sei.hProcess, syscall.INFINITE)
-		syscall.CloseHandle(sei.hProcess)
+		_, _ = syscall.WaitForSingleObject(sei.hProcess, syscall.INFINITE)
+		_ = syscall.CloseHandle(sei.hProcess)
 	}
 
 	return nil
@@ -206,7 +212,7 @@ func InstallPortable() error {
 	}
 
 	tmpPath := filepath.Join(util.BaseDir(), "webview2-runtime.cab")
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	pw := showProgress("Installing WebView2 (Portable)")
 	pw.SetStatus("Downloading runtime...")
@@ -228,7 +234,9 @@ func InstallPortable() error {
 	pw.SetStatus("Extracting runtime...")
 	pw.SetProgress(100)
 
-	cmd := exec.Command(`C:\Windows\System32\expand.exe`, tmpPath, "-F:*", destDir)
+	//nolint:gosec // G204: the binary is a hardcoded absolute system path and both
+	// arguments are paths this function derived from util.BaseDir(), not user input.
+	cmd := exec.CommandContext(context.Background(), `C:\Windows\System32\expand.exe`, tmpPath, "-F:*", destDir)
 	if err := cmd.Run(); err != nil {
 		pw.Close()
 		return fmt.Errorf("extract cab failed: %w\n\nManual download: %s", err, manualDownloadURL)
@@ -246,9 +254,9 @@ func InstallPortable() error {
 			subDir := filepath.Join(destDir, e.Name())
 			subEntries, _ := os.ReadDir(subDir)
 			for _, se := range subEntries {
-				os.Rename(filepath.Join(subDir, se.Name()), filepath.Join(destDir, se.Name()))
+				_ = os.Rename(filepath.Join(subDir, se.Name()), filepath.Join(destDir, se.Name()))
 			}
-			os.Remove(subDir) // remove empty wrapper
+			_ = os.Remove(subDir) // remove empty wrapper
 			break
 		}
 	}
@@ -261,7 +269,7 @@ func downloadFile(url, dest string, onProgress func(read, total int64)) error {
 	var lastErr error
 	backoff := 2 * time.Second
 
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := range 3 {
 		if attempt > 0 {
 			time.Sleep(backoff)
 			backoff *= 2
@@ -279,18 +287,25 @@ func downloadFile(url, dest string, onProgress func(read, total int64)) error {
 func doDownload(url, dest string, onProgress func(read, total int64)) error {
 	client := &http.Client{Timeout: 10 * time.Minute}
 
-	resp, err := client.Get(url)
+	// Runs during first-launch bootstrap, before any request-scoped context exists;
+	// the client's 10-minute timeout is what bounds it.
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("network error: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	os.Remove(dest) // remove previous attempt if exists
-	f, err := os.Create(dest)
+	_ = os.Remove(dest) // remove previous attempt if exists
+	f, err := os.Create(filepath.Clean(dest))
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
@@ -305,9 +320,9 @@ func doDownload(url, dest string, onProgress func(read, total int64)) error {
 	}
 
 	_, err = io.Copy(f, reader)
-	f.Close()
+	_ = f.Close()
 	if err != nil {
-		os.Remove(dest)
+		_ = os.Remove(dest)
 		return fmt.Errorf("write file: %w", err)
 	}
 

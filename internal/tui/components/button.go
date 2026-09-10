@@ -17,7 +17,7 @@ type Button struct {
 
 // NewButton creates a new button with the given label and theme colors.
 func NewButton(label, accent, dim string) *Button {
-	pad := 2 // horizontal padding inside border
+	pad := 2                    // horizontal padding inside border
 	w := len(label) + pad*2 + 2 // +2 for left/right border chars
 
 	base := lipgloss.NewStyle().

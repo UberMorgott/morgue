@@ -32,6 +32,8 @@ var (
 func TotalPhysicalMemoryBytes() uint64 {
 	var ms memoryStatusEx
 	ms.Length = uint32(unsafe.Sizeof(ms))
+	//nolint:gosec // G103: unsafe.Pointer on a local struct is the required calling
+	// convention for GlobalMemoryStatusEx; no pointer arithmetic.
 	r, _, _ := procGlobalMemoryStatusEx.Call(uintptr(unsafe.Pointer(&ms)))
 	if r == 0 {
 		return 0
@@ -82,18 +84,20 @@ func LimitProcessMemory(bytes uintptr) error {
 		windows.JOB_OBJECT_LIMIT_BREAKAWAY_OK
 	info.ProcessMemoryLimit = bytes
 
+	//nolint:gosec // G103: SetInformationJobObject takes the struct as a raw pointer +
+	// size; unsafe.Pointer on the local `info` is the only way to call it.
 	if _, err := windows.SetInformationJobObject(
 		job,
 		windows.JobObjectExtendedLimitInformation,
 		uintptr(unsafe.Pointer(&info)),
 		uint32(unsafe.Sizeof(info)),
 	); err != nil {
-		windows.CloseHandle(job)
+		_ = windows.CloseHandle(job)
 		return err
 	}
 
 	if err := windows.AssignProcessToJobObject(job, windows.CurrentProcess()); err != nil {
-		windows.CloseHandle(job)
+		_ = windows.CloseHandle(job)
 		return err
 	}
 

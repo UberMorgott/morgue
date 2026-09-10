@@ -59,8 +59,8 @@ func validateGhidraHome(home string) string {
 	if runtime.GOOS == "windows" {
 		ext = ".bat"
 	}
-	run := filepath.Join(home, "ghidraRun"+ext)
-	analyze := filepath.Join(home, "support", "analyzeHeadless"+ext)
+	run := filepath.Clean(filepath.Join(home, "ghidraRun"+ext))
+	analyze := filepath.Clean(filepath.Join(home, "support", "analyzeHeadless"+ext))
 	if _, err := os.Stat(run); err == nil {
 		return run
 	}
@@ -100,7 +100,7 @@ func findBinaryRecursive(dir, binaryName string) string {
 	var result string
 	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // unreadable entry: skip it, keep searching the rest of the tree
 		}
 		if !d.IsDir() && d.Name() == binaryName {
 			result = path
@@ -140,7 +140,7 @@ func (m *Manager) Check(name string) ToolStatus {
 
 	// Read version from .version file
 	var version string
-	versionBytes, readErr := os.ReadFile(filepath.Join(m.baseDir, name, ".version"))
+	versionBytes, readErr := os.ReadFile(filepath.Clean(filepath.Join(m.baseDir, name, ".version")))
 	if readErr == nil {
 		version = strings.TrimSpace(string(versionBytes))
 	}
@@ -195,7 +195,7 @@ func (m *Manager) Install(name string, cb *InstallCallbacks) (string, error) {
 	// Clean dirty state: directory exists but binary is missing (e.g. partial Delete)
 	if _, err := os.Stat(destDir); err == nil {
 		if _, err := os.Stat(filepath.Join(destDir, tool.Binary)); os.IsNotExist(err) {
-			os.RemoveAll(destDir)
+			_ = os.RemoveAll(destDir)
 		}
 	}
 
@@ -251,7 +251,7 @@ func (m *Manager) Install(name string, cb *InstallCallbacks) (string, error) {
 			ver = "latest"
 		}
 		versionFile := filepath.Join(destDir, ".version")
-		os.WriteFile(versionFile, []byte(ver), 0644)
+		_ = os.WriteFile(versionFile, []byte(ver), 0644)
 		_ = m.RecordInstall(name, ver)
 		return ver, nil
 	case MethodDotnetTool:
@@ -264,7 +264,7 @@ func (m *Manager) Install(name string, cb *InstallCallbacks) (string, error) {
 			ver = "latest"
 		}
 		versionFile := filepath.Join(destDir, ".version")
-		os.WriteFile(versionFile, []byte(ver), 0644)
+		_ = os.WriteFile(versionFile, []byte(ver), 0644)
 		_ = m.RecordInstall(name, ver)
 		return ver, nil
 	case MethodNuGet:
@@ -273,7 +273,7 @@ func (m *Manager) Install(name string, cb *InstallCallbacks) (string, error) {
 			return "", err
 		}
 		versionFile := filepath.Join(destDir, ".version")
-		os.WriteFile(versionFile, []byte(ver), 0644)
+		_ = os.WriteFile(versionFile, []byte(ver), 0644)
 		_ = m.RecordInstall(name, ver)
 		return ver, nil
 	case MethodGitBuild:
@@ -341,9 +341,9 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 			}
 		case t.Method == MethodDirectURL && t.URL != "":
 			client := &http.Client{Timeout: 15 * time.Second}
-			resp, err := client.Head(t.URL)
+			resp, err := httpDo(client, http.MethodHead, t.URL)
 			if err == nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				if lm := resp.Header.Get("Last-Modified"); lm != "" {
 					if parsed, err := time.Parse(time.RFC1123, lm); err == nil {
 						st.LatestVersion = parsed.Format("2006.01.02")
@@ -389,9 +389,9 @@ func (m *Manager) CheckLatestVersionSingle(name string) (latestVersion string, u
 		}
 	case tool.Method == MethodDirectURL && tool.URL != "":
 		client := &http.Client{Timeout: 15 * time.Second}
-		resp, err := client.Head(tool.URL)
+		resp, err := httpDo(client, http.MethodHead, tool.URL)
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if lm := resp.Header.Get("Last-Modified"); lm != "" {
 				if parsed, err := time.Parse(time.RFC1123, lm); err == nil {
 					latestVersion = parsed.Format("2006.01.02")
@@ -454,7 +454,7 @@ func (m *Manager) ShouldCheckUpdates() bool {
 // MarkUpdateChecked writes the current timestamp to the last-check file.
 func (m *Manager) MarkUpdateChecked() {
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
-	os.WriteFile(filepath.Join(m.baseDir, ".last-check"), []byte(ts), 0644)
+	_ = os.WriteFile(filepath.Join(m.baseDir, ".last-check"), []byte(ts), 0644)
 }
 
 // Delete removes a tool's directory from disk.

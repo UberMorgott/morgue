@@ -14,7 +14,7 @@ func putUint32(b *bytes.Buffer, v uint32) { _ = binary.Write(b, binary.LittleEnd
 
 // putASCIIFString appends an FString: int32 len (incl. NUL) + bytes + NUL.
 func putASCIIFString(b *bytes.Buffer, s string) {
-	putInt32(b, int32(len(s)+1))
+	putInt32(b, int32(len(s)+1)) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 	b.WriteString(s)
 	b.WriteByte(0)
 }
@@ -36,11 +36,11 @@ func buildSyntheticUAsset(names []string) []byte {
 	putInt32(&summary, 0)                 // TotalHeaderSize (placeholder)
 	putASCIIFString(&summary, "")         // FolderName (empty FString => len 1, "\0")
 	putUint32(&summary, 0)                // PackageFlags
-	putInt32(&summary, int32(len(names))) // NameCount
+	putInt32(&summary, int32(len(names))) //nolint:gosec // G115: NameCount, a small test fixture length
 
 	// NameOffset = size of summary + 4 (the NameOffset field itself).
 	nameOffset := summary.Len() + 4
-	putInt32(&summary, int32(nameOffset)) // NameOffset
+	putInt32(&summary, int32(nameOffset)) //nolint:gosec // G115: NameOffset, a small test fixture offset
 
 	// Name table.
 	var table bytes.Buffer
@@ -103,7 +103,7 @@ func buildRetocStubUAsset(names []string) []byte {
 	putInt32(&b, 0) // NameOffset = 0 (not populated)
 	// FName table: each entry = FString(len incl NUL) + bytes + NUL + 4 hash.
 	for _, n := range names {
-		putInt32(&b, int32(len(n)+1))
+		putInt32(&b, int32(len(n)+1)) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 		b.WriteString(n)
 		b.WriteByte(0)
 		putUint32(&b, 0) // 4 hash bytes
@@ -171,7 +171,7 @@ func TestParseUAssetGarbageNoPanic(t *testing.T) {
 	putUint32(&b, uassetTag)
 	putInt32(&b, -8)
 	// Fill with 0xFF which decodes to large negative/positive values.
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		b.WriteByte(0xFF)
 	}
 	dir := t.TempDir()
@@ -206,7 +206,7 @@ func TestBuildAssetsIndex(t *testing.T) {
 	var g bytes.Buffer
 	putUint32(&g, uassetTag)
 	putInt32(&g, -8)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		g.WriteByte(0xFF)
 	}
 	if err := os.WriteFile(filepath.Join(extracted, "Bad.uasset"), g.Bytes(), 0644); err != nil {

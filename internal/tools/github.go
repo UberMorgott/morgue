@@ -15,6 +15,18 @@ import (
 	"github.com/google/go-github/v74/github"
 )
 
+// httpDo issues a request with the background context. These calls happen
+// during tool installation / version checks, which run outside any cancellable
+// pipeline context (see the contextcheck note on Manager.Install); the client's
+// Timeout is what bounds them.
+func httpDo(client *http.Client, method, url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(context.Background(), method, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return client.Do(req)
+}
+
 type assetInfo struct {
 	Name string `json:"name"`
 	URL  string `json:"url"`
@@ -41,7 +53,7 @@ var (
 
 func loadReleaseCache(baseDir string) releaseCache {
 	rc := releaseCache{Entries: make(map[string]releaseCacheEntry)}
-	data, err := os.ReadFile(filepath.Join(baseDir, releaseCacheFile))
+	data, err := os.ReadFile(filepath.Clean(filepath.Join(baseDir, releaseCacheFile)))
 	if err != nil {
 		return rc
 	}
@@ -66,17 +78,17 @@ func fetchLatestCommit(repo string) (string, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
 	for _, branch := range []string{"main", "master"} {
 		url := fmt.Sprintf("https://github.com/%s/commits/%s.atom", repo, branch)
-		resp, err := client.Get(url)
+		resp, err := httpDo(client, http.MethodGet, url)
 		if err != nil {
 			continue
 		}
 		if resp.StatusCode != 200 {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			continue
 		}
 
 		body, err := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil {
 			continue
 		}
@@ -117,11 +129,11 @@ func fetchLatestVersion(repo string) (string, error) {
 		},
 	}
 
-	resp, err := client.Get(url)
+	resp, err := httpDo(client, http.MethodGet, url)
 	if err != nil {
 		return "", fmt.Errorf("check latest version %s: %w", repo, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusFound && resp.StatusCode != http.StatusMovedPermanently {
 		return "", fmt.Errorf("expected redirect for %s/releases/latest, got %d", repo, resp.StatusCode)
@@ -214,7 +226,7 @@ func downloadAndExtract(matched []assetInfo, destDir string, onProgress func(byt
 	for _, asset := range matched {
 		archivePath := filepath.Join(destDir, asset.Name)
 		if err := downloadFile(asset.URL, archivePath, onProgress); err != nil {
-			os.Remove(archivePath)
+			_ = os.Remove(archivePath)
 			return err
 		}
 		if isArchiveFile(archivePath) {
@@ -224,7 +236,7 @@ func downloadAndExtract(matched []assetInfo, destDir string, onProgress func(byt
 			if err := extractArchive(archivePath, destDir); err != nil {
 				return err
 			}
-			os.Remove(archivePath)
+			_ = os.Remove(archivePath)
 		}
 		// Plain files (exe, dll, etc.) stay in destDir as-is.
 	}
@@ -395,7 +407,7 @@ func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(byte
 		if verr := validateBinaryInstalled(tool, destDir); verr != nil {
 			return "", verr
 		}
-		os.WriteFile(filepath.Join(destDir, ".version"), []byte(tag), 0644)
+		_ = os.WriteFile(filepath.Join(destDir, ".version"), []byte(tag), 0644)
 		return tag, nil
 	}
 
@@ -410,7 +422,7 @@ func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(byte
 				// same bounded retry-with-backoff and enriched (URL + timeout)
 				// errors as every other download.
 				if err := downloadFile(asset.URL, archivePath, onProgress); err != nil {
-					os.Remove(archivePath)
+					_ = os.Remove(archivePath)
 					return "", err
 				}
 
@@ -421,13 +433,13 @@ func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(byte
 					if err := extractArchive(archivePath, destDir); err != nil {
 						return "", err
 					}
-					os.Remove(archivePath)
+					_ = os.Remove(archivePath)
 				}
 				// Plain files (exe, dll, etc.) stay in destDir as-is.
 			}
 
 			versionFile := filepath.Join(destDir, ".version")
-			os.WriteFile(versionFile, []byte(tagName), 0644)
+			_ = os.WriteFile(versionFile, []byte(tagName), 0644)
 
 			return tagName, nil
 		}
@@ -447,7 +459,7 @@ func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(byte
 		return "", fmt.Errorf("install %s: API unavailable and direct download failed: %w", tool.Name, dlErr)
 	}
 
-	os.WriteFile(filepath.Join(destDir, ".version"), []byte(version), 0644)
+	_ = os.WriteFile(filepath.Join(destDir, ".version"), []byte(version), 0644)
 	return version, nil
 }
 
@@ -469,7 +481,7 @@ func tryDirectDownload(tool ToolDef, version, destDir string, onProgress func(by
 	for _, asset := range matched {
 		archivePath := filepath.Join(destDir, asset.Name)
 		if err := downloadFile(asset.URL, archivePath, onProgress); err != nil {
-			os.Remove(archivePath)
+			_ = os.Remove(archivePath)
 			return fmt.Errorf("download %s: %w", asset.Name, err)
 		}
 
@@ -480,7 +492,7 @@ func tryDirectDownload(tool ToolDef, version, destDir string, onProgress func(by
 			if err := extractArchive(archivePath, destDir); err != nil {
 				return err
 			}
-			os.Remove(archivePath)
+			_ = os.Remove(archivePath)
 		}
 		// Plain files (exe, dll, etc.) stay in destDir as-is.
 	}
@@ -493,11 +505,11 @@ func scrapeReleaseAssets(repo, tag string) ([]assetInfo, error) {
 	url := fmt.Sprintf("https://github.com/%s/releases/expanded_assets/%s", repo, tag)
 
 	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Get(url)
+	resp, err := httpDo(client, http.MethodGet, url)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("expanded_assets returned %d", resp.StatusCode)

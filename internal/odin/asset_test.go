@@ -37,7 +37,7 @@ func contains(s, sub string) bool {
 
 func TestGetHexMissingMarker(t *testing.T) {
 	tmp := filepath.Join(t.TempDir(), "no-bytes.asset")
-	os.WriteFile(tmp, []byte("MonoBehaviour:\n  m_Name: x\n"), 0644)
+	_ = os.WriteFile(tmp, []byte("MonoBehaviour:\n  m_Name: x\n"), 0644)
 	if _, err := getHex(tmp); err == nil {
 		t.Fatalf("expected error for file with no SerializedBytes")
 	}

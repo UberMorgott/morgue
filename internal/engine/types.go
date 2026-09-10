@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/recipe"
+	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/scanner"
 )
 
@@ -24,27 +24,27 @@ type TargetResult struct {
 
 // PipelineEvent is emitted via Wails events. JSON keys are explicit PascalCase.
 type PipelineEvent struct {
-	Phase          string              `json:"Phase"`
-	Target         string              `json:"Target"`
-	Message        string              `json:"Message"`
-	Tool           string              `json:"Tool,omitempty"`
-	Progress       *recipe.StepProgress `json:"Progress,omitempty"`
-	Done           bool                `json:"Done"`
-	Error          error               `json:"Error,omitempty"`
+	Phase    string               `json:"Phase"`
+	Target   string               `json:"Target"`
+	Message  string               `json:"Message"`
+	Tool     string               `json:"Tool,omitempty"`
+	Progress *recipe.StepProgress `json:"Progress,omitempty"`
+	Done     bool                 `json:"Done"`
+	Error    error                `json:"Error,omitempty"`
 	// Severity marks non-error events that still deserve attention. "" is a
 	// normal info event; "warn" is a WARN — non-fatal noise (missing optional
 	// tool, benign cert-store output) that renderers show distinctly from an
 	// ERROR (which sets Error) and which never counts as a failure.
 	Severity string `json:"Severity,omitempty"`
 	// Enriched fields for frontend
-	ReconKind   string   `json:"ReconKind,omitempty"`
-	Compiler    string   `json:"Compiler,omitempty"`
-	Obfuscator   string   `json:"Obfuscator,omitempty"`
-	Deobfuscator string   `json:"Deobfuscator,omitempty"`
-	FileSize    int64    `json:"FileSize,omitempty"`
-	RecipeName  string   `json:"RecipeName,omitempty"`
-	RecipeDesc  string   `json:"RecipeDesc,omitempty"`
-	ToolsNeeded []string `json:"ToolsNeeded,omitempty"`
+	ReconKind      string   `json:"ReconKind,omitempty"`
+	Compiler       string   `json:"Compiler,omitempty"`
+	Obfuscator     string   `json:"Obfuscator,omitempty"`
+	Deobfuscator   string   `json:"Deobfuscator,omitempty"`
+	FileSize       int64    `json:"FileSize,omitempty"`
+	RecipeName     string   `json:"RecipeName,omitempty"`
+	RecipeDesc     string   `json:"RecipeDesc,omitempty"`
+	ToolsNeeded    []string `json:"ToolsNeeded,omitempty"`
 	OutputPath     string   `json:"OutputPath,omitempty"`
 	OutputStats    []string `json:"OutputStats,omitempty"`
 	FilesTotal     int      `json:"FilesTotal,omitempty"`

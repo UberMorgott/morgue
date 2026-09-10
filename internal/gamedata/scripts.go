@@ -18,7 +18,7 @@ func buildScriptMap(opts Options) map[string]string {
 	const suffix = ".cs.meta"
 	_ = filepath.WalkDir(opts.ExportDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
-			return nil
+			return nil //nolint:nilerr // an unreadable entry is skipped so the rest of the script map still builds
 		}
 		name := d.Name()
 		if !strings.HasSuffix(strings.ToLower(name), suffix) {
@@ -37,16 +37,16 @@ func buildScriptMap(opts Options) map[string]string {
 // parseGuidFromMeta reads a Unity .meta file and returns its "guid:" value, or
 // "" when absent/unreadable.
 func parseGuidFromMeta(path string) string {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // path is a local .meta file from the caller's export dir
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
-		if strings.HasPrefix(line, "guid:") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "guid:"))
+		if v, ok := strings.CutPrefix(line, "guid:"); ok {
+			return strings.TrimSpace(v)
 		}
 	}
 	return ""

@@ -36,10 +36,10 @@ func TestIsQualifiedCppName(t *testing.T) {
 // Zero or more-than-one → no resolution (never guess).
 func TestResolveNameFromStrings(t *testing.T) {
 	cases := []struct {
-		name    string
-		strs    []string
-		want    string
-		wantOK  bool
+		name   string
+		strs   []string
+		want   string
+		wantOK bool
 	}{
 		{"single qualified", []string{"hello", "UFoo::Bar", "%d"}, "UFoo::Bar", true},
 		{"duplicate qualified counts once", []string{"UFoo::Bar", "UFoo::Bar"}, "UFoo::Bar", true},
@@ -147,28 +147,28 @@ func TestResolveNamesBoundedMemory(t *testing.T) {
 	}
 
 	// symbols.ndjson: N anonymous functions.
-	symF, _ := os.Create(filepath.Join(srcDir, "symbols.ndjson"))
+	symF, _ := os.Create(filepath.Join(srcDir, "symbols.ndjson")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	symW := bufio.NewWriterSize(symF, 1<<20)
-	for i := 0; i < n; i++ {
-		fmt.Fprintf(symW, "{\"address\":\"0x%x\",\"name\":\"FUN_%x\"}\n", 0x140000000+i*0x20, 0x140000000+i*0x20)
+	for i := range n {
+		_, _ = fmt.Fprintf(symW, "{\"address\":\"0x%x\",\"name\":\"FUN_%x\"}\n", 0x140000000+i*0x20, 0x140000000+i*0x20)
 	}
-	symW.Flush()
-	symF.Close()
+	_ = symW.Flush()
+	_ = symF.Close()
 
 	// string_refs.csv: every function references a noise string; every 100th also
 	// references exactly one qualified id (so ~1% resolve).
-	srF, _ := os.Create(filepath.Join(idx, "string_refs.csv"))
+	srF, _ := os.Create(filepath.Join(idx, "string_refs.csv")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	srW := bufio.NewWriterSize(srF, 1<<20)
-	srW.WriteString("function,address,string\n")
-	for i := 0; i < n; i++ {
+	_, _ = srW.WriteString("function,address,string\n")
+	for i := range n {
 		addr := fmt.Sprintf("0x%x", 0x140000000+i*0x20)
-		fmt.Fprintf(srW, "FUN_%x,%s,log line %d\n", 0x140000000+i*0x20, addr, i)
+		_, _ = fmt.Fprintf(srW, "FUN_%x,%s,log line %d\n", 0x140000000+i*0x20, addr, i)
 		if i%100 == 0 {
-			fmt.Fprintf(srW, "FUN_%x,%s,Pkg::Class%d::Method\n", 0x140000000+i*0x20, addr, i)
+			_, _ = fmt.Fprintf(srW, "FUN_%x,%s,Pkg::Class%d::Method\n", 0x140000000+i*0x20, addr, i)
 		}
 	}
-	srW.Flush()
-	srF.Close()
+	_ = srW.Flush()
+	_ = srF.Close()
 
 	var st resolveStats
 	var rerr error
@@ -218,11 +218,11 @@ func writeFile(t *testing.T, path, content string) {
 
 func readSymbolsNDJSON(t *testing.T, path string) map[string]string {
 	t.Helper()
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("open %s: %v", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	out := map[string]string{}
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {

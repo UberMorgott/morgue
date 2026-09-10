@@ -13,22 +13,26 @@ import (
 // Internal (intra-blob) refs are prefixed with "#" and resolve to null.
 func resolveRefs(defsDir string, index map[string]string) error {
 	if _, err := os.Stat(defsDir); err != nil {
-		return nil // no defs written; nothing to resolve
+		return nil //nolint:nilerr // no defs dir means the defs pass wrote nothing; there is nothing to resolve
 	}
 	return filepath.WalkDir(defsDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".json") {
-			return nil
+			return nil //nolint:nilerr // an unreadable entry is skipped so the rest of the tree still resolves
 		}
-		data, e := os.ReadFile(path)
+		data, e := os.ReadFile(path) //nolint:gosec // path comes from WalkDir over our own output dir
 		if e != nil {
-			return nil
+			return nil //nolint:nilerr // best effort: an unreadable def keeps its unresolved $ref placeholders
 		}
 		var obj any
 		if json.Unmarshal(data, &obj) != nil {
-			return nil
+			return nil //nolint:nilerr // best effort: a malformed def keeps its unresolved $ref placeholders
 		}
 		if walkRefs(obj, index) {
-			_ = writeJSON(path, obj)
+			// A write failure here is systemic (permissions/disk), not per-file:
+			// abort the pass so Organize logs it instead of silently dropping it.
+			if werr := writeJSON(path, obj); werr != nil {
+				return werr
+			}
 		}
 		return nil
 	})

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"os"
+	"path/filepath"
 
 	peparser "github.com/saferwall/pe"
 )
@@ -46,7 +47,7 @@ const (
 // f may be nil (e.g. a non-PE or a parse that only yielded a partial file); the
 // scan then covers the file from the start.
 func DetectNSIS(path string, f *peparser.File) (subType string, offset int64, ok bool) {
-	fh, err := os.Open(path)
+	fh, err := os.Open(filepath.Clean(path))
 	if err != nil {
 		return "", 0, false
 	}

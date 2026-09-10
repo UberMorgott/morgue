@@ -32,11 +32,8 @@ func TestGoldenRoundTrip(t *testing.T) {
 		// Emit first divergent line for debugging.
 		gl := splitLines(gotN)
 		wl := splitLines(want)
-		n := len(gl)
-		if len(wl) < n {
-			n = len(wl)
-		}
-		for i := 0; i < n; i++ {
+		n := min(len(gl), len(wl))
+		for i := range n {
 			if gl[i] != wl[i] {
 				t.Fatalf("line %d differs:\n got=%q\nwant=%q", i+1, gl[i], wl[i])
 			}

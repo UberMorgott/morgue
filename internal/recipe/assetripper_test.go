@@ -17,7 +17,7 @@ func TestAssetRipperDriverFlow(t *testing.T) {
 		mu.Lock()
 		hits = append(hits, r.URL.Path)
 		mu.Unlock()
-		r.ParseForm()
+		_ = r.ParseForm()
 		switch r.URL.Path {
 		case "/LoadFolder":
 			loadPath = r.FormValue("Path")
@@ -54,7 +54,7 @@ func TestAssetRipperUnityProjectFlow(t *testing.T) {
 		mu.Lock()
 		hits = append(hits, r.URL.Path)
 		mu.Unlock()
-		r.ParseForm()
+		_ = r.ParseForm()
 		switch r.URL.Path {
 		case "/LoadFolder":
 			loadPath = r.FormValue("Path")

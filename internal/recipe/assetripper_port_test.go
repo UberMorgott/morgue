@@ -9,7 +9,7 @@ import (
 )
 
 func TestFreePort(t *testing.T) {
-	p, err := freePort()
+	p, err := freePort(t.Context())
 	if err != nil {
 		t.Fatalf("freePort: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestWaitReady(t *testing.T) {
 
 func TestWaitReadyTimesOut(t *testing.T) {
 	// Point at a free (unbound) port so connections fail until ctx expires.
-	p, err := freePort()
+	p, err := freePort(t.Context())
 	if err != nil {
 		t.Fatalf("freePort: %v", err)
 	}

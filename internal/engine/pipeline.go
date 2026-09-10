@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -50,7 +51,10 @@ func (e *Engine) maybeRecurseUnpack(ctx context.Context, opts *Options, tr Targe
 	nested.Output = filepath.Join(tr.Output, "decompiled")
 	nested.Depth = opts.Depth + 1
 	nested.Recipe = "" // auto-match each extracted file
-	_ = os.MkdirAll(nested.Output, 0755)
+	if err := os.MkdirAll(nested.Output, 0755); err != nil {
+		em.emitErr("unpack", extracted, fmt.Errorf("create nested output dir: %w", err))
+		return
+	}
 
 	em.send(PipelineEvent{
 		Phase:     "unpack",
@@ -265,6 +269,9 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 		}
 
 		// Check runtime dependencies
+		//nolint:contextcheck // reaches tools.Manager.RuntimePath -> systemDotNetHasAspNet10,
+		// a local `dotnet --list-runtimes` probe that already bounds itself to 10s. Threading a
+		// ctx would change RuntimePath's signature across engine/recipe/services for no gain.
 		if err := e.ensureRuntimeDeps(t.filePath, t.recipe, em, skipAssets); err != nil {
 			results = append(results, TargetResult{
 				Group: t.group, Recon: t.recon, Recipe: t.recipe,
@@ -274,6 +281,9 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 		}
 
 		// Check required tools
+		//nolint:contextcheck // reaches tools.Manager.Install -> installFromGitHub, which builds
+		// its own context. Making tool downloads cancellable from the pipeline needs a ctx
+		// parameter on the public Manager.Install API — a real change, tracked separately.
 		if err := e.ensureTools(t.filePath, t.recipe, em, skipAssets); err != nil {
 			results = append(results, TargetResult{
 				Group: t.group, Recon: t.recon, Recipe: t.recipe, Error: err,
@@ -349,8 +359,12 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 
 	// Write summary.json
 	summary := buildSummary(results, time.Since(startTime))
-	summaryJSON, _ := json.MarshalIndent(summary, "", "  ")
-	os.WriteFile(filepath.Join(opts.Output, "summary.json"), summaryJSON, 0644)
+	summaryJSON, err := json.MarshalIndent(summary, "", "  ")
+	if err != nil {
+		em.emitWarn("done", opts.Output, fmt.Sprintf("could not encode summary.json: %v", err))
+	} else if err := os.WriteFile(filepath.Join(opts.Output, "summary.json"), summaryJSON, 0644); err != nil {
+		em.emitWarn("done", opts.Output, fmt.Sprintf("could not write summary.json: %v", err))
+	}
 
 	return nil
 }
@@ -380,6 +394,9 @@ func (e *Engine) classifyTarget(
 	case scanner.GroupUnityIL2CPP:
 		reconResult.Kind = recon.UnityIL2CPP
 		reconResult.Fallback = false
+	case scanner.GroupStandalone, scanner.GroupDotNetApp, scanner.GroupDelphiApp:
+		// No engine-level override: recon's own classification is authoritative
+		// for these groups.
 	}
 
 	// Emit enriched recon event
@@ -607,12 +624,19 @@ func fatalMissingTools(names []string) []string {
 
 // contains reports whether s contains v.
 func contains(s []string, v string) bool {
-	for _, x := range s {
-		if x == v {
-			return true
-		}
+	return slices.Contains(s, v)
+}
+
+// writeReconJSON persists the recon result next to the decompiled output.
+func writeReconJSON(targetOutput string, reconResult recon.Result) error {
+	data, err := json.MarshalIndent(reconResult, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode recon.json: %w", err)
 	}
-	return false
+	if err := os.WriteFile(filepath.Join(targetOutput, "recon.json"), data, 0644); err != nil {
+		return fmt.Errorf("write recon.json: %w", err)
+	}
+	return nil
 }
 
 // executeRecipe runs the recipe, forwards progress/log events, saves recon.json.
@@ -712,8 +736,9 @@ func (e *Engine) executeRecipe(
 	<-done
 
 	// Save recon.json per target
-	reconJSON, _ := json.MarshalIndent(reconResult, "", "  ")
-	os.WriteFile(filepath.Join(targetOutput, "recon.json"), reconJSON, 0644)
+	if err := writeReconJSON(targetOutput, reconResult); err != nil {
+		em.emitWarn("execute", filePath, err.Error())
+	}
 
 	// Cleanup intermediates if configured and execution succeeded.
 	// NOTE: original/ is intentionally NOT removed here — recipes always
@@ -723,12 +748,12 @@ func (e *Engine) executeRecipe(
 		// Legacy IL2CPP layout: metadata/DummyDll (kept for older runs; no-op on
 		// the structured dump/dll layout, which is now a deliverable and is NOT
 		// removed — see dump/cs + dump/dll under the IL2CPP structured layout).
-		os.RemoveAll(filepath.Join(targetOutput, "metadata", "DummyDll"))
+		_ = os.RemoveAll(filepath.Join(targetOutput, "metadata", "DummyDll"))
 		// Transient spawn TEMP/cwd + the legacy raw Il2CppDumper output mirror live
 		// under .tmp; safe to drop once the dump landed in dump/dll.
-		os.RemoveAll(filepath.Join(targetOutput, ".tmp"))
+		_ = os.RemoveAll(filepath.Join(targetOutput, ".tmp"))
 		// Remove raw strings.txt (structured strings.json is kept)
-		os.Remove(filepath.Join(targetOutput, "strings.txt"))
+		_ = os.Remove(filepath.Join(targetOutput, "strings.txt"))
 	}
 
 	tr := TargetResult{
@@ -864,12 +889,13 @@ func (e *Engine) executeRecipeWithFilter(
 
 	// For the final phase (ghidra), emit completion events and save recon
 	if stepFilter == "ghidra" {
-		reconJSON, _ := json.MarshalIndent(reconResult, "", "  ")
-		os.WriteFile(filepath.Join(targetOutput, "recon.json"), reconJSON, 0644)
+		if err := writeReconJSON(targetOutput, reconResult); err != nil {
+			em.emitWarn("execute", filePath, err.Error())
+		}
 
 		// original/ intentionally kept (see note in executeRecipe cleanup).
 		if execErr == nil && !e.cfg.KeepIntermediates {
-			os.Remove(filepath.Join(targetOutput, "strings.txt"))
+			_ = os.Remove(filepath.Join(targetOutput, "strings.txt"))
 		}
 
 		if execErr != nil {
@@ -991,9 +1017,9 @@ func scanOutputDir(dir string) []string {
 	totalDirs := 0
 	var totalSize int64
 
-	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // unreadable entry: skip it, keep summarising the rest of the tree
 		}
 		if d.IsDir() {
 			totalDirs++

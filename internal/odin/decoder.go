@@ -135,7 +135,7 @@ func (d *decoder) run() {
 					total, count, bytesPer, d.r.remaining(), d.r.pos())))
 			}
 			raw := make([]byte, total)
-			for k := 0; k < len(raw); k++ {
+			for k := range raw {
 				if d.r.end() {
 					panic(decodeError(fmt.Sprintf("truncated primarray: got %d of %d bytes at %d", k, len(raw), d.r.pos())))
 				}

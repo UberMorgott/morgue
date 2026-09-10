@@ -134,35 +134,56 @@ func (b *treeBuilder) primArrayValue(t tok) any {
 
 // scalarValue normalises a scalar token to a JSON-friendly native value.
 func scalarValue(t tok) any {
+	// A value whose Go type disagrees with the token kind means the decoder read a
+	// malformed blob; fall through and hand back the raw value untouched.
 	switch t.kind {
 	case "int":
-		return int64(t.value.(int32))
+		if v, ok := t.value.(int32); ok {
+			return int64(v)
+		}
 	case "uint":
-		return uint64(t.value.(uint32))
+		if v, ok := t.value.(uint32); ok {
+			return uint64(v)
+		}
 	case "long":
-		return t.value.(int64)
+		if v, ok := t.value.(int64); ok {
+			return v
+		}
 	case "ulong":
-		return t.value.(uint64)
+		if v, ok := t.value.(uint64); ok {
+			return v
+		}
 	case "short":
-		return int64(t.value.(int16))
+		if v, ok := t.value.(int16); ok {
+			return int64(v)
+		}
 	case "ushort":
-		return int64(t.value.(uint16))
+		if v, ok := t.value.(uint16); ok {
+			return int64(v)
+		}
 	case "sbyte":
-		return int64(t.value.(int8))
+		if v, ok := t.value.(int8); ok {
+			return int64(v)
+		}
 	case "byte":
-		return int64(t.value.(byte))
+		if v, ok := t.value.(byte); ok {
+			return int64(v)
+		}
 	case "float":
-		return clean32(t.value.(float32))
+		if v, ok := t.value.(float32); ok {
+			return clean32(v)
+		}
 	case "double":
-		return t.value.(float64)
+		if v, ok := t.value.(float64); ok {
+			return v
+		}
 	case "bool":
-		return t.value.(bool)
-	case "string", "char":
-		return t.value
-	default:
-		// decimal/guid placeholders ("?") and anything unexpected
-		return t.value
+		if v, ok := t.value.(bool); ok {
+			return v
+		}
 	}
+	// string/char, decimal/guid placeholders ("?") and anything unexpected
+	return t.value
 }
 
 // refValue renders a reference token as {"$ref": "<id>"}. Internal references
@@ -206,7 +227,9 @@ func primArrayToValue(raw []byte, bytesPer int, ptype string) any {
 	isDouble := strings.Contains(ptype, "Double")
 	isLong := strings.Contains(ptype, "Int64")
 	out := make([]any, 0, count)
-	for k := 0; k < count; k++ {
+	// The int casts below are deliberate two's-complement reinterpretations of
+	// signed little-endian payloads, not value-range conversions.
+	for k := range count {
 		off := k * bytesPer
 		switch {
 		case isFloat && bytesPer == 4:
@@ -214,13 +237,13 @@ func primArrayToValue(raw []byte, bytesPer int, ptype string) any {
 		case isDouble && bytesPer == 8:
 			out = append(out, math.Float64frombits(binary.LittleEndian.Uint64(raw[off:])))
 		case isLong && bytesPer == 8:
-			out = append(out, int64(binary.LittleEndian.Uint64(raw[off:])))
+			out = append(out, int64(binary.LittleEndian.Uint64(raw[off:]))) //nolint:gosec // signed int64 payload read as its raw bits
 		case bytesPer == 4:
-			out = append(out, int64(int32(binary.LittleEndian.Uint32(raw[off:]))))
+			out = append(out, int64(int32(binary.LittleEndian.Uint32(raw[off:])))) //nolint:gosec // signed int32 payload read as its raw bits
 		case bytesPer == 8:
-			out = append(out, int64(binary.LittleEndian.Uint64(raw[off:])))
+			out = append(out, int64(binary.LittleEndian.Uint64(raw[off:]))) //nolint:gosec // signed int64 payload read as its raw bits
 		case bytesPer == 2:
-			out = append(out, int64(int16(binary.LittleEndian.Uint16(raw[off:]))))
+			out = append(out, int64(int16(binary.LittleEndian.Uint16(raw[off:])))) //nolint:gosec // signed int16 payload read as its raw bits
 		default:
 			out = append(out, int64(raw[off]))
 		}

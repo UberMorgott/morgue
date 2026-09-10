@@ -52,8 +52,6 @@ const (
 	pbmSetPos   = 0x0402 // PBM_SETPOS = WM_USER+2
 
 	iccProgressClass = 0x00000020
-
-	cwUseDefault = ^uintptr(0) >> 1 // CW_USEDEFAULT — not used, we center manually
 )
 
 type wndClassExW struct {
@@ -90,11 +88,11 @@ type initCommonControlsExInfo struct {
 }
 
 type progressWindow struct {
-	hwnd      uintptr
-	labelHwnd uintptr
-	barHwnd   uintptr
+	hwnd       uintptr
+	labelHwnd  uintptr
+	barHwnd    uintptr
 	detailHwnd uintptr
-	done      chan struct{}
+	done       chan struct{}
 }
 
 // showProgress creates and shows a native Win32 progress window.
@@ -115,7 +113,9 @@ func showProgress(title string) *progressWindow {
 			size: uint32(unsafe.Sizeof(initCommonControlsExInfo{})),
 			icc:  iccProgressClass,
 		}
-		procInitCommonControlsEx.Call(uintptr(unsafe.Pointer(&icc)))
+		//nolint:gosec // G103: INITCOMMONCONTROLSEX is passed by pointer — the Win32
+		// calling convention; no pointer arithmetic.
+		_, _, _ = procInitCommonControlsEx.Call(uintptr(unsafe.Pointer(&icc)))
 
 		hInstance, _, _ := procGetModuleHandleW.Call(0)
 
@@ -129,7 +129,9 @@ func showProgress(title string) *progressWindow {
 			className:  className,
 		}
 
-		procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wc)))
+		//nolint:gosec // G103: WNDCLASSEX is passed by pointer — the Win32 calling
+		// convention; no pointer arithmetic.
+		_, _, _ = procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wc)))
 
 		// Get screen dimensions for centering
 		screenW, _, _ := procGetSystemMetrics.Call(smCxScreen)
@@ -142,6 +144,8 @@ func showProgress(title string) *progressWindow {
 
 		titlePtr, _ := syscall.UTF16PtrFromString(title)
 
+		//nolint:gosec // G103: CreateWindowExW takes UTF-16 class/title strings as
+		// raw pointers; syscall.UTF16PtrFromString results are kept alive by locals.
 		pw.hwnd, _, _ = procCreateWindowExW.Call(
 			wsExTopmost,
 			uintptr(unsafe.Pointer(className)),
@@ -155,6 +159,7 @@ func showProgress(title string) *progressWindow {
 		staticClass, _ := syscall.UTF16PtrFromString("STATIC")
 		emptyText, _ := syscall.UTF16PtrFromString("")
 
+		//nolint:gosec // G103: same CreateWindowExW UTF-16 pointer convention as above.
 		pw.labelHwnd, _, _ = procCreateWindowExW.Call(
 			0,
 			uintptr(unsafe.Pointer(staticClass)),
@@ -167,6 +172,7 @@ func showProgress(title string) *progressWindow {
 		// Progress bar
 		progressClass, _ := syscall.UTF16PtrFromString("msctls_progress32")
 
+		//nolint:gosec // G103: same CreateWindowExW UTF-16 pointer convention as above.
 		pw.barHwnd, _, _ = procCreateWindowExW.Call(
 			0,
 			uintptr(unsafe.Pointer(progressClass)),
@@ -177,9 +183,10 @@ func showProgress(title string) *progressWindow {
 		)
 
 		// Set progress bar range 0-100 (PBM_SETRANGE32: wParam=min, lParam=max)
-		procSendMessageW.Call(pw.barHwnd, pbmSetRange, 0, 100)
+		_, _, _ = procSendMessageW.Call(pw.barHwnd, pbmSetRange, 0, 100)
 
 		// Detail label
+		//nolint:gosec // G103: same CreateWindowExW UTF-16 pointer convention as above.
 		pw.detailHwnd, _, _ = procCreateWindowExW.Call(
 			0,
 			uintptr(unsafe.Pointer(staticClass)),
@@ -189,23 +196,29 @@ func showProgress(title string) *progressWindow {
 			pw.hwnd, 0, hInstance, 0,
 		)
 
-		procShowWindow.Call(pw.hwnd, swShow)
-		procUpdateWindow.Call(pw.hwnd)
+		_, _, _ = procShowWindow.Call(pw.hwnd, swShow)
+		_, _, _ = procUpdateWindow.Call(pw.hwnd)
 
 		close(ready)
 
 		// Message pump
 		var m msg
 		for {
+			//nolint:gosec // G103: passing the MSG struct by pointer is GetMessageW's
+			// calling convention.
 			ret, _, _ := procGetMessageW.Call(
 				uintptr(unsafe.Pointer(&m)),
 				0, 0, 0,
 			)
-			if ret == 0 || int32(ret) == -1 {
+			// 0 = WM_QUIT, all-ones = -1 = error. Compared as uintptr so no
+			// narrowing conversion is needed.
+			if ret == 0 || ret == ^uintptr(0) {
 				break
 			}
-			procTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
-			procDispatchMessageW.Call(uintptr(unsafe.Pointer(&m)))
+			//nolint:gosec // G103: same MSG-by-pointer convention as GetMessageW above.
+			_, _, _ = procTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
+			//nolint:gosec // G103: same MSG-by-pointer convention as GetMessageW above.
+			_, _, _ = procDispatchMessageW.Call(uintptr(unsafe.Pointer(&m)))
 		}
 
 		close(pw.done)
@@ -218,10 +231,10 @@ func showProgress(title string) *progressWindow {
 func progressWndProc(hwnd uintptr, umsg uint32, wParam, lParam uintptr) uintptr {
 	switch umsg {
 	case wmClose:
-		procDestroyWindow.Call(hwnd)
+		_, _, _ = procDestroyWindow.Call(hwnd)
 		return 0
 	case wmDestroy:
-		procPostQuitMessage.Call(0)
+		_, _, _ = procPostQuitMessage.Call(0)
 		return 0
 	default:
 		ret, _, _ := procDefWindowProcW.Call(hwnd, uintptr(umsg), wParam, lParam)
@@ -232,24 +245,26 @@ func progressWndProc(hwnd uintptr, umsg uint32, wParam, lParam uintptr) uintptr 
 // SetStatus updates the main status text.
 func (p *progressWindow) SetStatus(text string) {
 	ptr, _ := syscall.UTF16PtrFromString(text)
-	procSetWindowTextW.Call(p.labelHwnd, uintptr(unsafe.Pointer(ptr)))
+	//nolint:gosec // G103: SetWindowTextW takes a UTF-16 string as a raw pointer.
+	_, _, _ = procSetWindowTextW.Call(p.labelHwnd, uintptr(unsafe.Pointer(ptr)))
 }
 
 // SetDetail updates the detail text (e.g. bytes downloaded).
 func (p *progressWindow) SetDetail(text string) {
 	ptr, _ := syscall.UTF16PtrFromString(text)
-	procSetWindowTextW.Call(p.detailHwnd, uintptr(unsafe.Pointer(ptr)))
+	//nolint:gosec // G103: SetWindowTextW takes a UTF-16 string as a raw pointer.
+	_, _, _ = procSetWindowTextW.Call(p.detailHwnd, uintptr(unsafe.Pointer(ptr)))
 }
 
 // SetProgress sets the progress bar position (0-100).
 func (p *progressWindow) SetProgress(percent int) {
-	procSendMessageW.Call(p.barHwnd, pbmSetPos, uintptr(percent), 0)
+	_, _, _ = procSendMessageW.Call(p.barHwnd, pbmSetPos, uintptr(percent), 0)
 }
 
 // Close destroys the progress window.
 // Uses PostMessageW(WM_CLOSE) instead of DestroyWindow because
 // the window must be destroyed from its owning thread.
 func (p *progressWindow) Close() {
-	procPostMessageW.Call(p.hwnd, wmClose, 0, 0)
+	_, _, _ = procPostMessageW.Call(p.hwnd, wmClose, 0, 0)
 	<-p.done
 }

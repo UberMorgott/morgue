@@ -106,11 +106,11 @@ func resolveNames(srcDir string) (resolveStats, error) {
 // collectRealNames streams symbols.ndjson and returns the set of names that are
 // not Ghidra-anonymous (FUN_/DAT_/...). O(named) memory.
 func collectRealNames(symPath string) (map[string]bool, error) {
-	f, err := os.Open(symPath)
+	f, err := os.Open(symPath) //nolint:gosec // G304: path is a fixed indexes/*.ndjson|csv file inside the pipeline's own output tree
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	names := map[string]bool{}
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, scannerInitBuf), scannerMaxBuf)
@@ -135,13 +135,13 @@ func collectRealNames(symPath string) (map[string]bool, error) {
 // and returns address->newName (bounded by the resolved count). Accepted names
 // are added to knownNames so duplicates are skipped (never two funcs to one name).
 func buildRenameMap(strRefsPath, nameMapPath string, knownNames map[string]bool) (map[string]string, error) {
-	in, err := os.Open(strRefsPath)
+	in, err := os.Open(strRefsPath) //nolint:gosec // G304: path is a fixed indexes/*.ndjson|csv file inside the pipeline's own output tree
 	if err != nil {
 		return nil, err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 
-	out, err := os.Create(nameMapPath)
+	out, err := os.Create(nameMapPath) //nolint:gosec // G304: path is a fixed indexes/*.ndjson|csv file inside the pipeline's own output tree
 	if err != nil {
 		return nil, err
 	}
@@ -149,8 +149,8 @@ func buildRenameMap(strRefsPath, nameMapPath string, knownNames map[string]bool)
 	w := csv.NewWriter(outBuf)
 	defer func() {
 		w.Flush()
-		outBuf.Flush()
-		out.Close()
+		_ = outBuf.Flush()
+		_ = out.Close()
 	}()
 	if err := w.Write([]string{"address", "old_name", "new_name"}); err != nil {
 		return nil, err
@@ -215,14 +215,14 @@ func buildRenameMap(strRefsPath, nameMapPath string, knownNames map[string]bool)
 // applyRenamesToSymbols stream-rewrites symbols.ndjson, replacing the name of any
 // entry whose address is in renameByAddr, then atomically replaces the file.
 func applyRenamesToSymbols(symPath string, renameByAddr map[string]string) error {
-	in, err := os.Open(symPath)
+	in, err := os.Open(symPath) //nolint:gosec // G304: path is a fixed indexes/*.ndjson|csv file inside the pipeline's own output tree
 	if err != nil {
 		return err
 	}
 	tmp := symPath + ".tmp"
-	out, err := os.Create(tmp)
+	out, err := os.Create(tmp) //nolint:gosec // G304: path is a fixed indexes/*.ndjson|csv file inside the pipeline's own output tree
 	if err != nil {
-		in.Close()
+		_ = in.Close()
 		return err
 	}
 	outBuf := bufio.NewWriterSize(out, 64*1024)
@@ -243,25 +243,25 @@ func applyRenamesToSymbols(symPath string, renameByAddr map[string]string) error
 			e.Name = nn
 		}
 		if encErr := enc.Encode(&e); encErr != nil {
-			outBuf.Flush()
-			out.Close()
-			in.Close()
+			_ = outBuf.Flush()
+			_ = out.Close()
+			_ = in.Close()
 			return encErr
 		}
 	}
 	if scErr := sc.Err(); scErr != nil {
-		outBuf.Flush()
-		out.Close()
-		in.Close()
+		_ = outBuf.Flush()
+		_ = out.Close()
+		_ = in.Close()
 		return scErr
 	}
 	if err := outBuf.Flush(); err != nil {
-		out.Close()
-		in.Close()
+		_ = out.Close()
+		_ = in.Close()
 		return err
 	}
-	out.Close()
-	in.Close()
+	_ = out.Close()
+	_ = in.Close()
 	return os.Rename(tmp, symPath)
 }
 
@@ -269,14 +269,14 @@ func applyRenamesToSymbols(symPath string, renameByAddr map[string]string) error
 // real reference: a FUN_<hex> address symbol, a C++-qualified name, or a known
 // real name. Bare intrinsics/pseudo-ops are dropped. Atomic replace.
 func filterCallers(callersPath string, knownNames map[string]bool) error {
-	in, err := os.Open(callersPath)
+	in, err := os.Open(callersPath) //nolint:gosec // G304: path is a fixed indexes/*.ndjson|csv file inside the pipeline's own output tree
 	if err != nil {
 		return err
 	}
 	tmp := callersPath + ".tmp"
-	out, err := os.Create(tmp)
+	out, err := os.Create(tmp) //nolint:gosec // G304: path is a fixed indexes/*.ndjson|csv file inside the pipeline's own output tree
 	if err != nil {
-		in.Close()
+		_ = in.Close()
 		return err
 	}
 	outBuf := bufio.NewWriterSize(out, 64*1024)
@@ -288,9 +288,9 @@ func filterCallers(callersPath string, knownNames map[string]bool) error {
 
 	fail := func(e error) error {
 		w.Flush()
-		outBuf.Flush()
-		out.Close()
-		in.Close()
+		_ = outBuf.Flush()
+		_ = out.Close()
+		_ = in.Close()
 		return e
 	}
 	header := true
@@ -326,8 +326,8 @@ func filterCallers(callersPath string, knownNames map[string]bool) error {
 	if err := outBuf.Flush(); err != nil {
 		return fail(err)
 	}
-	out.Close()
-	in.Close()
+	_ = out.Close()
+	_ = in.Close()
 	return os.Rename(tmp, callersPath)
 }
 

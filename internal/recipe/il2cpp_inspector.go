@@ -136,6 +136,9 @@ func runDumpStage(ctx *Context, metadataPath, metaDir, dummyDllDir string, versi
 		var runErr error
 		switch tool {
 		case "il2cppinspector":
+			//nolint:contextcheck // reaches aspNetRuntimeDir -> Manager.RuntimePath ->
+			// systemDotNetHasAspNet10, a local `dotnet --list-runtimes` probe with its own
+			// 10s timeout; the dump itself does run under ctx.Ctx.
 			runErr = runInspectorDump(ctx, metadataPath, dummyDllDir, logTool)
 		case "il2cppdumper":
 			runErr = runLegacyDump(ctx, metadataPath, metaDir, dummyDllDir, logTool)

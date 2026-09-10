@@ -64,8 +64,8 @@ func attachParentConsole() {
 		0,
 		0,
 	); err == nil {
-		windows.SetStdHandle(windows.STD_OUTPUT_HANDLE, out)
-		windows.SetStdHandle(windows.STD_ERROR_HANDLE, out)
+		_ = windows.SetStdHandle(windows.STD_OUTPUT_HANDLE, out)
+		_ = windows.SetStdHandle(windows.STD_ERROR_HANDLE, out)
 		f := os.NewFile(uintptr(out), "CONOUT$")
 		os.Stdout = f
 		os.Stderr = f
@@ -80,7 +80,7 @@ func attachParentConsole() {
 		0,
 		0,
 	); err == nil {
-		windows.SetStdHandle(windows.STD_INPUT_HANDLE, in)
+		_ = windows.SetStdHandle(windows.STD_INPUT_HANDLE, in)
 		os.Stdin = os.NewFile(uintptr(in), "CONIN$")
 	}
 }

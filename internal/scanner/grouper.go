@@ -17,9 +17,7 @@ func groupFiles(files []string, pakFiles []string) []TargetGroup {
 	// Pass 0: Unreal Engine. Collapse all pak/IoStore containers into a single
 	// representative target so the ue5 recipe runs exactly once for the whole
 	// pak set (it walks up from the target to the game root and finds all paks).
-	for _, g := range findUnreal(pakFiles) {
-		groups = append(groups, g)
-	}
+	groups = append(groups, findUnreal(pakFiles)...)
 
 	// Pass 1: find Unity IL2CPP groups
 	for _, g := range findUnityIL2CPP(files) {
@@ -354,7 +352,7 @@ func representativePak(files []string) string {
 // to find the game root (parent with Content/ subfolder).
 func findUnrealRoot(pakDir string) string {
 	dir := pakDir
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			break

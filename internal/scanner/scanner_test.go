@@ -13,21 +13,21 @@ func setupTestDir(t *testing.T) string {
 
 	// Unity IL2CPP layout
 	il2cpp := filepath.Join(root, "UnityIL2CPP")
-	os.MkdirAll(filepath.Join(il2cpp, "UnityIL2CPP_Data", "il2cpp_data", "Metadata"), 0755)
-	os.WriteFile(filepath.Join(il2cpp, "GameAssembly.dll"), []byte("fake"), 0644)
-	os.WriteFile(filepath.Join(il2cpp, "UnityIL2CPP_Data", "il2cpp_data", "Metadata", "global-metadata.dat"), []byte("fake"), 0644)
+	_ = os.MkdirAll(filepath.Join(il2cpp, "UnityIL2CPP_Data", "il2cpp_data", "Metadata"), 0755)
+	_ = os.WriteFile(filepath.Join(il2cpp, "GameAssembly.dll"), []byte("fake"), 0644)
+	_ = os.WriteFile(filepath.Join(il2cpp, "UnityIL2CPP_Data", "il2cpp_data", "Metadata", "global-metadata.dat"), []byte("fake"), 0644)
 
 	// Unity Mono layout
 	mono := filepath.Join(root, "UnityMono")
-	os.MkdirAll(filepath.Join(mono, "UnityMono_Data", "Managed"), 0755)
-	os.WriteFile(filepath.Join(mono, "UnityMono_Data", "Managed", "Assembly-CSharp.dll"), []byte("fake"), 0644)
-	os.WriteFile(filepath.Join(mono, "UnityMono_Data", "Managed", "UnityEngine.dll"), []byte("fake"), 0644)
+	_ = os.MkdirAll(filepath.Join(mono, "UnityMono_Data", "Managed"), 0755)
+	_ = os.WriteFile(filepath.Join(mono, "UnityMono_Data", "Managed", "Assembly-CSharp.dll"), []byte("fake"), 0644)
+	_ = os.WriteFile(filepath.Join(mono, "UnityMono_Data", "Managed", "UnityEngine.dll"), []byte("fake"), 0644)
 
 	// Standalone DLLs
 	standalone := filepath.Join(root, "standalone")
-	os.MkdirAll(standalone, 0755)
-	os.WriteFile(filepath.Join(standalone, "app.exe"), []byte("fake"), 0644)
-	os.WriteFile(filepath.Join(standalone, "lib.dll"), []byte("fake"), 0644)
+	_ = os.MkdirAll(standalone, 0755)
+	_ = os.WriteFile(filepath.Join(standalone, "app.exe"), []byte("fake"), 0644)
+	_ = os.WriteFile(filepath.Join(standalone, "lib.dll"), []byte("fake"), 0644)
 
 	return root
 }
@@ -67,6 +67,8 @@ func TestGroupFiles(t *testing.T) {
 			hasMono = true
 		case GroupStandalone:
 			hasStandalone = true
+		case GroupDotNetApp, GroupDelphiApp, GroupUnreal:
+			// Not produced by this fixture; nothing to assert.
 		}
 	}
 

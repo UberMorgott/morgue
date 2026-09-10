@@ -72,15 +72,15 @@ func TestParseUsmap_FutureVersion(t *testing.T) {
 func TestParseUsmap_ClampNameCount(t *testing.T) {
 	body := &bytes.Buffer{}
 	// nameSize = 0x7FFFFFFF (claims ~2 billion names) but no data follows.
-	binary.Write(body, binary.LittleEndian, uint32(0x7FFFFFFF))
+	_ = binary.Write(body, binary.LittleEndian, uint32(0x7FFFFFFF))
 	payload := body.Bytes()
 
 	hdr := &bytes.Buffer{}
-	hdr.Write([]byte{0xC4, 0x30})                                // magic
-	hdr.WriteByte(0x00)                                          // version 0 (Initial) -> no versioning bool read
-	hdr.WriteByte(0x00)                                          // CompressionMethod None
-	binary.Write(hdr, binary.LittleEndian, uint32(len(payload))) // compSize
-	binary.Write(hdr, binary.LittleEndian, uint32(len(payload))) // decompSize (==comp)
+	hdr.Write([]byte{0xC4, 0x30})                                    // magic
+	hdr.WriteByte(0x00)                                              // version 0 (Initial) -> no versioning bool read
+	hdr.WriteByte(0x00)                                              // CompressionMethod None
+	_ = binary.Write(hdr, binary.LittleEndian, uint32(len(payload))) //nolint:gosec // G115: compSize, a small test fixture length
+	_ = binary.Write(hdr, binary.LittleEndian, uint32(len(payload))) //nolint:gosec // G115: decompSize (==comp), a small test fixture length
 	hdr.Write(payload)
 
 	_, err := parseUsmapBytes(hdr.Bytes())
@@ -93,10 +93,10 @@ func TestParseUsmap_ClampNameCount(t *testing.T) {
 func TestParseUsmap_ClampDecompSize(t *testing.T) {
 	hdr := &bytes.Buffer{}
 	hdr.Write([]byte{0xC4, 0x30})
-	hdr.WriteByte(0x00)                                        // version 0
-	hdr.WriteByte(0x00)                                        // None
-	binary.Write(hdr, binary.LittleEndian, uint32(8))          // compSize
-	binary.Write(hdr, binary.LittleEndian, uint32(0xFFFFFFFF)) // decompSize huge
+	hdr.WriteByte(0x00)                                            // version 0
+	hdr.WriteByte(0x00)                                            // None
+	_ = binary.Write(hdr, binary.LittleEndian, uint32(8))          // compSize
+	_ = binary.Write(hdr, binary.LittleEndian, uint32(0xFFFFFFFF)) // decompSize huge
 	hdr.Write(make([]byte, 8))
 
 	if _, err := parseUsmapBytes(hdr.Bytes()); err == nil {

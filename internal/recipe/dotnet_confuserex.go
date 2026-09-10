@@ -27,8 +27,10 @@ func init() {
 	RegisterFirst(&DotnetConfuserEx{})
 }
 
-func (d *DotnetConfuserEx) Name() string        { return "dotnet-confuserex" }
-func (d *DotnetConfuserEx) Description() string { return "Deobfuscate an obfuscated .NET assembly (de4dot)" }
+func (d *DotnetConfuserEx) Name() string { return "dotnet-confuserex" }
+func (d *DotnetConfuserEx) Description() string {
+	return "Deobfuscate an obfuscated .NET assembly (de4dot)"
+}
 
 // Match handles any obfuscated managed assembly de4dot can attempt: the
 // ConfuserEx family by name, and the generic "Obfuscated" value from the
@@ -229,7 +231,7 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 			}
 		})
 		if r != nil {
-			os.WriteFile(stringsOut, []byte(r.Stdout), 0644)
+			_ = os.WriteFile(stringsOut, []byte(r.Stdout), 0644)
 		}
 		// Analyze and structure strings
 		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
@@ -402,9 +404,9 @@ func (d *DotnetConfuserEx) cfxStringsHost(ctx *Context, stage, interDir string, 
 		line = strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "REWROTE:"):
-			fmt.Sscanf(strings.TrimPrefix(line, "REWROTE:"), "%d", &rewrote)
+			_, _ = fmt.Sscanf(strings.TrimPrefix(line, "REWROTE:"), "%d", &rewrote)
 		case strings.HasPrefix(line, "RESIDUAL:"):
-			fmt.Sscanf(strings.TrimPrefix(line, "RESIDUAL:"), "%d", &residual)
+			_, _ = fmt.Sscanf(strings.TrimPrefix(line, "RESIDUAL:"), "%d", &residual)
 		case strings.HasPrefix(line, "MODE:"), strings.HasPrefix(line, "KEY:"),
 			strings.HasPrefix(line, "DECRYPTOR:"), strings.HasPrefix(line, "SHAPE:"),
 			strings.HasPrefix(line, "KEYRES:"), strings.HasPrefix(line, "KEYNOTE:"):
@@ -441,7 +443,8 @@ func (d *DotnetConfuserEx) cfxStringsHost(ctx *Context, stage, interDir string, 
 //
 // CLI:  cfxcflow <input.dll> <output.dll> [report.tsv]
 // Markers (exit 0 even when nothing matched): FAMILY/PROVIDERS/METHODS/
-//   DEFLATTENED/BLOCKSREMOVED/FOLDED/WITHHELD/VERIFY:ok|fail/MODE:none.
+//
+//	DEFLATTENED/BLOCKSREMOVED/FOLDED/WITHHELD/VERIFY:ok|fail/MODE:none.
 //
 // Returns outPath only when the pass did real, verified work — either full
 // deflattening OR pure provider(literal) call-site folding — i.e.
@@ -461,13 +464,13 @@ func (d *DotnetConfuserEx) runCflowPass(ctx *Context, dotnet, cflowDLL, stage, o
 		line = strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "DEFLATTENED:"):
-			fmt.Sscanf(strings.TrimPrefix(line, "DEFLATTENED:"), "%d", &deflattened)
+			_, _ = fmt.Sscanf(strings.TrimPrefix(line, "DEFLATTENED:"), "%d", &deflattened)
 		case strings.HasPrefix(line, "BLOCKSREMOVED:"):
-			fmt.Sscanf(strings.TrimPrefix(line, "BLOCKSREMOVED:"), "%d", &blocksRemoved)
+			_, _ = fmt.Sscanf(strings.TrimPrefix(line, "BLOCKSREMOVED:"), "%d", &blocksRemoved)
 		case strings.HasPrefix(line, "FOLDED:"):
-			fmt.Sscanf(strings.TrimPrefix(line, "FOLDED:"), "%d", &folded)
+			_, _ = fmt.Sscanf(strings.TrimPrefix(line, "FOLDED:"), "%d", &folded)
 		case strings.HasPrefix(line, "WITHHELD:"):
-			fmt.Sscanf(strings.TrimPrefix(line, "WITHHELD:"), "%d", &withheld)
+			_, _ = fmt.Sscanf(strings.TrimPrefix(line, "WITHHELD:"), "%d", &withheld)
 		case strings.HasPrefix(line, "VERIFY:"):
 			verifyOK = strings.TrimPrefix(line, "VERIFY:") == "ok"
 			logTool("cfxcflow", label+": "+line)
@@ -504,13 +507,13 @@ func (d *DotnetConfuserEx) runCflowPass(ctx *Context, dotnet, cflowDLL, stage, o
 // decryption was incomplete.
 func countPUAInSource(dir string) int {
 	total := 0
-	filepath.WalkDir(dir, func(path string, de os.DirEntry, err error) error {
+	_ = filepath.WalkDir(dir, func(path string, de os.DirEntry, err error) error {
 		if err != nil || de.IsDir() || filepath.Ext(path) != ".cs" {
-			return nil
+			return nil //nolint:nilerr // best effort count: an unreadable entry is skipped, the walk continues
 		}
-		data, rerr := os.ReadFile(path)
+		data, rerr := os.ReadFile(path) //nolint:gosec // G304: path comes from walking the decompiler's own output dir
 		if rerr != nil {
-			return nil
+			return nil //nolint:nilerr // best effort count: an unreadable .cs is skipped, the walk continues
 		}
 		for _, r := range string(data) {
 			if r >= 0xE000 && r <= 0xF8FF {
@@ -599,7 +602,7 @@ func (d *DotnetConfuserEx) resolveDotnetSDK(ctx *Context) string {
 	seen := map[string]bool{}
 	for _, c := range candidates {
 		if c != "dotnet" {
-			if _, err := os.Stat(c); err != nil {
+			if _, err := os.Stat(c); err != nil { //nolint:gosec // G703: candidates are this file's own literals plus %ProgramFiles%\dotnet\dotnet.exe; nothing user-supplied reaches c
 				continue
 			}
 		}
@@ -724,14 +727,11 @@ func (d *DotnetConfuserEx) extractEmbedded(ctx *Context, logTool func(string, st
 		switch {
 		case strings.HasPrefix(line, "EXTRACTED:"):
 			rest := strings.TrimPrefix(line, "EXTRACTED:")
-			name := rest
-			if i := strings.Index(rest, " "); i >= 0 {
-				name = rest[:i]
-			}
+			name, _, _ := strings.Cut(rest, " ")
 			extracted = append(extracted, name)
 			logTool("cfxextract", "Extracted "+name)
 		case strings.HasPrefix(line, "EXTRACT_COUNT:"):
-			fmt.Sscanf(strings.TrimPrefix(line, "EXTRACT_COUNT:"), "%d", &count)
+			_, _ = fmt.Sscanf(strings.TrimPrefix(line, "EXTRACT_COUNT:"), "%d", &count)
 		case strings.HasPrefix(line, "cctor-warn:") || strings.HasPrefix(line, "parts-warn:") || strings.HasPrefix(line, "APPLICATION_PARTS:"):
 			logTool("cfxextract", line)
 		}
@@ -762,7 +762,7 @@ func (d *DotnetConfuserEx) extractEmbedded(ctx *Context, logTool func(string, st
 		"extracted":       extracted,
 	}
 	if data, err := json.MarshalIndent(manifest, "", "  "); err == nil {
-		os.WriteFile(filepath.Join(outDir, "embedded_manifest.json"), data, 0644)
+		_ = os.WriteFile(filepath.Join(outDir, "embedded_manifest.json"), data, 0644)
 	}
 
 	logTool("cfxextract", fmt.Sprintf("Extracted %d embedded assemblies -> %s", count, outDir))
@@ -875,9 +875,9 @@ func (d *DotnetConfuserEx) decompileExtracted(
 					line = strings.TrimSpace(line)
 					switch {
 					case strings.HasPrefix(line, "REWROTE:"):
-						fmt.Sscanf(strings.TrimPrefix(line, "REWROTE:"), "%d", &rewrote)
+						_, _ = fmt.Sscanf(strings.TrimPrefix(line, "REWROTE:"), "%d", &rewrote)
 					case strings.HasPrefix(line, "RESIDUAL:"):
-						fmt.Sscanf(strings.TrimPrefix(line, "RESIDUAL:"), "%d", &residual)
+						_, _ = fmt.Sscanf(strings.TrimPrefix(line, "RESIDUAL:"), "%d", &residual)
 					case strings.HasPrefix(line, "MODE:"):
 						childMode = strings.TrimPrefix(line, "MODE:")
 						logTool("cfxstrings", name+": "+line)
@@ -976,13 +976,13 @@ func (d *DotnetConfuserEx) decompileExtracted(
 // decrypted plaintext now lives there) into a temp file and reuse analyzeStrings.
 func analyzeChildStrings(srcDir, outJSON string) {
 	var sb strings.Builder
-	filepath.WalkDir(srcDir, func(path string, de os.DirEntry, err error) error {
+	_ = filepath.WalkDir(srcDir, func(path string, de os.DirEntry, err error) error {
 		if err != nil || de.IsDir() || filepath.Ext(path) != ".cs" {
-			return nil
+			return nil //nolint:nilerr // best effort harvest: an unreadable entry is skipped, the walk continues
 		}
-		data, rerr := os.ReadFile(path)
+		data, rerr := os.ReadFile(path) //nolint:gosec // G304: path comes from walking the decompiler's own output dir
 		if rerr != nil {
-			return nil
+			return nil //nolint:nilerr // best effort harvest: an unreadable .cs is skipped, the walk continues
 		}
 		for _, m := range reCSharpStringLit.FindAllStringSubmatch(string(data), -1) {
 			sb.WriteString(m[1])
@@ -994,6 +994,6 @@ func analyzeChildStrings(srcDir, outJSON string) {
 	if err := os.WriteFile(tmp, []byte(sb.String()), 0644); err != nil {
 		return
 	}
-	defer os.Remove(tmp)
+	defer func() { _ = os.Remove(tmp) }()
 	analyzeStrings(tmp, outJSON)
 }

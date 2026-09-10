@@ -43,30 +43,30 @@ func (ts *TargetSelect) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		key := tea.Key(msg)
-		switch {
-		case key.Code == tea.KeyUp || key.Code == 'k':
+		switch key.Code {
+		case tea.KeyUp, 'k':
 			if ts.cursor > 0 {
 				ts.cursor--
 			}
-		case key.Code == tea.KeyDown || key.Code == 'j':
+		case tea.KeyDown, 'j':
 			if ts.cursor < len(ts.items)-1 {
 				ts.cursor++
 			}
-		case key.Code == ' ':
+		case ' ':
 			if !ts.items[ts.cursor].Skipped {
 				ts.items[ts.cursor].Selected = !ts.items[ts.cursor].Selected
 			}
-		case key.Code == 'a':
+		case 'a':
 			for i := range ts.items {
 				if !ts.items[i].Skipped {
 					ts.items[i].Selected = true
 				}
 			}
-		case key.Code == 'n':
+		case 'n':
 			for i := range ts.items {
 				ts.items[i].Selected = false
 			}
-		case key.Code == tea.KeyEnter:
+		case tea.KeyEnter:
 			ts.done = true
 		}
 	}
@@ -102,7 +102,7 @@ func (ts *TargetSelect) View() string {
 			name = dimStyle.Render(name)
 		}
 
-		b.WriteString(fmt.Sprintf("%s%s %s\n", cursor, checkbox, name))
+		fmt.Fprintf(&b, "%s%s %s\n", cursor, checkbox, name)
 	}
 
 	return b.String()

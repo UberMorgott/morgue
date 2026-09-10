@@ -153,7 +153,7 @@ func decrypterBodyMatches(f *peparser.File, rva uint32) bool {
 		return false
 	}
 	code, err := f.GetData(codeStart, codeSize)
-	if err != nil || uint32(len(code)) < codeSize {
+	if err != nil || len(code) < int(codeSize) {
 		return false
 	}
 	ldsfld, callvirt := 0, 0

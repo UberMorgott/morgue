@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/UberMorgott/morgue/internal/config"
-	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/recipe"
+	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/scanner"
 	"github.com/UberMorgott/morgue/internal/skiplist"
 	"github.com/UberMorgott/morgue/internal/tools"

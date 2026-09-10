@@ -4,7 +4,7 @@ package tools
 type Category int
 
 const (
-	CategoryDetector    Category = iota
+	CategoryDetector Category = iota
 	CategoryDecompiler
 	CategoryDeobfuscator
 	CategoryUnpacker
@@ -56,31 +56,31 @@ func (m Method) String() string {
 
 // ToolDef defines a tool that morgue depends on.
 type ToolDef struct {
-	Name        string
-	Description string
-	Category    Category
-	Method      Method
-	Repo        string // GitHub owner/repo
-	URL          string   // Direct download URL (for MethodDirectURL)
-	DownloadURLs []string // Multiple direct download URLs (for MethodDirectURL)
-	DotnetID      string // dotnet tool ID (for MethodDotnetTool)
-	DotnetVersion string // pinned version for dotnet tool install (optional)
-	AssetGlob   string // Glob pattern for matching GitHub release assets
-	SHA256      string // Expected SHA-256 hash of primary asset (empty = skip verification; populate for pinned versions)
-	Version       string // pinned release tag (e.g. "2026.2"); empty = latest
-	Binary      string // Expected executable name after install
-	Optional    bool
-	RuntimeDeps []RuntimeKind `json:"RuntimeDeps,omitempty"`
+	Name          string
+	Description   string
+	Category      Category
+	Method        Method
+	Repo          string   // GitHub owner/repo
+	URL           string   // Direct download URL (for MethodDirectURL)
+	DownloadURLs  []string // Multiple direct download URLs (for MethodDirectURL)
+	DotnetID      string   // dotnet tool ID (for MethodDotnetTool)
+	DotnetVersion string   // pinned version for dotnet tool install (optional)
+	AssetGlob     string   // Glob pattern for matching GitHub release assets
+	SHA256        string   // Expected SHA-256 hash of primary asset (empty = skip verification; populate for pinned versions)
+	Version       string   // pinned release tag (e.g. "2026.2"); empty = latest
+	Binary        string   // Expected executable name after install
+	Optional      bool
+	RuntimeDeps   []RuntimeKind `json:"RuntimeDeps,omitempty"`
 }
 
 // ToolStatus holds the installed state of a tool.
 type ToolStatus struct {
-	Name            string `json:"Name"`
-	Installed       bool   `json:"Installed"`
-	Path            string `json:"Path"`
-	Version         string `json:"Version"`
-	LatestVersion   string `json:"LatestVersion"`
-	UpdateAvailable bool   `json:"UpdateAvailable"`
+	Name            string        `json:"Name"`
+	Installed       bool          `json:"Installed"`
+	Path            string        `json:"Path"`
+	Version         string        `json:"Version"`
+	LatestVersion   string        `json:"LatestVersion"`
+	UpdateAvailable bool          `json:"UpdateAvailable"`
 	Category        string        `json:"Category"`
 	Description     string        `json:"Description"`
 	Optional        bool          `json:"Optional"`

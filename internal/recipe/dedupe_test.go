@@ -58,7 +58,7 @@ func TestDedupeFunctionBodies(t *testing.T) {
 	}
 
 	// duplicates.json must list the one group with its canonical + duplicate.
-	data, err := os.ReadFile(filepath.Join(srcDir, "indexes", "duplicates.json"))
+	data, err := os.ReadFile(filepath.Join(srcDir, "indexes", "duplicates.json")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("read duplicates.json: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestWriteGameViews(t *testing.T) {
 	}
 
 	// string_refs.game.csv must keep the game class, drop the engine class row.
-	sg, err := os.ReadFile(filepath.Join(idxDir, "string_refs.game.csv"))
+	sg, err := os.ReadFile(filepath.Join(idxDir, "string_refs.game.csv")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("read string_refs.game.csv: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestWriteGameViews(t *testing.T) {
 	}
 
 	// callers.game.csv must drop the edge whose caller is engine.
-	cg, err := os.ReadFile(filepath.Join(idxDir, "callers.game.csv"))
+	cg, err := os.ReadFile(filepath.Join(idxDir, "callers.game.csv")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("read callers.game.csv: %v", err)
 	}

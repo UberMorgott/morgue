@@ -42,7 +42,7 @@ func DecodeAssetValue(path string) (value any, meta AssetMeta, err error) {
 		}
 	}()
 
-	raw, e := os.ReadFile(path)
+	raw, e := os.ReadFile(path) //nolint:gosec // decoding a caller-chosen asset file IS this function's job; the path is a local extraction artifact, not attacker-controlled
 	if e != nil {
 		return nil, meta, e
 	}
@@ -168,7 +168,9 @@ func toInt64(v any) int64 {
 	case int64:
 		return n
 	case uint64:
-		return int64(n)
+		// A Unity fileID is an int64; YAML hands back uint64 only when the
+		// scalar exceeds MaxInt64, i.e. a negative id in two's-complement form.
+		return int64(n) //nolint:gosec // deliberate two's-complement round-trip of a negative fileID
 	case float64:
 		return int64(n)
 	case string:
@@ -182,16 +184,15 @@ func toInt64(v any) int64 {
 // fails; it scans for m_Name and the m_Script guid.
 func fillMetaRegex(s string, meta *AssetMeta) {
 	if meta.Name == "" {
-		if i := strings.Index(s, "m_Name:"); i >= 0 {
-			rest := s[i+len("m_Name:"):]
+		if _, rest, found := strings.Cut(s, "m_Name:"); found {
 			if nl := strings.IndexAny(rest, "\r\n"); nl >= 0 {
 				meta.Name = strings.TrimSpace(rest[:nl])
 			}
 		}
 	}
 	if meta.Guid == "" {
-		if i := strings.Index(s, "guid:"); i >= 0 {
-			rest := strings.TrimSpace(s[i+len("guid:"):])
+		if _, after, found := strings.Cut(s, "guid:"); found {
+			rest := strings.TrimSpace(after)
 			end := strings.IndexAny(rest, ",}\r\n ")
 			if end < 0 {
 				end = len(rest)

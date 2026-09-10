@@ -42,7 +42,7 @@ func organizeDefs(opts Options, scriptMap map[string]string) defResult {
 	var assets []string
 	_ = filepath.WalkDir(opts.ExportDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
-			return nil
+			return nil //nolint:nilerr // an unreadable entry is skipped so the rest of the export still decodes
 		}
 		// Only MonoBehaviour (Unity class 114) assets are ScriptableObject defs.
 		// Skip binary assets (Mesh, Texture2DArray, Sprite, …) by peeking the
@@ -156,17 +156,17 @@ var (
 // header line, so multi-hundred-MiB binary assets (Mesh, Texture2DArray, …) are
 // classified without loading their bodies into memory.
 func isMonoBehaviourAsset(path string) bool {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // path comes from WalkDir over the caller's local export dir
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := sc.Text()
 		if strings.HasPrefix(line, "--- ") {
 			m := classRe.FindStringSubmatch(line)
-			return m != nil && m[1] == "114"
+			return len(m) > 1 && m[1] == "114"
 		}
 	}
 	return false
@@ -175,11 +175,11 @@ func isMonoBehaviourAsset(path string) bool {
 // readAnchorID returns the Unity fileID (pathID) from the first "--- !u!N &M"
 // document header line.
 func readAnchorID(assetPath string) int64 {
-	f, err := os.Open(assetPath)
+	f, err := os.Open(assetPath) //nolint:gosec // assetPath is a local export file already accepted by the defs walk
 	if err != nil {
 		return 0
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := sc.Text()

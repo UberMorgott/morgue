@@ -18,7 +18,7 @@ func TestRealAssetsFNameExtraction(t *testing.T) {
 	var checked, withNames int
 	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || checked >= 50 {
-			return nil
+			return nil //nolint:nilerr // an unreadable entry is skipped; the walk must still cover the rest of the tree
 		}
 		if strings.ToLower(filepath.Ext(p)) != ".uasset" {
 			return nil

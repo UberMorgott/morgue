@@ -4,7 +4,9 @@ package metadata
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"os"
+	"path/filepath"
 )
 
 // MetadataMagic is the little-endian sanity value at offset 0 of global-metadata.dat.
@@ -13,11 +15,11 @@ const MetadataMagic uint32 = 0xFAB11BAF
 // ReadVersion validates the magic at offset 0 and returns the int32 version at
 // offset 4 of a global-metadata.dat file.
 func ReadVersion(path string) (int32, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(filepath.Clean(path))
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var head [8]byte
 	if _, err := f.ReadAt(head[:], 0); err != nil {
@@ -27,6 +29,9 @@ func ReadVersion(path string) (int32, error) {
 	if magic != MetadataMagic {
 		return 0, fmt.Errorf("invalid global-metadata.dat magic: got %#08x, want %#08x", magic, MetadataMagic)
 	}
-	version := int32(binary.LittleEndian.Uint32(head[4:8]))
-	return version, nil
+	raw := binary.LittleEndian.Uint32(head[4:8])
+	if raw > math.MaxInt32 {
+		return 0, fmt.Errorf("implausible global-metadata.dat version: %d", raw)
+	}
+	return int32(raw), nil
 }

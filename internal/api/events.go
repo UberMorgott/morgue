@@ -49,7 +49,7 @@ func (eb *EventBroadcaster) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case msg := <-ch:
-			fmt.Fprint(w, msg)
+			_, _ = fmt.Fprint(w, msg)
 			flusher.Flush()
 		case <-eb.shutdown:
 			return

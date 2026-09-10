@@ -116,7 +116,7 @@ func (u *UnityMono) Execute(ctx *Context) error {
 			}
 		})
 		if result != nil {
-			os.WriteFile(stringsOut, []byte(result.Stdout), 0644)
+			_ = os.WriteFile(stringsOut, []byte(result.Stdout), 0644)
 		}
 		// Analyze and structure strings
 		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
@@ -133,7 +133,7 @@ func (u *UnityMono) Execute(ctx *Context) error {
 		return fmt.Errorf("ilspycmd not available: %w", err)
 	}
 	srcDir := filepath.Join(ctx.Output, "src")
-	os.MkdirAll(srcDir, 0755)
+	_ = os.MkdirAll(srcDir, 0755)
 	ilspyArgs := []string{"-p", "-o", srcDir, ctx.Target}
 	if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
 		ilspyArgs = append(ilspyArgs, "--languageversion", ctx.Config.CSharpLanguageVersion)
@@ -151,8 +151,8 @@ func (u *UnityMono) Execute(ctx *Context) error {
 			msg += "\n" + strings.TrimSpace(result.Stderr)
 		}
 		logTool("ilspycmd", msg)
-		os.RemoveAll(srcDir)
-		os.MkdirAll(srcDir, 0755)
+		_ = os.RemoveAll(srcDir)
+		_ = os.MkdirAll(srcDir, 0755)
 		retryArgs := []string{"-o", srcDir, ctx.Target}
 		if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
 			retryArgs = append(retryArgs, "--languageversion", ctx.Config.CSharpLanguageVersion)
@@ -241,7 +241,7 @@ func (u *UnityMono) Execute(ctx *Context) error {
 			logTool("assetripper", fmt.Sprintf("AssetRipper export failed (non-fatal): %v", rerr))
 			report(4, Failed, time.Since(start), rerr, "assetripper")
 		} else {
-			os.WriteFile(rippedMarker, []byte("ok"), 0644)
+			_ = os.WriteFile(rippedMarker, []byte("ok"), 0644)
 			reportCount(4, time.Since(start), "assetripper", countAssetFiles(rawExportDir), "assets")
 		}
 	}
@@ -300,7 +300,7 @@ func (u *UnityMono) Execute(ctx *Context) error {
 			for _, c := range rep.DefCountsByType {
 				defTotal += c
 			}
-			os.WriteFile(organizedMarker, []byte("ok"), 0644)
+			_ = os.WriteFile(organizedMarker, []byte("ok"), 0644)
 			logTool("gamedata", fmt.Sprintf("Organized %d defs, %d actions, %d failed", defTotal, rep.ActionCount, len(rep.Failed)))
 			reportCount(5, time.Since(start), "gamedata", defTotal, "defs")
 		}

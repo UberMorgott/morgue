@@ -14,7 +14,7 @@ func u16(s string) []byte {
 	b := make([]byte, 0, len(s)*2)
 	for _, r := range s {
 		var c [2]byte
-		binary.LittleEndian.PutUint16(c[:], uint16(r))
+		binary.LittleEndian.PutUint16(c[:], uint16(r)) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 		b = append(b, c[:]...)
 	}
 	return b
@@ -25,7 +25,7 @@ func u16(s string) []byte {
 func varRef(idx int) []byte {
 	b := make([]byte, 4)
 	binary.LittleEndian.PutUint16(b[0:2], nsVarCode)
-	binary.LittleEndian.PutUint16(b[2:4], uint16((idx&0x7F)|0x80|((idx>>7)&0x7F)<<8|0x8000))
+	binary.LittleEndian.PutUint16(b[2:4], uint16((idx&0x7F)|0x80|((idx>>7)&0x7F)<<8|0x8000)) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 	return b
 }
 
@@ -52,8 +52,8 @@ func TestExtractStructured_UnicodePrefixed(t *testing.T) {
 	header := make([]byte, hdrSize)
 	putBlock := func(idx, off, num int) {
 		base := 4 + idx*8
-		binary.LittleEndian.PutUint32(header[base:base+4], uint32(off))
-		binary.LittleEndian.PutUint32(header[base+4:base+8], uint32(num))
+		binary.LittleEndian.PutUint32(header[base:base+4], uint32(off))   //nolint:gosec // G115: test fixture values are small constants that cannot overflow
+		binary.LittleEndian.PutUint32(header[base+4:base+8], uint32(num)) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 	}
 	putBlock(nbEntries, entriesOff, 1)
 	putBlock(nbStrings, stringsOff, 0)
@@ -61,17 +61,15 @@ func TestExtractStructured_UnicodePrefixed(t *testing.T) {
 
 	e := header[entriesOff:]
 	binary.LittleEndian.PutUint32(e[0:4], ewExtractFile)
-	binary.LittleEndian.PutUint32(e[8:12], uint32(nameChar)) // param1 = name (char index)
+	binary.LittleEndian.PutUint32(e[8:12], uint32(nameChar)) //nolint:gosec // G115: param1 = name (char index), a small test fixture constant
 	binary.LittleEndian.PutUint32(e[12:16], 0)               // param2 = data position
 	copy(header[stringsOff:], strTab)
 
 	// Solid stream: [uint32 hdrSize][header][data records].
-	stream := make([]byte, 4)
-	binary.LittleEndian.PutUint32(stream, uint32(hdrSize))
+	stream := binary.LittleEndian.AppendUint32(nil, uint32(hdrSize)) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 	stream = append(stream, header...)
-	rec := make([]byte, 4)
-	binary.LittleEndian.PutUint32(rec, uint32(len(content)))
-	stream = append(stream, append(rec, []byte(content)...)...)
+	stream = binary.LittleEndian.AppendUint32(stream, uint32(len(content)))
+	stream = append(stream, content...)
 
 	out := t.TempDir()
 	r := extractStructured(stream, hdrSize, "LZMA", out, func(string) {})
@@ -82,7 +80,7 @@ func TestExtractStructured_UnicodePrefixed(t *testing.T) {
 		t.Fatalf("entries=%d wanted=%d files=%d, want 1/1/1", r.Entries, r.Wanted, r.Files)
 	}
 	// $INSTDIR is the installation root, so it collapses onto the output root.
-	got, err := os.ReadFile(filepath.Join(out, "sub", "hello.txt"))
+	got, err := os.ReadFile(filepath.Join(out, "sub", "hello.txt")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("expected sub/hello.txt: %v", err)
 	}
@@ -139,8 +137,8 @@ func buildANSIStream(t *testing.T, name string, payload []byte, compressed bool)
 	header := make([]byte, hdrSize)
 	putBlock := func(idx, off, num int) {
 		base := 4 + idx*8
-		binary.LittleEndian.PutUint32(header[base:base+4], uint32(off))
-		binary.LittleEndian.PutUint32(header[base+4:base+8], uint32(num))
+		binary.LittleEndian.PutUint32(header[base:base+4], uint32(off))   //nolint:gosec // G115: test fixture values are small constants that cannot overflow
+		binary.LittleEndian.PutUint32(header[base+4:base+8], uint32(num)) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 	}
 	putBlock(nbEntries, entriesOff, 1)
 	putBlock(nbStrings, stringsOff, 0)
@@ -148,17 +146,17 @@ func buildANSIStream(t *testing.T, name string, payload []byte, compressed bool)
 
 	e := header[entriesOff:]
 	binary.LittleEndian.PutUint32(e[0:4], ewExtractFile)
-	binary.LittleEndian.PutUint32(e[8:12], uint32(fileOff))
+	binary.LittleEndian.PutUint32(e[8:12], uint32(fileOff)) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 	binary.LittleEndian.PutUint32(e[12:16], 0)
 	copy(header[stringsOff:], strTab)
 
-	size := uint32(len(payload))
+	size := uint32(len(payload)) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 	if compressed {
 		size |= 0x80000000
 	}
-	rec := make([]byte, 4)
-	binary.LittleEndian.PutUint32(rec, size)
-	return append(append(header, rec...), payload...), hdrSize
+	out := append([]byte(nil), header...)
+	out = binary.LittleEndian.AppendUint32(out, size)
+	return append(out, payload...), hdrSize
 }
 
 func deflateBytes(t *testing.T, b []byte) []byte {
@@ -188,7 +186,7 @@ func TestExtractStructured_NonSolidBlock(t *testing.T) {
 	if r.Wanted != 1 || r.Files != 1 {
 		t.Fatalf("files=%d wanted=%d, want 1/1", r.Files, r.Wanted)
 	}
-	got, err := os.ReadFile(filepath.Join(out, "ns.txt"))
+	got, err := os.ReadFile(filepath.Join(out, "ns.txt")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("expected ns.txt: %v", err)
 	}
@@ -208,11 +206,10 @@ func TestExtractStructured_NonSolidBlock(t *testing.T) {
 // cost the records behind it.
 func TestExtractRawRecords_Resync(t *testing.T) {
 	hdrSize := 16
-	dec := make([]byte, hdrSize)
+	dec := bytes.Repeat([]byte{0}, hdrSize)
 	rec := func(s string) []byte {
-		b := make([]byte, 4)
-		binary.LittleEndian.PutUint32(b, uint32(len(s)))
-		return append(b, []byte(s)...)
+		b := binary.LittleEndian.AppendUint32(nil, uint32(len(s))) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
+		return append(b, s...)
 	}
 	dec = append(dec, rec("first record")...)
 	dec = append(dec, 0xF0, 0xFF, 0xFF, 0xFF) // bogus size -> resync
@@ -223,7 +220,7 @@ func TestExtractRawRecords_Resync(t *testing.T) {
 	if n != 2 || skipped != 1 {
 		t.Fatalf("n=%d skipped=%d, want 2/1", n, skipped)
 	}
-	got, err := os.ReadFile(filepath.Join(out, "_raw", "file_0001.bin"))
+	got, err := os.ReadFile(filepath.Join(out, "_raw", "file_0001.bin")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil || string(got) != "second record" {
 		t.Fatalf("file_0001.bin = %q err=%v, want %q", got, err, "second record")
 	}
@@ -284,17 +281,17 @@ func buildOpStream(t *testing.T, strTab []byte, entries []tEntry, data [][]byte)
 	header := make([]byte, hdrSize)
 	putBlock := func(idx, off, num int) {
 		base := 4 + idx*8
-		binary.LittleEndian.PutUint32(header[base:base+4], uint32(off))
-		binary.LittleEndian.PutUint32(header[base+4:base+8], uint32(num))
+		binary.LittleEndian.PutUint32(header[base:base+4], uint32(off))   //nolint:gosec // G115: test fixture values are small constants that cannot overflow
+		binary.LittleEndian.PutUint32(header[base+4:base+8], uint32(num)) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 	}
 	putBlock(nbEntries, entriesOff, len(entries))
 	putBlock(nbStrings, stringsOff, 0)
 	putBlock(nbLangtables, langOff, 0)
 	for i, en := range entries {
 		e := header[entriesOff+i*nsisEntrySize:]
-		binary.LittleEndian.PutUint32(e[0:4], uint32(en.op))
+		binary.LittleEndian.PutUint32(e[0:4], uint32(en.op)) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 		for k, v := range en.p {
-			binary.LittleEndian.PutUint32(e[4+k*4:8+k*4], uint32(v))
+			binary.LittleEndian.PutUint32(e[4+k*4:8+k*4], uint32(v)) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 		}
 	}
 	copy(header[stringsOff:], strTab)
@@ -304,7 +301,7 @@ func buildOpStream(t *testing.T, strTab []byte, entries []tEntry, data [][]byte)
 	for _, d := range data {
 		pos = append(pos, len(stream)-hdrSize)
 		rec := make([]byte, 4)
-		binary.LittleEndian.PutUint32(rec, uint32(len(d)))
+		binary.LittleEndian.PutUint32(rec, uint32(len(d))) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 		stream = append(append(stream, rec...), d...)
 	}
 	return stream, hdrSize, pos
@@ -391,7 +388,7 @@ func TestWalk_ShellPathExtracts(t *testing.T) {
 	if r := extractStructured(stream, hdrSize, "LZMA", out, func(string) {}); r.Files != 1 {
 		t.Fatalf("files=%d, want 1", r.Files)
 	}
-	got, err := os.ReadFile(filepath.Join(out, "_shell_SMPROGRAMS", "App", "readme.txt"))
+	got, err := os.ReadFile(filepath.Join(out, "_shell_SMPROGRAMS", "App", "readme.txt")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil || string(got) != "shell payload" {
 		t.Fatalf("_shell_SMPROGRAMS/App/readme.txt = %q err=%v", got, err)
 	}
@@ -464,7 +461,7 @@ func TestWalk_AssignVarResolvesPath(t *testing.T) {
 	if r.Files != 1 {
 		t.Fatalf("files=%d, want 1", r.Files)
 	}
-	got, err := os.ReadFile(filepath.Join(out, "Target", "App", "x.txt"))
+	got, err := os.ReadFile(filepath.Join(out, "Target", "App", "x.txt")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("expected Target/App/x.txt (resolved $INSTDIR): %v", err)
 	}
@@ -493,14 +490,14 @@ func TestWalk_RenameDelete(t *testing.T) {
 	}
 	stream, hdrSize, pos := buildOpStream(t, strTab, entries, [][]byte{[]byte("AAA"), []byte("BBB")})
 	// patch entry 1's data position now that we know it
-	binary.LittleEndian.PutUint32(stream[68+nsisEntrySize+12:68+nsisEntrySize+16], uint32(pos[1]))
+	binary.LittleEndian.PutUint32(stream[68+nsisEntrySize+12:68+nsisEntrySize+16], uint32(pos[1])) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 
 	out := t.TempDir()
 	r := extractStructured(stream, hdrSize, "LZMA", out, func(string) {})
 	if r.Files != 2 || r.Wanted != 2 {
 		t.Fatalf("files=%d wanted=%d, want 2/2", r.Files, r.Wanted)
 	}
-	got, err := os.ReadFile(filepath.Join(out, "c.txt"))
+	got, err := os.ReadFile(filepath.Join(out, "c.txt")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil || string(got) != "AAA" {
 		t.Fatalf("renamed c.txt = %q err=%v, want AAA", got, err)
 	}

@@ -27,7 +27,7 @@ func TestBucketForUniversalDistribution(t *testing.T) {
 	for _, b := range bases {
 		t.Run(b.name, func(t *testing.T) {
 			counts := map[string]int{}
-			for i := 0; i < n; i++ {
+			for i := range n {
 				addr := fmt.Sprintf("%x", b.base+uint64(i)*step)
 				counts[bucketFor(addr)]++
 			}
@@ -72,7 +72,7 @@ func TestBucketForClustersNearby(t *testing.T) {
 func TestBucketForDeterministic(t *testing.T) {
 	for _, a := range []string{"140001000", "401000", "deadbeef"} {
 		first := bucketFor(a)
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			if got := bucketFor(a); got != first {
 				t.Fatalf("bucketFor(%q) not deterministic: %q vs %q", a, got, first)
 			}
