@@ -1,0 +1,16 @@
+# OSV-Scanner config (v2 format).
+
+[[IgnoredVulns]]
+id = "GO-2026-5932"
+ignoreUntil = 2027-03-10
+reason = """
+golang.org/x/crypto/openpgp is unmaintained and unsafe by design; upstream has
+declared it will never get a fixed version (Fixed in: N/A). It reaches Morgue
+only as an indirect dependency of github.com/creativeprojects/go-selfupdate
+(internal/selfupdate/updater.go), and go-selfupdate v1.6.0 (latest) still
+imports it, so no upgrade removes it. Every govulncheck trace is an `init`
+call chain (openpgp.init, armor.init, packet.init, s2k.init, elgamal.init) --
+Morgue never calls the OpenPGP verification API itself; releases are verified
+by GitHub over TLS, not by PGP signature. Revisit if go-selfupdate migrates to
+github.com/ProtonMail/go-crypto/openpgp.
+"""

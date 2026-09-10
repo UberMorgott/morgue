@@ -1,0 +1,26 @@
+# typos' dictionary is not a style guide: a word mapped to itself is declared correct,
+# which is how this repository silences a false positive without switching the check off.
+#
+# extend-words is applied AFTER an identifier is split into words; extend-identifiers is
+# the earlier hook, for names that are only correct whole.
+
+[default.extend-words]
+# Unreal Engine version prefix — `UE5ExtractPAK`, `UE5SDKDump`, the ue5-* recipes.
+# typos splits the digit off and reads the remaining `UE` as `use`/`due`.
+ue = "ue"
+# "serialized", abbreviated: serBytes (odin), serCount (usmap FProperty reader).
+ser = "ser"
+# The hyphenated prefix in prose: mis-parse, mis-detected, mis-linearized.
+mis = "mis"
+# Both spellings are English, and the parse errors here are worded "unparseable".
+unparseable = "unparseable"
+
+[default.extend-identifiers]
+# AMD GPU Services library, matched by the skip-list glob "amd_ags*.dll".
+amd_ags = "amd_ags"
+# NSIS instruction names, used as opcode labels in the NSIS recipe.
+StrCpy = "StrCpy"
+# Self-test prose: "the gate ACCEPTs" — split before the trailing lowercase s.
+ACCEPTs = "ACCEPTs"
+# Short obfuscated identifiers in a recon fixture ("a", "ab", "ba", ...).
+ba = "ba"
