@@ -19,6 +19,9 @@
   let loading = $state(true);
   let runtimesLoading = $state(true);
   let busy = $state(false);
+  // Install/delete failures used to reach console.error only, so a failed action
+  // looked exactly like a successful one.
+  let opError = $state('');
   let runtimeBusy: Record<string, boolean> = $state({});
 
   let filterInput = $state('');
@@ -199,6 +202,7 @@
   async function installTool(detail: { name: string }) {
     const name = detail.name;
     busy = true;
+    opError = '';
     try {
       await ToolsService.Install(name);
       const st = await ToolsService.CheckAll();
@@ -215,12 +219,14 @@
       }
     } catch (err: any) {
       console.error('Install failed:', err);
+      opError = `${name}: ${err?.message ?? err}`;
     } finally { busy = false; }
   }
 
   async function deleteTool(detail: { name: string }) {
     const name = detail.name;
     busy = true;
+    opError = '';
     try {
       await ToolsService.Delete(name);
       tools = tools.map(t => t.name === name ? {
@@ -228,6 +234,7 @@
       } : t);
     } catch (err: any) {
       console.error('Delete failed:', err);
+      opError = `${name}: ${err?.message ?? err}`;
     } finally { busy = false; }
   }
 
@@ -297,6 +304,9 @@
       {/if}
     </div>
   </div>
+  {#if opError}
+    <div class="alert-block alert-error">{t(lang, 'tools.actionFailed')} {opError}</div>
+  {/if}
   {#if loading}
     <div class="tools-loading">{t(lang, 'tools.checking')}</div>
   {:else if tools.length === 0}

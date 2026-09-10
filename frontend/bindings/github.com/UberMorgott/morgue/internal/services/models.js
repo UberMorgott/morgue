@@ -9,64 +9,6 @@ import { Create as $Create } from "@wailsio/runtime";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as tools$0 from "../tools/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as time$0 from "../../../../../time/models.js";
-
-/**
- * APICommand represents a queued command from HTTP API to frontend. Uses explicit json tags (lowercase).
- */
-export class APICommand {
-    /**
-     * Creates a new APICommand instance.
-     * @param {Partial<APICommand>} [$$source = {}] - The source object to create the APICommand.
-     */
-    constructor($$source = {}) {
-        if (!("action" in $$source)) {
-            /**
-             * "install", "install-all", "delete", "run"
-             * @member
-             * @type {string}
-             */
-            this["action"] = "";
-        }
-        if (!("tool" in $$source)) {
-            /**
-             * @member
-             * @type {string}
-             */
-            this["tool"] = "";
-        }
-        if (/** @type {any} */(false)) {
-            /**
-             * for "run" action
-             * @member
-             * @type {string | undefined}
-             */
-            this["path"] = undefined;
-        }
-        if (/** @type {any} */(false)) {
-            /**
-             * for "run" action
-             * @member
-             * @type {string | undefined}
-             */
-            this["output"] = undefined;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new APICommand instance from a string or object.
-     * @param {any} [$$source = {}]
-     * @returns {APICommand}
-     */
-    static createFrom($$source = {}) {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new APICommand(/** @type {Partial<APICommand>} */($$parsedSource));
-    }
-}
 
 /**
  * EnrichedToolStatus extends ToolStatus with operation state.
@@ -164,7 +106,7 @@ export class EnrichedToolStatus {
         if (/** @type {any} */(false)) {
             /**
              * @member
-             * @type {time$0.Time | undefined}
+             * @type {string | undefined}
              */
             this["lastActivity"] = undefined;
         }

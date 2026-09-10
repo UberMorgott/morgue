@@ -84,7 +84,7 @@ func APIRun(path, output string) error {
 // APIRunWait starts a decompilation run and polls /api/run/status until it completes.
 func APIRunWait(path, output string) error {
 	// Start the run with direct execution so we can poll status
-	if err := apiPost("/run?direct=true", map[string]string{"path": path, "output": output}); err != nil {
+	if err := apiPost("/run", map[string]string{"path": path, "output": output}); err != nil {
 		return err
 	}
 

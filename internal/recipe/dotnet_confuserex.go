@@ -602,7 +602,11 @@ func (d *DotnetConfuserEx) resolveDotnetSDK(ctx *Context) string {
 	seen := map[string]bool{}
 	for _, c := range candidates {
 		if c != "dotnet" {
-			if _, err := os.Stat(c); err != nil { //nolint:gosec // G703: candidates are this file's own literals plus %ProgramFiles%\dotnet\dotnet.exe; nothing user-supplied reaches c
+			// G703 for this file is handled by an exclusion rule in .golangci.yml
+			// (gosec's taint rules and nolintlint cannot both be satisfied); the
+			// candidates here are this file's own literals plus
+			// %ProgramFiles%\dotnet\dotnet.exe — nothing user-supplied reaches c.
+			if _, err := os.Stat(c); err != nil {
 				continue
 			}
 		}
