@@ -25,7 +25,7 @@ type Lock struct {
 // error surfaced so callers can distinguish corruption from "missing".
 func ReadLock(baseDir string) (Lock, error) {
 	lk := Lock{Tools: map[string]string{}}
-	data, err := os.ReadFile(filepath.Join(baseDir, lockFile))
+	data, err := os.ReadFile(filepath.Clean(filepath.Join(baseDir, lockFile)))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return lk, nil
@@ -60,16 +60,16 @@ func WriteLock(baseDir string, lk Lock) error {
 	}
 	tmpName := tmp.Name()
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := os.Rename(tmpName, target); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return err
 	}
 	return nil

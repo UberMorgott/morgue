@@ -51,10 +51,7 @@ func (sb *StatusBar) View() string {
 
 	leftLen := len(sb.left) + 2 // padding
 	rightLen := len(sb.right) + 2
-	spacerLen := sb.width - leftLen - rightLen
-	if spacerLen < 0 {
-		spacerLen = 0
-	}
+	spacerLen := max(sb.width-leftLen-rightLen, 0)
 	spacer := lipgloss.NewStyle().
 		Background(lipgloss.Color(sb.bg)).
 		Render(strings.Repeat(" ", spacerLen))

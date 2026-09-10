@@ -159,9 +159,9 @@ func (s *ToolsService) CheckAllWithUpdates() []tools.ToolStatus {
 
 // CheckLatestVersion checks the latest version for a single tool.
 // Returns a map with latestVersion and updateAvailable.
-func (s *ToolsService) CheckLatestVersion(name string) map[string]interface{} {
+func (s *ToolsService) CheckLatestVersion(name string) map[string]any {
 	latestVersion, updateAvailable := s.manager.CheckLatestVersionSingle(name)
-	return map[string]interface{}{
+	return map[string]any{
 		"name":            name,
 		"latestVersion":   latestVersion,
 		"updateAvailable": updateAvailable,
@@ -204,7 +204,7 @@ func (s *ToolsService) installCallbacks() *tools.InstallCallbacks {
 			}
 			s.updateOp(tool, "installing", pct)
 			if app := application.Get(); app != nil {
-				app.Event.Emit("tool:download:progress", map[string]interface{}{
+				app.Event.Emit("tool:download:progress", map[string]any{
 					"tool":  tool,
 					"bytes": bytesDown,
 					"total": bytesTotal,
@@ -214,7 +214,7 @@ func (s *ToolsService) installCallbacks() *tools.InstallCallbacks {
 		OnExtract: func(tool string) {
 			s.updateOp(tool, "extracting", 100)
 			if app := application.Get(); app != nil {
-				app.Event.Emit("tool:extract:start", map[string]interface{}{
+				app.Event.Emit("tool:extract:start", map[string]any{
 					"tool": tool,
 				})
 			}
@@ -235,9 +235,9 @@ func (s *ToolsService) Install(name string) error {
 	s.removeOp(name)
 	if app := application.Get(); app != nil {
 		if err != nil {
-			app.Event.Emit("tool:download:complete", map[string]interface{}{"tool": name, "error": err.Error()})
+			app.Event.Emit("tool:download:complete", map[string]any{"tool": name, "error": err.Error()})
 		} else {
-			app.Event.Emit("tool:download:complete", map[string]interface{}{"tool": name, "version": version, "error": nil})
+			app.Event.Emit("tool:download:complete", map[string]any{"tool": name, "version": version, "error": nil})
 		}
 		app.Event.Emit("tool:installed", name)
 	}
@@ -295,9 +295,9 @@ func (s *ToolsService) InstallRuntime(kind string) error {
 	s.removeOp(opName)
 	if app := application.Get(); app != nil {
 		if err != nil {
-			app.Event.Emit("tool:download:complete", map[string]interface{}{"tool": opName, "error": err.Error()})
+			app.Event.Emit("tool:download:complete", map[string]any{"tool": opName, "error": err.Error()})
 		} else {
-			app.Event.Emit("tool:download:complete", map[string]interface{}{"tool": opName, "error": nil})
+			app.Event.Emit("tool:download:complete", map[string]any{"tool": opName, "error": nil})
 		}
 	}
 	return err
@@ -314,8 +314,8 @@ func (s *ToolsService) MarkUpdateChecked() {
 }
 
 // StartupAutoUpdate runs background update checks and auto-applies if configured.
-func (s *ToolsService) StartupAutoUpdate() map[string]interface{} {
-	result := map[string]interface{}{
+func (s *ToolsService) StartupAutoUpdate() map[string]any {
+	result := map[string]any{
 		"appUpdate":   false,
 		"toolUpdates": 0,
 		"autoApplied": false,
@@ -331,7 +331,7 @@ func (s *ToolsService) StartupAutoUpdate() map[string]interface{} {
 		return result
 	}
 
-	emit := func(event string, data interface{}) {
+	emit := func(event string, data any) {
 		if app := application.Get(); app != nil {
 			app.Event.Emit(event, data)
 		}
@@ -345,7 +345,7 @@ func (s *ToolsService) StartupAutoUpdate() map[string]interface{} {
 		newVersion = appStatus[8:]
 		appUpdateAvailable = true
 		result["appUpdate"] = true
-		emit("app:update:available", map[string]interface{}{
+		emit("app:update:available", map[string]any{
 			"version": newVersion,
 		})
 	}
@@ -360,14 +360,14 @@ func (s *ToolsService) StartupAutoUpdate() map[string]interface{} {
 	}
 	result["toolUpdates"] = len(updatable)
 	if len(updatable) > 0 {
-		emit("tools:updates:available", map[string]interface{}{
+		emit("tools:updates:available", map[string]any{
 			"count": len(updatable),
 		})
 	}
 
 	// --- Auto-apply app update ---
 	if cfg.AutoUpdateApp && appUpdateAvailable {
-		emit("startup:progress", map[string]interface{}{
+		emit("startup:progress", map[string]any{
 			"phase": "app-update",
 			"label": "Updating app to " + newVersion + "...",
 		})
@@ -378,7 +378,7 @@ func (s *ToolsService) StartupAutoUpdate() map[string]interface{} {
 			log.Printf("startup: app auto-update failed: %v", err)
 		} else {
 			result["autoApplied"] = true
-			emit("app:update:complete", map[string]interface{}{
+			emit("app:update:complete", map[string]any{
 				"version": newVersion,
 			})
 			// Auto-relaunch into the freshly-installed binary (GUI context only;
@@ -392,7 +392,7 @@ func (s *ToolsService) StartupAutoUpdate() map[string]interface{} {
 	// --- Auto-apply tool updates ---
 	if cfg.AutoUpdateTools && len(updatable) > 0 {
 		for i, st := range updatable {
-			emit("startup:progress", map[string]interface{}{
+			emit("startup:progress", map[string]any{
 				"phase": "tool-update",
 				"label": st.Name,
 				"index": i + 1,

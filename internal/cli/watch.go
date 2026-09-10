@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -95,7 +96,9 @@ func RunWatch(opts RunOptions) error {
 		// dir still wins above.
 		opts.Output = util.AutoOutputRoot()
 	}
-	os.MkdirAll(opts.Output, 0755)
+	if err := os.MkdirAll(opts.Output, 0755); err != nil {
+		return fmt.Errorf("create output dir %s: %w", opts.Output, err)
+	}
 
 	eng := engine.New(cfg, util.ToolsBaseDir())
 
@@ -136,14 +139,16 @@ func RunWatch(opts RunOptions) error {
 	}
 
 	// Output summary JSON to stdout
-	summaryPath := opts.Output + "/summary.json"
-	data, err := os.ReadFile(summaryPath)
+	summaryPath := filepath.Join(opts.Output, "summary.json")
+	data, err := os.ReadFile(filepath.Clean(summaryPath))
 	if err == nil {
 		var pretty any
 		if json.Unmarshal(data, &pretty) == nil {
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
-			enc.Encode(pretty)
+			if err := enc.Encode(pretty); err != nil {
+				fmt.Fprintf(os.Stderr, "write summary to stdout: %v\n", err)
+			}
 		}
 
 		// Print human-readable summary to stderr

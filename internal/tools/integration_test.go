@@ -36,8 +36,8 @@ func TestInstallStrings(t *testing.T) {
 	}
 
 	baseDir := filepath.Join(os.TempDir(), "morgue-test-install")
-	os.MkdirAll(baseDir, 0755)
-	defer os.RemoveAll(baseDir)
+	_ = os.MkdirAll(baseDir, 0755)
+	defer func() { _ = os.RemoveAll(baseDir) }()
 
 	mgr := NewManager(baseDir, config.Config{})
 	cb := &InstallCallbacks{
@@ -71,8 +71,8 @@ func TestInstallStrings(t *testing.T) {
 
 func TestCheckAllWithUpdatesNoAPI(t *testing.T) {
 	baseDir := filepath.Join(os.TempDir(), "morgue-test-check")
-	os.MkdirAll(baseDir, 0755)
-	defer os.RemoveAll(baseDir)
+	_ = os.MkdirAll(baseDir, 0755)
+	defer func() { _ = os.RemoveAll(baseDir) }()
 
 	mgr := NewManager(baseDir, config.Config{})
 	statuses := mgr.CheckAllWithUpdates()
@@ -115,8 +115,8 @@ func TestInstallGitHubToolDirect(t *testing.T) {
 	}
 
 	baseDir := filepath.Join(os.TempDir(), "morgue-test-direct-dl")
-	os.MkdirAll(baseDir, 0755)
-	defer os.RemoveAll(baseDir)
+	_ = os.MkdirAll(baseDir, 0755)
+	defer func() { _ = os.RemoveAll(baseDir) }()
 
 	// Use goresym — small tool, fast download
 	tool, ok := FindByName("goresym")
@@ -131,7 +131,7 @@ func TestInstallGitHubToolDirect(t *testing.T) {
 	t.Logf("latest version: %s", version)
 
 	destDir := filepath.Join(baseDir, tool.Name)
-	os.MkdirAll(destDir, 0755)
+	_ = os.MkdirAll(destDir, 0755)
 
 	err = tryDirectDownload(tool, version, destDir, func(down, total int64) {
 		if total > 0 {
@@ -153,8 +153,8 @@ func TestInstallGitHubToolDirect(t *testing.T) {
 
 func TestCheckRuntimes(t *testing.T) {
 	baseDir := filepath.Join(os.TempDir(), "morgue-test-rt")
-	os.MkdirAll(baseDir, 0755)
-	defer os.RemoveAll(baseDir)
+	_ = os.MkdirAll(baseDir, 0755)
+	defer func() { _ = os.RemoveAll(baseDir) }()
 
 	mgr := NewManager(baseDir, config.Config{})
 	rts := mgr.CheckRuntimes()

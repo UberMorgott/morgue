@@ -29,31 +29,31 @@ func writeSyntheticMonolith(t *testing.T, srcDir string, n, bodyLines, namedEver
 	t.Helper()
 	binPath := filepath.Join(srcDir, "game.exe")
 	combined := filepath.Join(srcDir, "game.c")
-	f, err := os.Create(combined)
+	f, err := os.Create(combined) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("create combined .c: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	bw := bufio.NewWriterSize(f, 256*1024)
-	bw.WriteString("// Decompiled by Ghidra via Morgue\n")
-	bw.WriteString("// Binary: game.exe\n")
-	bw.WriteString("// Architecture: x86:LE:64:default\n")
+	_, _ = bw.WriteString("// Decompiled by Ghidra via Morgue\n")
+	_, _ = bw.WriteString("// Binary: game.exe\n")
+	_, _ = bw.WriteString("// Architecture: x86:LE:64:default\n")
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		addr := fmt.Sprintf("%09x", 0x140001000+i*0x20) // lowercase, >=4 hex
-		bw.WriteString("// " + addr + "\n")
+		_, _ = bw.WriteString("// " + addr + "\n")
 		if namedEvery > 0 && i%namedEvery == 0 {
 			// Real symbol form: class-qualified so cppClassOwner finds a class.
-			fmt.Fprintf(bw, "void Engine::Widget%d::Tick(void)\n", i)
+			_, _ = fmt.Fprintf(bw, "void Engine::Widget%d::Tick(void)\n", i)
 		} else {
-			fmt.Fprintf(bw, "void FUN_%s(void)\n", addr)
+			_, _ = fmt.Fprintf(bw, "void FUN_%s(void)\n", addr)
 		}
-		bw.WriteString("{\n")
-		for j := 0; j < bodyLines; j++ {
-			fmt.Fprintf(bw, "  local_%d = local_%d + %d;\n", j, j, i)
+		_, _ = bw.WriteString("{\n")
+		for j := range bodyLines {
+			_, _ = fmt.Fprintf(bw, "  local_%d = local_%d + %d;\n", j, j, i)
 		}
-		bw.WriteString("}\n\n")
+		_, _ = bw.WriteString("}\n\n")
 	}
 	if err := bw.Flush(); err != nil {
 		t.Fatalf("flush combined .c: %v", err)
@@ -69,9 +69,7 @@ func sampleHeap(fn func()) uint64 {
 	var peak uint64
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		var ms runtime.MemStats
 		for {
 			select {
@@ -88,7 +86,7 @@ func sampleHeap(fn func()) uint64 {
 				time.Sleep(2 * time.Millisecond)
 			}
 		}
-	}()
+	})
 	fn()
 	close(stop)
 	wg.Wait()
@@ -177,7 +175,7 @@ func TestSplitManyRecordsBoundedMemory(t *testing.T) {
 
 	// symbols.json parses with expected counts.
 	symPath := filepath.Join(srcDir, "symbols.json")
-	data, err := os.ReadFile(symPath)
+	data, err := os.ReadFile(symPath) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("read symbols.json: %v", err)
 	}
@@ -230,25 +228,25 @@ func TestSplitPathologicalHugeRecord(t *testing.T) {
 	srcDir := t.TempDir()
 	binPath := filepath.Join(srcDir, "game.exe")
 	combined := filepath.Join(srcDir, "game.c")
-	f, err := os.Create(combined)
+	f, err := os.Create(combined) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("create combined .c: %v", err)
 	}
 	bw := bufio.NewWriterSize(f, 256*1024)
-	bw.WriteString("// Decompiled by Ghidra via Morgue\n")
-	bw.WriteString("// Binary: game.exe\n")
-	bw.WriteString("// Architecture: x86:LE:64:default\n")
-	bw.WriteString("// 140001000\n")
-	bw.WriteString("void FUN_140001000(void)\n")
-	bw.WriteString("{\n")
-	for j := 0; j < bodyLines; j++ {
-		fmt.Fprintf(bw, "  local_%d = local_%d + 1;\n", j, j)
+	_, _ = bw.WriteString("// Decompiled by Ghidra via Morgue\n")
+	_, _ = bw.WriteString("// Binary: game.exe\n")
+	_, _ = bw.WriteString("// Architecture: x86:LE:64:default\n")
+	_, _ = bw.WriteString("// 140001000\n")
+	_, _ = bw.WriteString("void FUN_140001000(void)\n")
+	_, _ = bw.WriteString("{\n")
+	for j := range bodyLines {
+		_, _ = fmt.Fprintf(bw, "  local_%d = local_%d + 1;\n", j, j)
 	}
-	bw.WriteString("}\n")
+	_, _ = bw.WriteString("}\n")
 	if err := bw.Flush(); err != nil {
 		t.Fatalf("flush combined .c: %v", err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	var res *splitResult
 	var splitErr error
@@ -271,7 +269,7 @@ func TestSplitPathologicalHugeRecord(t *testing.T) {
 		if e != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".c") {
 			return e
 		}
-		data, rerr := os.ReadFile(p)
+		data, rerr := os.ReadFile(p) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 		if rerr != nil {
 			return rerr
 		}
@@ -448,7 +446,7 @@ func TestSplitRealWindroseMonolith(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open symbols.ndjson: %v", err)
 	}
-	defer sf.Close()
+	defer func() { _ = sf.Close() }()
 	ssc := bufio.NewScanner(sf)
 	ssc.Buffer(make([]byte, 0, 1<<20), 1<<20)
 	for ssc.Scan() {

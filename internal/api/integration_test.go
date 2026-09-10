@@ -20,7 +20,7 @@ func TestIntegrationFullWorkflow(t *testing.T) {
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error: %v", err)
 	}
-	defer srv.Stop()
+	defer func() { _ = srv.Stop() }()
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -28,11 +28,11 @@ func TestIntegrationFullWorkflow(t *testing.T) {
 
 	// 1. GET /api/status — 200, JSON with running=true
 	t.Run("GET /api/status", func(t *testing.T) {
-		resp, err := http.Get(base + "/api/status")
+		resp, err := httpGetT(t, base+"/api/status")
 		if err != nil {
 			t.Fatalf("request error: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -49,11 +49,11 @@ func TestIntegrationFullWorkflow(t *testing.T) {
 
 	// 2. GET /api/tools — 200, non-empty JSON array
 	t.Run("GET /api/tools", func(t *testing.T) {
-		resp, err := http.Get(base + "/api/tools")
+		resp, err := httpGetT(t, base+"/api/tools")
 		if err != nil {
 			t.Fatalf("request error: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -71,11 +71,11 @@ func TestIntegrationFullWorkflow(t *testing.T) {
 
 	// 3. GET /api/settings — 200, JSON object
 	t.Run("GET /api/settings", func(t *testing.T) {
-		resp, err := http.Get(base + "/api/settings")
+		resp, err := httpGetT(t, base+"/api/settings")
 		if err != nil {
 			t.Fatalf("request error: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -89,11 +89,11 @@ func TestIntegrationFullWorkflow(t *testing.T) {
 
 	// 4. GET /api/instructions — 200, non-empty text
 	t.Run("GET /api/instructions", func(t *testing.T) {
-		resp, err := http.Get(base + "/api/instructions")
+		resp, err := httpGetT(t, base+"/api/instructions")
 		if err != nil {
 			t.Fatalf("request error: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -110,11 +110,11 @@ func TestIntegrationFullWorkflow(t *testing.T) {
 
 	// 5. GET /api/run/status — 200, JSON object
 	t.Run("GET /api/run/status", func(t *testing.T) {
-		resp, err := http.Get(base + "/api/run/status")
+		resp, err := httpGetT(t, base+"/api/run/status")
 		if err != nil {
 			t.Fatalf("request error: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("expected 200, got %d", resp.StatusCode)

@@ -69,7 +69,7 @@ func writeHookable(srcDir string) (int, error) {
 	// Overlay: address -> resolved name (small; only B3 renames).
 	overlay := map[string]string{}
 	if nmPath := filepath.Join(srcDir, "indexes", "name_map.csv"); fileExists(nmPath) {
-		nm, err := os.Open(nmPath)
+		nm, err := os.Open(nmPath) //nolint:gosec // G304: fixed file name under srcDir, the pipeline's own output tree
 		if err != nil {
 			return 0, err
 		}
@@ -82,7 +82,7 @@ func writeHookable(srcDir string) (int, error) {
 				break
 			}
 			if rerr != nil {
-				nm.Close()
+				_ = nm.Close()
 				return 0, rerr
 			}
 			if first {
@@ -93,23 +93,23 @@ func writeHookable(srcDir string) (int, error) {
 				overlay[rec[0]] = rec[2] // address -> new_name
 			}
 		}
-		nm.Close()
+		_ = nm.Close()
 	}
 
-	in, err := os.Open(fnPath)
+	in, err := os.Open(fnPath) //nolint:gosec // G304: fixed file name under srcDir, the pipeline's own output tree
 	if err != nil {
 		return 0, err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 
-	out, err := os.Create(filepath.Join(srcDir, "indexes", "hookable.json"))
+	out, err := os.Create(filepath.Join(srcDir, "indexes", "hookable.json")) //nolint:gosec // G304: fixed file name under srcDir, the pipeline's own output tree
 	if err != nil {
 		return 0, err
 	}
 	outBuf := bufio.NewWriterSize(out, 64*1024)
 	defer func() {
-		outBuf.Flush()
-		out.Close()
+		_ = outBuf.Flush()
+		_ = out.Close()
 	}()
 
 	// Stream a JSON array: manual "[" / commas / "]" so we never materialize the
@@ -173,7 +173,7 @@ func writeClassClassification(srcDir string) (total, boiler int, err error) {
 	if !fileExists(symJSON) {
 		return 0, 0, nil
 	}
-	data, err := os.ReadFile(symJSON)
+	data, err := os.ReadFile(symJSON) //nolint:gosec // G304: fixed file name under srcDir, the pipeline's own output tree
 	if err != nil {
 		return 0, 0, err
 	}

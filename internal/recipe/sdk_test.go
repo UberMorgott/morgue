@@ -68,7 +68,7 @@ func TestWriteSDKDump(t *testing.T) {
 
 	// Machine-readable sdk.json must exist and round-trip.
 	jsonPath := filepath.Join(dir, "sdk", "sdk.json")
-	data, err := os.ReadFile(jsonPath)
+	data, err := os.ReadFile(jsonPath) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("read sdk.json: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestWriteSDKDump(t *testing.T) {
 	}
 
 	// Human/AI-readable headers must exist and contain rendered declarations.
-	hpp, err := os.ReadFile(filepath.Join(dir, "sdk", "classes.hpp"))
+	hpp, err := os.ReadFile(filepath.Join(dir, "sdk", "classes.hpp")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("read classes.hpp: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestWriteSDKDump(t *testing.T) {
 		}
 	}
 
-	enums, err := os.ReadFile(filepath.Join(dir, "sdk", "enums.hpp"))
+	enums, err := os.ReadFile(filepath.Join(dir, "sdk", "enums.hpp")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("read enums.hpp: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestWriteSDKDump(t *testing.T) {
 	}
 
 	// README must honestly note the offline source + property-only limitation.
-	readme, err := os.ReadFile(filepath.Join(dir, "sdk", "README.md"))
+	readme, err := os.ReadFile(filepath.Join(dir, "sdk", "README.md")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("read README.md: %v", err)
 	}

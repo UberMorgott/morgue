@@ -39,7 +39,7 @@ func (c *AssetRipperClient) post(ctx context.Context, path string, form url.Valu
 	if err != nil {
 		return fmt.Errorf("POST %s: %w", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		return fmt.Errorf("POST %s: HTTP %d: %s", path, resp.StatusCode, strings.TrimSpace(string(b)))
@@ -95,13 +95,18 @@ func itoaInt(v int) string { return fmt.Sprintf("%d", v) }
 // is closed immediately; the port is then reused by the spawned process. There
 // is a tiny race window, but binding 127.0.0.1:0 picks a port unlikely to be
 // taken before the child binds it.
-func freePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+func freePort(ctx context.Context) (int, error) {
+	var lc net.ListenConfig
+	l, err := lc.Listen(ctx, "tcp", "127.0.0.1:0")
 	if err != nil {
 		return 0, err
 	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
+	defer func() { _ = l.Close() }()
+	addr, ok := l.Addr().(*net.TCPAddr)
+	if !ok {
+		return 0, fmt.Errorf("unexpected listener address type %T", l.Addr())
+	}
+	return addr.Port, nil
 }
 
 // waitReady polls the AssetRipper root until it responds or ctx is done.
@@ -115,7 +120,7 @@ func (c *AssetRipperClient) waitReady(ctx context.Context) error {
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/", nil)
 		resp, err := c.HTTP.Do(req)
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil
 		}
 		time.Sleep(200 * time.Millisecond)
@@ -145,7 +150,7 @@ func RunAssetRipperExport(ctx context.Context, exePath, gameDataDir, outDir, tmp
 		return fmt.Errorf("create ripper out dir: %w", err)
 	}
 
-	port, err := freePort()
+	port, err := freePort(ctx)
 	if err != nil {
 		return fmt.Errorf("pick assetripper port: %w", err)
 	}

@@ -10,7 +10,7 @@ func TestReadVersionValid(t *testing.T) {
 	// magic 0xFAB11BAF LE + version 39 LE
 	blob := []byte{0xAF, 0x1B, 0xB1, 0xFA, 0x27, 0x00, 0x00, 0x00, 0xDE, 0xAD}
 	p := filepath.Join(t.TempDir(), "global-metadata.dat")
-	os.WriteFile(p, blob, 0644)
+	_ = os.WriteFile(p, blob, 0644)
 	v, err := ReadVersion(p)
 	if err != nil {
 		t.Fatalf("ReadVersion: %v", err)
@@ -24,7 +24,7 @@ func TestReadVersionV24(t *testing.T) {
 	// magic 0xFAB11BAF LE + version 24 LE (older Unity)
 	blob := []byte{0xAF, 0x1B, 0xB1, 0xFA, 0x18, 0x00, 0x00, 0x00}
 	p := filepath.Join(t.TempDir(), "v24.dat")
-	os.WriteFile(p, blob, 0644)
+	_ = os.WriteFile(p, blob, 0644)
 	v, err := ReadVersion(p)
 	if err != nil {
 		t.Fatalf("ReadVersion: %v", err)
@@ -37,7 +37,7 @@ func TestReadVersionV24(t *testing.T) {
 func TestReadVersionBadMagic(t *testing.T) {
 	blob := []byte{0x00, 0x11, 0x22, 0x33, 0x27, 0x00, 0x00, 0x00}
 	p := filepath.Join(t.TempDir(), "bad.dat")
-	os.WriteFile(p, blob, 0644)
+	_ = os.WriteFile(p, blob, 0644)
 	if _, err := ReadVersion(p); err == nil {
 		t.Fatal("expected error on bad magic")
 	}
@@ -45,7 +45,7 @@ func TestReadVersionBadMagic(t *testing.T) {
 
 func TestReadVersionTooShort(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "short.dat")
-	os.WriteFile(p, []byte{0xAF, 0x1B}, 0644)
+	_ = os.WriteFile(p, []byte{0xAF, 0x1B}, 0644)
 	if _, err := ReadVersion(p); err == nil {
 		t.Fatal("expected error on short file")
 	}

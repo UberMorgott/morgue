@@ -19,6 +19,26 @@ func writeTestFile(t *testing.T, path, content string) {
 	}
 }
 
+// readTestFile reads a file the test itself produced under t.TempDir().
+func readTestFile(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path) //nolint:gosec // path is built from this test's own t.TempDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+// asMapT asserts that a decoded JSON value is an object.
+func asMapT(t *testing.T, v any) map[string]any {
+	t.Helper()
+	m, ok := v.(map[string]any)
+	if !ok {
+		t.Fatalf("want JSON object, got %T (%v)", v, v)
+	}
+	return m
+}
+
 // assetNone builds a plain Unity-serialized (non-Odin) MonoBehaviour asset.
 func assetNone(name, guid, extra string) string {
 	return "%YAML 1.1\n" +
@@ -90,7 +110,7 @@ func TestOrganizeDefsGrouping(t *testing.T) {
 		}
 	}
 	// Verify the record shape of one written def.
-	data, _ := os.ReadFile(filepath.Join(out, "defs", "WeaponDef", "Weapon1.json"))
+	data := readTestFile(t, filepath.Join(out, "defs", "WeaponDef", "Weapon1.json"))
 	var rec defRecord
 	if err := json.Unmarshal(data, &rec); err != nil {
 		t.Fatal(err)
@@ -184,10 +204,7 @@ func TestOrganizeLoc(t *testing.T) {
 	if counts["English"] != 2 || counts["Russian"] != 2 {
 		t.Fatalf("counts = %v, want English=2 Russian=2", counts)
 	}
-	data, err := os.ReadFile(filepath.Join(out, "loc", "English.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	data := readTestFile(t, filepath.Join(out, "loc", "English.json"))
 	var kv map[string]string
 	if err := json.Unmarshal(data, &kv); err != nil {
 		t.Fatal(err)
@@ -217,19 +234,23 @@ func TestResolveRefs(t *testing.T) {
 	if err := resolveRefs(defsDir, index); err != nil {
 		t.Fatal(err)
 	}
-	data, _ := os.ReadFile(filepath.Join(defsDir, "AAA", "a.json"))
+	data := readTestFile(t, filepath.Join(defsDir, "AAA", "a.json"))
 	var got map[string]any
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatal(err)
 	}
-	fields := got["fields"].(map[string]any)
-	if name := fields["link"].(map[string]any)["$name"]; name != "TargetDef" {
+	fields := asMapT(t, got["fields"])
+	if name := asMapT(t, fields["link"])["$name"]; name != "TargetDef" {
 		t.Fatalf("link $name = %v, want TargetDef", name)
 	}
-	if name, ok := fields["unknown"].(map[string]any)["$name"]; !ok || name != nil {
+	if name, ok := asMapT(t, fields["unknown"])["$name"]; !ok || name != nil {
 		t.Fatalf("unknown $name = %v, want null present", name)
 	}
-	if name := fields["deeplist"].([]any)[0].(map[string]any)["$name"]; name != "TargetDef" {
+	deeplist, ok := fields["deeplist"].([]any)
+	if !ok || len(deeplist) == 0 {
+		t.Fatalf("deeplist = %v, want a non-empty array", fields["deeplist"])
+	}
+	if name := asMapT(t, deeplist[0])["$name"]; name != "TargetDef" {
 		t.Fatalf("deeplist $name = %v, want TargetDef", name)
 	}
 }
@@ -259,7 +280,7 @@ func TestOrganizeLocI2(t *testing.T) {
 	if counts["UI_Tester"] != 2 {
 		t.Fatalf("UI_Tester count = %d (empty-code fallback to Name)", counts["UI_Tester"])
 	}
-	data, _ := os.ReadFile(filepath.Join(out, "loc", "ru.json"))
+	data := readTestFile(t, filepath.Join(out, "loc", "ru.json"))
 	var kv map[string]string
 	if err := json.Unmarshal(data, &kv); err != nil {
 		t.Fatal(err)
@@ -285,21 +306,21 @@ func TestResolveUnityRefs(t *testing.T) {
 	if err := resolveRefs(defsDir, map[string]string{"target-guid": "SomeViewDef"}); err != nil {
 		t.Fatal(err)
 	}
-	data, _ := os.ReadFile(filepath.Join(defsDir, "W", "w.json"))
+	data := readTestFile(t, filepath.Join(defsDir, "W", "w.json"))
 	var got map[string]any
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatal(err)
 	}
-	f := got["fields"].(map[string]any)
-	if name := f["ViewElementDef"].(map[string]any)["$name"]; name != "SomeViewDef" {
+	f := asMapT(t, got["fields"])
+	if name := asMapT(t, f["ViewElementDef"])["$name"]; name != "SomeViewDef" {
 		t.Fatalf("ViewElementDef $name = %v, want SomeViewDef", name)
 	}
 	// Unresolved guid ref stays untouched (no $name) to avoid mass churn.
-	if _, ok := f["Missing"].(map[string]any)["$name"]; ok {
+	if _, ok := asMapT(t, f["Missing"])["$name"]; ok {
 		t.Fatalf("unresolved ref should not gain $name")
 	}
 	// Null ref (no guid) untouched.
-	if _, ok := f["Null"].(map[string]any)["$name"]; ok {
+	if _, ok := asMapT(t, f["Null"])["$name"]; ok {
 		t.Fatalf("null ref should not gain $name")
 	}
 }
@@ -344,11 +365,11 @@ func TestOrganizeInventoryXML(t *testing.T) {
 	rep := &Report{AssetCountsByType: map[string]int{}}
 	organizeInventory(Options{InventoryCSV: inPath, OutDir: out}, rep)
 
-	f, err := os.Open(filepath.Join(out, "inventory", "assets.csv"))
+	f, err := os.Open(filepath.Join(out, "inventory", "assets.csv")) //nolint:gosec // path is built from this test's own t.TempDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	rows, err := csv.NewReader(f).ReadAll()
 	if err != nil {
 		t.Fatalf("read back csv: %v", err)
@@ -412,7 +433,7 @@ func TestOrganizeEndToEnd(t *testing.T) {
 		}
 	}
 	// manifest carries the unity version + extraction date.
-	data, _ := os.ReadFile(filepath.Join(out, "manifest.json"))
+	data := readTestFile(t, filepath.Join(out, "manifest.json"))
 	if !strings.Contains(string(data), "2019.4.31f1") {
 		t.Fatalf("manifest missing unity version:\n%s", data)
 	}

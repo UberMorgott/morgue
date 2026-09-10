@@ -40,8 +40,12 @@ func organizeInput(opts Options, inputMaps []map[string]any) int {
 		return 0
 	}
 	md, total := renderInputMap(inputMaps)
-	_ = writeJSON(filepath.Join(opts.OutDir, "input", "inputmap.json"), inputMaps)
-	_ = writeFile(filepath.Join(opts.OutDir, "input", "inputmap.md"), md)
+	if err := writeJSON(filepath.Join(opts.OutDir, "input", "inputmap.json"), inputMaps); err != nil {
+		logf(opts, "input: "+err.Error())
+	}
+	if err := writeFile(filepath.Join(opts.OutDir, "input", "inputmap.md"), md); err != nil {
+		logf(opts, "input: "+err.Error())
+	}
 	return total
 }
 
@@ -62,7 +66,7 @@ func renderInputMap(inputMaps []map[string]any) (string, int) {
 			total++
 			name := asString(firstField(am, "Name", "ActionName", "Id"))
 			section := label(actionSectionLabels, asInt(firstField(am, "ActionSection", "Section")))
-			md.WriteString(fmt.Sprintf("| %s | %s | %s |\n", mdEsc(name), section, mdEsc(renderChords(am))))
+			fmt.Fprintf(&md, "| %s | %s | %s |\n", mdEsc(name), section, mdEsc(renderChords(am)))
 		}
 	}
 	return md.String(), total

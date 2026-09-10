@@ -18,29 +18,29 @@ func printTree(toks []tok) string {
 		switch t.kind {
 		case "node-start":
 			typeStack = append(typeStack, t.typeStr)
-			sb.WriteString(fmt.Sprintf("%s%s { %s\n", ind, nameOrDot(t.name), shortType(t.typeStr)))
+			fmt.Fprintf(&sb, "%s%s { %s\n", ind, nameOrDot(t.name), shortType(t.typeStr))
 		case "primarray":
 			ptype := ""
 			if len(typeStack) > 0 {
 				ptype = typeStack[len(typeStack)-1]
 			}
 			bytesPer, _ := strconv.Atoi(t.typeStr)
-			sb.WriteString(fmt.Sprintf("%s%s\n", ind, decodePrimArray(t.rawArr, bytesPer, ptype)))
+			fmt.Fprintf(&sb, "%s%s\n", ind, decodePrimArray(t.rawArr, bytesPer, ptype))
 		case "node-end":
 			if len(typeStack) > 0 {
 				typeStack = typeStack[:len(typeStack)-1]
 			}
-			sb.WriteString(fmt.Sprintf("%s}\n", ind))
+			fmt.Fprintf(&sb, "%s}\n", ind)
 		case "array-start":
-			sb.WriteString(fmt.Sprintf("%s[array len=%v]\n", ind, t.value))
+			fmt.Fprintf(&sb, "%s[array len=%v]\n", ind, t.value)
 		case "array-end":
-			sb.WriteString(fmt.Sprintf("%s[/array]\n", ind))
+			fmt.Fprintf(&sb, "%s[/array]\n", ind)
 		case "int", "uint", "long", "ulong", "float", "double", "bool", "string",
 			"byte", "sbyte", "short", "ushort", "char":
-			sb.WriteString(fmt.Sprintf("%s%s = %s  (%s)\n", ind, nameOrDot(t.name), fmtVal(t), t.kind))
+			fmt.Fprintf(&sb, "%s%s = %s  (%s)\n", ind, nameOrDot(t.name), fmtVal(t), t.kind)
 		case "null":
 			if t.name != "" {
-				sb.WriteString(fmt.Sprintf("%s%s = null\n", ind, t.name))
+				fmt.Fprintf(&sb, "%s%s = null\n", ind, t.name)
 			}
 		case "eos":
 			// no output
@@ -70,20 +70,28 @@ func fmtVal(t tok) string {
 	if t.value == nil {
 		return "null"
 	}
+	// A mistyped value means the decoder produced a token whose kind and payload
+	// disagree (malformed blob); fall through to the generic %v rendering.
 	switch t.kind {
 	case "float":
-		return fmtFloatCap6(float64(t.value.(float32)), 32)
-	case "double":
-		return fmtFloatCap6(t.value.(float64), 64)
-	case "bool":
-		if t.value.(bool) {
-			return "True"
+		if v, ok := t.value.(float32); ok {
+			return fmtFloatCap6(float64(v), 32)
 		}
-		return "False"
-	case "string":
-		return t.value.(string)
-	case "char":
-		return t.value.(string)
+	case "double":
+		if v, ok := t.value.(float64); ok {
+			return fmtFloatCap6(v, 64)
+		}
+	case "bool":
+		if v, ok := t.value.(bool); ok {
+			if v {
+				return "True"
+			}
+			return "False"
+		}
+	case "string", "char":
+		if v, ok := t.value.(string); ok {
+			return v
+		}
 	}
 	return fmt.Sprintf("%v", t.value)
 }
@@ -97,6 +105,7 @@ func fmtVal(t tok) string {
 //     widening float32->float64 and printing the shortest double (151.13637) or
 //     6 fixed decimals (151.136368) is WRONG — verified against .NET net8.0.
 //   - double (bitSize 64): full precision, then the 6-fractional-digit cap.
+//
 // After the precision step, trailing zeros and a trailing dot are removed.
 func fmtFloatCap6(v float64, bitSize int) string {
 	var s string
@@ -154,7 +163,9 @@ func decodePrimArray(raw []byte, bytesPer int, ptype string) string {
 	isInt := strings.Contains(ptype, "Int32")
 	isLong := strings.Contains(ptype, "Int64")
 	vals := make([]string, 0, count)
-	for k := 0; k < count; k++ {
+	// The int casts below are deliberate two's-complement reinterpretations of
+	// signed little-endian payloads, not value-range conversions.
+	for k := range count {
 		off := k * bytesPer
 		switch {
 		case isFloat && bytesPer == 4:
@@ -162,13 +173,13 @@ func decodePrimArray(raw []byte, bytesPer int, ptype string) string {
 		case isDouble && bytesPer == 8:
 			vals = append(vals, fmtFloatCap6(math.Float64frombits(binary.LittleEndian.Uint64(raw[off:])), 64))
 		case isLong && bytesPer == 8:
-			vals = append(vals, strconv.FormatInt(int64(binary.LittleEndian.Uint64(raw[off:])), 10))
+			vals = append(vals, strconv.FormatInt(int64(binary.LittleEndian.Uint64(raw[off:])), 10)) //nolint:gosec // signed int64 payload read as its raw bits
 		case bytesPer == 4:
-			vals = append(vals, strconv.FormatInt(int64(int32(binary.LittleEndian.Uint32(raw[off:]))), 10))
+			vals = append(vals, strconv.FormatInt(int64(int32(binary.LittleEndian.Uint32(raw[off:]))), 10)) //nolint:gosec // signed int32 payload read as its raw bits
 		case bytesPer == 8:
-			vals = append(vals, strconv.FormatInt(int64(binary.LittleEndian.Uint64(raw[off:])), 10))
+			vals = append(vals, strconv.FormatInt(int64(binary.LittleEndian.Uint64(raw[off:])), 10)) //nolint:gosec // signed int64 payload read as its raw bits
 		case bytesPer == 2:
-			vals = append(vals, strconv.FormatInt(int64(int16(binary.LittleEndian.Uint16(raw[off:]))), 10))
+			vals = append(vals, strconv.FormatInt(int64(int16(binary.LittleEndian.Uint16(raw[off:]))), 10)) //nolint:gosec // signed int16 payload read as its raw bits
 		default:
 			vals = append(vals, strconv.FormatInt(int64(raw[off]), 10))
 		}

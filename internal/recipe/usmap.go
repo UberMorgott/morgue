@@ -230,7 +230,7 @@ func ParseUsmap(path string) (*UsmapData, error) {
 	}
 	// File is small (< 256 MiB by the check above) so a single read is safe and
 	// avoids streaming complexity for the header parse.
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: path is the .usmap the pipeline resolved from its own extracted tree
 	if err != nil {
 		return nil, fmt.Errorf("usmap: read: %w", err)
 	}
@@ -393,7 +393,7 @@ func parseUsmapBody(out *UsmapData, body []byte) error {
 		return fmt.Errorf("usmap: name count %d exceeds cap %d", nameCount, usmapMaxNames)
 	}
 	names := make([]string, 0, nameCount)
-	for i := uint32(0); i < nameCount; i++ {
+	for i := range nameCount {
 		s, err := r.usmapName(out.Version)
 		if err != nil {
 			return fmt.Errorf("usmap: name[%d]: %w", i, err)
@@ -421,7 +421,7 @@ func parseUsmapBody(out *UsmapData, body []byte) error {
 		return fmt.Errorf("usmap: enum count %d exceeds cap %d", enumCount, usmapMaxEnums)
 	}
 	out.Enums = make([]UsmapEnum, 0, enumCount)
-	for i := uint32(0); i < enumCount; i++ {
+	for i := range enumCount {
 		nameIdx, err := r.int32()
 		if err != nil {
 			return fmt.Errorf("usmap: enum[%d] name: %w", i, err)
@@ -482,7 +482,7 @@ func parseUsmapBody(out *UsmapData, body []byte) error {
 		return fmt.Errorf("usmap: struct count %d exceeds cap %d", structCount, usmapMaxStructs)
 	}
 	out.Structs = make([]UsmapStruct, 0, structCount)
-	for i := uint32(0); i < structCount; i++ {
+	for i := range structCount {
 		s, err := parseUsmapStruct(r, out.Version, resolve)
 		if err != nil {
 			return fmt.Errorf("usmap: struct[%d]: %w", i, err)

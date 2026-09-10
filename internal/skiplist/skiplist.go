@@ -1,6 +1,7 @@
 package skiplist
 
 import (
+	"maps"
 	"path/filepath"
 	"strings"
 
@@ -9,11 +10,11 @@ import (
 
 // SkipList determines whether files should be skipped during processing.
 type SkipList struct {
-	enabled        bool
-	categories     map[string]bool // category -> enabled
-	patterns       map[string][]string
-	customSkip     map[string]bool
-	customInclude  map[string]bool
+	enabled       bool
+	categories    map[string]bool // category -> enabled
+	patterns      map[string][]string
+	customSkip    map[string]bool
+	customInclude map[string]bool
 }
 
 // New creates a SkipList from the given config.
@@ -32,9 +33,7 @@ func New(cfg config.Config) *SkipList {
 	}
 
 	// Apply per-category overrides
-	for cat, enabled := range cfg.SkipCategories {
-		sl.categories[cat] = enabled
-	}
+	maps.Copy(sl.categories, cfg.SkipCategories)
 
 	for _, p := range cfg.CustomSkip {
 		sl.customSkip[strings.ToLower(p)] = true

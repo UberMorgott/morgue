@@ -2,6 +2,7 @@ package recon
 
 import (
 	"bytes"
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -118,10 +119,8 @@ func detectObfuscatorByStrings(strs []string) string {
 
 // hasDelphiMarkers checks sections and imports for Delphi indicators.
 func hasDelphiMarkers(sectionNames, importNames []string) bool {
-	for _, name := range sectionNames {
-		if name == "CODE" {
-			return true
-		}
+	if slices.Contains(sectionNames, "CODE") {
+		return true
 	}
 	for _, name := range importNames {
 		lower := strings.ToLower(name)

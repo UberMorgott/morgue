@@ -114,7 +114,7 @@ type hookEntryT struct {
 
 func readHookable(t *testing.T, path string) map[string]hookEntryT {
 	t.Helper()
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("read hookable.json: %v", err)
 	}
@@ -132,7 +132,7 @@ func readHookable(t *testing.T, path string) map[string]hookEntryT {
 // readClasses returns map[class]isBoilerplate from classes.json.
 func readClasses(t *testing.T, path string) map[string]bool {
 	t.Helper()
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("read classes.json: %v", err)
 	}

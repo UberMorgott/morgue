@@ -86,9 +86,9 @@ func TestSplitDecompiledC(t *testing.T) {
 	// functions/ tree created with split files, each well under 2MB.
 	funcsDir := filepath.Join(srcDir, "functions")
 	var splitFiles []string
-	filepath.WalkDir(funcsDir, func(path string, d os.DirEntry, werr error) error {
+	_ = filepath.WalkDir(funcsDir, func(path string, d os.DirEntry, werr error) error {
 		if werr != nil || d.IsDir() {
-			return nil
+			return nil //nolint:nilerr // an unreadable entry is skipped; the walk must still cover the rest of the tree
 		}
 		if strings.HasSuffix(path, ".c") {
 			splitFiles = append(splitFiles, path)
@@ -105,11 +105,11 @@ func TestSplitDecompiledC(t *testing.T) {
 
 	// functions.ndjson: one JSON object per line, count == FunctionCount.
 	ndjsonPath := filepath.Join(srcDir, "functions.ndjson")
-	nf, err := os.Open(ndjsonPath)
+	nf, err := os.Open(ndjsonPath) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("open functions.ndjson: %v", err)
 	}
-	defer nf.Close()
+	defer func() { _ = nf.Close() }()
 	lines := 0
 	sc := bufio.NewScanner(nf)
 	sc.Buffer(make([]byte, 0, 1<<20), 1<<20)
@@ -128,7 +128,7 @@ func TestSplitDecompiledC(t *testing.T) {
 	}
 
 	// functions_index.json: counts match.
-	fiData, err := os.ReadFile(filepath.Join(srcDir, "functions_index.json"))
+	fiData, err := os.ReadFile(filepath.Join(srcDir, "functions_index.json")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("read functions_index.json: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestSplitDecompiledC(t *testing.T) {
 	// symbols.json: a small summary (counts + classes + ndjson pointer). The full
 	// address->name map is streamed to symbols.ndjson, NOT inlined here (memory
 	// safety). The summary must NOT carry the giant map.
-	smData, err := os.ReadFile(filepath.Join(srcDir, "symbols.json"))
+	smData, err := os.ReadFile(filepath.Join(srcDir, "symbols.json")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("read symbols.json: %v", err)
 	}
@@ -164,11 +164,11 @@ func TestSplitDecompiledC(t *testing.T) {
 
 	// symbols.ndjson: one {address,name} per line; addresses present, names right.
 	syms := map[string]string{}
-	sf, err := os.Open(filepath.Join(srcDir, "symbols.ndjson"))
+	sf, err := os.Open(filepath.Join(srcDir, "symbols.ndjson")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("open symbols.ndjson: %v", err)
 	}
-	defer sf.Close()
+	defer func() { _ = sf.Close() }()
 	ssc := bufio.NewScanner(sf)
 	ssc.Buffer(make([]byte, 0, 1<<20), 1<<20)
 	for ssc.Scan() {

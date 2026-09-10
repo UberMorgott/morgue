@@ -1,0 +1,6 @@
+# Go tooling normalises to LF: with core.autocrlf=true the Windows work tree gets
+# CRLF, and `gofmt -l .` then reports every tracked .go file as unformatted even
+# though nothing about the content differs. Pin the checkout instead.
+*.go text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf

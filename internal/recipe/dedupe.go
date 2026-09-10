@@ -102,7 +102,7 @@ func dedupeFunctionBodies(srcDir string) (dedupeResult, error) {
 	var res dedupeResult
 	fnDir := filepath.Join(srcDir, "functions")
 	if fi, err := os.Stat(fnDir); err != nil || !fi.IsDir() {
-		return res, nil
+		return res, nil //nolint:nilerr // an absent functions/ dir is a documented no-op, not a failure
 	}
 
 	files, err := listSplitFiles(fnDir)
@@ -224,7 +224,7 @@ func listSplitFiles(fnDir string) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(fnDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // skip unreadable entries and keep walking; a partial listing is better than aborting the split
 		}
 		if !d.IsDir() && strings.HasSuffix(strings.ToLower(path), ".c") {
 			files = append(files, path)
@@ -242,11 +242,11 @@ func listSplitFiles(fnDir string) ([]string, error) {
 // best-effort function name parsed from the body's first non-empty signature
 // line. Streaming: at most one record's lines are buffered at a time.
 func scanSplitRecords(path string, fn func(addr, name, body string)) error {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G304: path comes from listSplitFiles walking the pipeline's own functions/ tree
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	br := bufio.NewReaderSize(f, scannerInitBuf)
 	var curAddr string
@@ -334,7 +334,7 @@ func hashBody(h io.Writer, body string) {
 			i++
 		}
 		if i > start {
-			io.WriteString(h, body[start:i])
+			_, _ = io.WriteString(h, body[start:i])
 		}
 		if i >= n {
 			break
@@ -344,7 +344,7 @@ func hashBody(h io.Writer, body string) {
 		for i < n && isHexByte(body[i]) {
 			i++
 		}
-		io.WriteString(h, symRepl)
+		_, _ = io.WriteString(h, symRepl)
 	}
 }
 
@@ -431,13 +431,13 @@ func writeGameViews(srcDir string) (gameViewResult, error) {
 // no identifiable owning class (anonymous/unqualified) is KEPT. Memory-safe:
 // row-at-a-time, no buffering of the whole file.
 func filterCSVByFirstColClass(inPath, outPath string) (kept, dropped int, err error) {
-	in, err := os.Open(inPath)
+	in, err := os.Open(inPath) //nolint:gosec // G304: inPath is an indexes/*.csv the pipeline just wrote, not user input
 	if err != nil {
 		return 0, 0, err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 
-	out, err := os.Create(outPath)
+	out, err := os.Create(outPath) //nolint:gosec // G304: outPath is a sibling of inPath inside the pipeline's own output tree
 	if err != nil {
 		return 0, 0, err
 	}
@@ -445,8 +445,8 @@ func filterCSVByFirstColClass(inPath, outPath string) (kept, dropped int, err er
 	w := csv.NewWriter(outBuf)
 	defer func() {
 		w.Flush()
-		outBuf.Flush()
-		out.Close()
+		_ = outBuf.Flush()
+		_ = out.Close()
 	}()
 
 	r := csv.NewReader(in)

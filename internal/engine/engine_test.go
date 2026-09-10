@@ -28,11 +28,11 @@ func TestScanFindsGroups(t *testing.T) {
 
 	// Create a Unity Mono layout
 	monoDir := filepath.Join(root, "Game_Data", "Managed")
-	os.MkdirAll(monoDir, 0755)
-	os.WriteFile(filepath.Join(monoDir, "Assembly-CSharp.dll"), []byte("fake"), 0644)
+	_ = os.MkdirAll(monoDir, 0755)
+	_ = os.WriteFile(filepath.Join(monoDir, "Assembly-CSharp.dll"), []byte("fake"), 0644)
 
 	// Create standalone
-	os.WriteFile(filepath.Join(root, "app.exe"), []byte("fake"), 0644)
+	_ = os.WriteFile(filepath.Join(root, "app.exe"), []byte("fake"), 0644)
 
 	cfg := config.Default()
 	e := New(cfg, t.TempDir())

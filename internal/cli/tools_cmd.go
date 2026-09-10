@@ -25,11 +25,11 @@ func ToolsCheck(updates bool) error {
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if updates {
-		fmt.Fprintln(w, "TOOL\tCATEGORY\tINSTALLED\tVERSION\tLATEST\tUPDATE\tPATH")
-		fmt.Fprintln(w, "----\t--------\t---------\t-------\t------\t------\t----")
+		_, _ = fmt.Fprintln(w, "TOOL\tCATEGORY\tINSTALLED\tVERSION\tLATEST\tUPDATE\tPATH")
+		_, _ = fmt.Fprintln(w, "----\t--------\t---------\t-------\t------\t------\t----")
 	} else {
-		fmt.Fprintln(w, "TOOL\tCATEGORY\tINSTALLED\tVERSION\tPATH")
-		fmt.Fprintln(w, "----\t--------\t---------\t-------\t----")
+		_, _ = fmt.Fprintln(w, "TOOL\tCATEGORY\tINSTALLED\tVERSION\tPATH")
+		_, _ = fmt.Fprintln(w, "----\t--------\t---------\t-------\t----")
 	}
 
 	for _, def := range tools.Registry {
@@ -58,11 +58,11 @@ func ToolsCheck(updates bool) error {
 			if status.UpdateAvailable {
 				update = "yes"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				def.Name, def.Category, installed, version, latest, update, path)
 			continue
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 			def.Name, def.Category, installed, version, path)
 	}
 

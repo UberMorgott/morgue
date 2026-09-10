@@ -93,7 +93,7 @@ func (pv *PipelineView) View() string {
 	var b strings.Builder
 
 	elapsed := time.Since(pv.start).Truncate(time.Second)
-	b.WriteString(fmt.Sprintf("Elapsed: %s\n\n", elapsed))
+	fmt.Fprintf(&b, "Elapsed: %s\n\n", elapsed)
 
 	b.WriteString(pv.progress.View())
 	b.WriteString("\n")
@@ -101,7 +101,7 @@ func (pv *PipelineView) View() string {
 
 	if pv.done {
 		if pv.err != nil {
-			b.WriteString(fmt.Sprintf("\n\nPipeline failed: %v", pv.err))
+			fmt.Fprintf(&b, "\n\nPipeline failed: %v", pv.err)
 		} else {
 			b.WriteString("\n\nPipeline complete!")
 		}

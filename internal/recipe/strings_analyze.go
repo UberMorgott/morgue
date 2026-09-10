@@ -54,11 +54,11 @@ func analyzeStrings(stringsFile, outputFile string) {
 
 // doAnalyzeStrings performs the actual analysis work.
 func doAnalyzeStrings(stringsFile, outputFile string) error {
-	f, err := os.Open(stringsFile)
+	f, err := os.Open(stringsFile) //nolint:gosec // G304: stringsFile is the strings dump this pipeline just wrote, not user input
 	if err != nil {
 		return fmt.Errorf("open %s: %w", stringsFile, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	urlSet := map[string]bool{}
 	pathSet := map[string]bool{}
@@ -141,7 +141,7 @@ func doAnalyzeStrings(stringsFile, outputFile string) error {
 		Interesting:   sortedKeys(interestingSet),
 	}
 
-	data, err := json.MarshalIndent(analysis, "", "  ")
+	data, err := json.MarshalIndent(analysis, "", "  ") //nolint:gosec // G117: api_keys is the analysis RESULT - reporting secrets found in the target is the purpose of this step
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}

@@ -178,7 +178,7 @@ func verifyHash(path, expectedHash string) error {
 		return fmt.Errorf("compute hash of %s: %w", filepath.Base(path), err)
 	}
 	if actual != expectedHash {
-		os.Remove(path)
+		_ = os.Remove(path)
 		return fmt.Errorf("hash mismatch for %s: expected %s, got %s", filepath.Base(path), expectedHash, actual)
 	}
 	return nil
@@ -212,19 +212,20 @@ func extractZip(archivePath, destDir string) error {
 	if err != nil {
 		return fmt.Errorf("open zip %s: %w", archivePath, err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	for _, f := range r.File {
-		target := filepath.Join(destDir, f.Name)
+		// Prevent zip slip: anchor the entry name at the root so any leading
+		// "../" is folded away, then verify the join stayed inside destDir.
+		name := filepath.Clean(string(os.PathSeparator) + f.Name)
+		target := filepath.Join(destDir, name)
 
-		// Prevent zip slip
-		rel, err := filepath.Rel(destDir, target)
-		if err != nil || strings.HasPrefix(rel, "..") {
+		if !strings.HasPrefix(target, filepath.Clean(destDir)+string(os.PathSeparator)) {
 			continue
 		}
 
 		if f.FileInfo().IsDir() {
-			os.MkdirAll(target, 0755)
+			_ = os.MkdirAll(target, 0755)
 			continue
 		}
 
@@ -237,16 +238,17 @@ func extractZip(archivePath, destDir string) error {
 			return fmt.Errorf("open entry %s: %w", f.Name, err)
 		}
 
+		//nolint:gosec // target was just checked to live under destDir (zip-slip guard above)
 		out, err := os.Create(target)
 		if err != nil {
-			rc.Close()
+			_ = rc.Close()
 			return fmt.Errorf("create %s: %w", target, err)
 		}
 
 		// Limit extracted file size to 2GB to prevent zip bombs
 		_, copyErr := io.Copy(out, io.LimitReader(rc, 2*1024*1024*1024))
-		rc.Close()
-		out.Close()
+		_ = rc.Close()
+		_ = out.Close()
 		if copyErr != nil {
 			return fmt.Errorf("extract %s: %w", f.Name, copyErr)
 		}
@@ -269,7 +271,7 @@ func installFromURLs(urls []string, destDir string, onProgress func(bytesDown, b
 			if err := extractArchive(destPath, destDir); err != nil {
 				return err
 			}
-			os.Remove(destPath)
+			_ = os.Remove(destPath)
 		}
 	}
 	return nil
@@ -291,7 +293,7 @@ func installFromURL(tool ToolDef, destDir string, onProgress func(bytesDown, byt
 		return err
 	}
 	if strings.ToLower(filepath.Ext(destPath)) != ".exe" {
-		os.Remove(destPath)
+		_ = os.Remove(destPath)
 	}
 	return nil
 }
@@ -340,11 +342,11 @@ func installFromGitBuild(tool ToolDef, destDir string, onProgress func(string, i
 	if err != nil {
 		return "", fmt.Errorf("download source %s: %w", tool.Repo, err)
 	}
-	defer os.Remove(zipPath)
+	defer func() { _ = os.Remove(zipPath) }()
 
 	// 3. Extract into a temporary src directory.
 	srcDir := filepath.Join(destDir, "src")
-	os.MkdirAll(srcDir, 0755)
+	_ = os.MkdirAll(srcDir, 0755)
 	if onExtract != nil {
 		onExtract()
 	}
@@ -365,30 +367,32 @@ func installFromGitBuild(tool ToolDef, destDir string, onProgress func(string, i
 	// 5. Build with dotnet.
 	dotnetBin, err := findDotnetBin(destDir)
 	if err != nil {
-		os.RemoveAll(srcDir)
+		_ = os.RemoveAll(srcDir)
 		return "", err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
+	//nolint:gosec // dotnetBin is resolved by findDotnetBin from our own managed
+	// tools dir / PATH; args are fixed literals, nothing here is user input.
 	cmd := exec.CommandContext(ctx, dotnetBin, "build", "-c", "Release", "-o", destDir)
 	cmd.Dir = projectDir
 	util.HideCmdWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		os.RemoveAll(srcDir)
+		_ = os.RemoveAll(srcDir)
 		return "", fmt.Errorf("dotnet build failed: %w\n%s", err, string(output))
 	}
 
 	// 6. Clean up source.
-	os.RemoveAll(srcDir)
+	_ = os.RemoveAll(srcDir)
 
 	// 7. Persist version.
 	if version == "" {
 		version = "main"
 	}
-	os.WriteFile(filepath.Join(destDir, ".version"), []byte(version), 0644)
+	_ = os.WriteFile(filepath.Join(destDir, ".version"), []byte(version), 0644)
 
 	return version, nil
 }
@@ -423,7 +427,7 @@ func installFromNuGet(tool ToolDef, destDir string, onProgress func(int64, int64
 	if err := extractArchive(nupkgPath, destDir); err != nil {
 		return "", fmt.Errorf("extract nupkg: %w", err)
 	}
-	os.Remove(nupkgPath)
+	_ = os.Remove(nupkgPath)
 
 	return version, nil
 }

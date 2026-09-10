@@ -89,10 +89,7 @@ func (mp *MultiProgress) View() string {
 
 	// Progress bar
 	pct := mp.percent()
-	barWidth := mp.width - 10
-	if barWidth < 10 {
-		barWidth = 10
-	}
+	barWidth := max(mp.width-10, 10)
 	filled := int(pct * float64(barWidth))
 	empty := barWidth - filled
 
@@ -101,7 +98,7 @@ func (mp *MultiProgress) View() string {
 
 	bar := accentStyle.Render(strings.Repeat("█", filled)) +
 		dimStyle.Render(strings.Repeat("░", empty))
-	b.WriteString(fmt.Sprintf(" %s %3.0f%%\n\n", bar, pct*100))
+	fmt.Fprintf(&b, " %s %3.0f%%\n\n", bar, pct*100)
 
 	// Step list
 	for i, s := range mp.steps {
@@ -110,7 +107,7 @@ func (mp *MultiProgress) View() string {
 		if s.Duration > 0 {
 			dur = fmt.Sprintf(" (%s)", s.Duration.Truncate(time.Millisecond))
 		}
-		b.WriteString(fmt.Sprintf("  %s %d. %s%s\n", icon, i+1, s.Name, dur))
+		fmt.Fprintf(&b, "  %s %d. %s%s\n", icon, i+1, s.Name, dur)
 	}
 
 	return b.String()

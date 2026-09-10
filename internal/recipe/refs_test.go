@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -153,11 +154,11 @@ void FUN_140002000(void)
 // readCSV reads a CSV file and returns all data rows (header skipped).
 func readCSV(t *testing.T, path string) [][]string {
 	t.Helper()
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("open %s: %v", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	r := csv.NewReader(f)
 	r.FieldsPerRecord = -1
 	all, err := r.ReadAll()
@@ -173,12 +174,8 @@ func readCSV(t *testing.T, path string) [][]string {
 // csvHasRow reports whether any row contains col0==a and any later col==b.
 func csvHasRow(rows [][]string, a, b string) bool {
 	for _, r := range rows {
-		if len(r) >= 2 && r[0] == a {
-			for _, c := range r[1:] {
-				if c == b {
-					return true
-				}
-			}
+		if len(r) >= 2 && r[0] == a && slices.Contains(r[1:], b) {
+			return true
 		}
 	}
 	return false

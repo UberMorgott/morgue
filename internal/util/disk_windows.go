@@ -20,7 +20,7 @@ var (
 func EnumerateDrives() []DriveInfo {
 	mask, _, _ := procGetLogicalDrives.Call()
 	var out []DriveInfo
-	for i := 0; i < 26; i++ {
+	for i := range 26 {
 		if mask&(1<<uint(i)) == 0 {
 			continue
 		}
@@ -28,6 +28,8 @@ func EnumerateDrives() []DriveInfo {
 		root := letter + `\`
 		var freeAvail, totalBytes, totalFree uint64
 		rp, _ := syscall.UTF16PtrFromString(root)
+		//nolint:gosec // G103: unsafe.Pointer on locals is the required calling
+		// convention for a Win32 syscall taking out-parameters; no pointer arithmetic.
 		ret, _, _ := procGetDiskFreeSpace.Call(
 			uintptr(unsafe.Pointer(rp)),
 			uintptr(unsafe.Pointer(&freeAvail)),

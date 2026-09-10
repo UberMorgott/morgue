@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -20,11 +21,11 @@ import (
 // the existing index.json shape (asserted by ghidra_test.go) is untouched.
 type funcEntry struct {
 	Name      string `json:"name"`
-	Address   string `json:"address"`            // normalized lowercase, 0x-prefixed
-	SizeBytes int64  `json:"size_bytes"`         // byte length of the raw record text
-	Lines     int    `json:"lines"`              // newline count within the record
+	Address   string `json:"address"`    // normalized lowercase, 0x-prefixed
+	SizeBytes int64  `json:"size_bytes"` // byte length of the raw record text
+	Lines     int    `json:"lines"`      // newline count within the record
 	IsNamed   bool   `json:"is_named"`
-	File      string `json:"file"`               // slash-normalized rel path of the split file from srcDir
+	File      string `json:"file"`                // slash-normalized rel path of the split file from srcDir
 	Signature string `json:"signature,omitempty"` // the function's C signature line (for hookable.json)
 }
 
@@ -163,7 +164,7 @@ func extractRefs(raw, callerName string) (strs, callees []string) {
 	}
 
 	seenCall := map[string]bool{}
-	for _, line := range strings.Split(raw, "\n") {
+	for line := range strings.SplitSeq(raw, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "//") {
 			continue // comment / record header
@@ -191,11 +192,11 @@ func extractRefs(raw, callerName string) (strs, callees []string) {
 // srcDir is the directory that contains the combined .c (and where the sibling
 // JSON outputs live); funcsDir is normally <srcDir>/functions.
 func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, error) {
-	in, err := os.Open(combinedCPath)
+	in, err := os.Open(combinedCPath) //nolint:gosec // G304: combinedCPath is the decompiler output file this pipeline just wrote, not user input
 	if err != nil {
 		return nil, fmt.Errorf("open combined .c: %w", err)
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 
 	inInfo, err := in.Stat()
 	if err != nil {
@@ -215,30 +216,30 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 
 	// NDJSON sink for the full per-function catalog (never buffered as structs).
 	ndjsonPath := filepath.Join(srcDir, "functions.ndjson")
-	ndjsonFile, err := os.Create(ndjsonPath)
+	ndjsonFile, err := os.Create(ndjsonPath) //nolint:gosec // G304: fixed file name under srcDir, the pipeline's own output tree
 	if err != nil {
 		return nil, fmt.Errorf("create functions.ndjson: %w", err)
 	}
 	ndjsonBuf := bufio.NewWriterSize(ndjsonFile, 64*1024)
 	ndjsonEnc := json.NewEncoder(ndjsonBuf)
 	defer func() {
-		ndjsonBuf.Flush()
-		ndjsonFile.Close()
+		_ = ndjsonBuf.Flush()
+		_ = ndjsonFile.Close()
 	}()
 
 	// NDJSON sink for the full address->name symbol catalog (F2). Streamed for
 	// the same reason as functions.ndjson: an in-RAM map[string]string plus a
 	// final MarshalIndent is O(n) memory and OOMs on million-function binaries.
 	symNDJSONPath := filepath.Join(srcDir, "symbols.ndjson")
-	symFile, err := os.Create(symNDJSONPath)
+	symFile, err := os.Create(symNDJSONPath) //nolint:gosec // G304: fixed file name under srcDir, the pipeline's own output tree
 	if err != nil {
 		return nil, fmt.Errorf("create symbols.ndjson: %w", err)
 	}
 	symBuf := bufio.NewWriterSize(symFile, 64*1024)
 	symEnc := json.NewEncoder(symBuf)
 	defer func() {
-		symBuf.Flush()
-		symFile.Close()
+		_ = symBuf.Flush()
+		_ = symFile.Close()
 	}()
 
 	// indexes/ cross-reference CSVs (B1): string_refs.csv (function -> strings it
@@ -249,7 +250,7 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 	if err := os.MkdirAll(indexesDir, 0755); err != nil {
 		return nil, fmt.Errorf("mkdir indexes: %w", err)
 	}
-	strRefsFile, err := os.Create(filepath.Join(indexesDir, "string_refs.csv"))
+	strRefsFile, err := os.Create(filepath.Join(indexesDir, "string_refs.csv")) //nolint:gosec // G304: fixed file name under srcDir, the pipeline's own output tree
 	if err != nil {
 		return nil, fmt.Errorf("create string_refs.csv: %w", err)
 	}
@@ -257,10 +258,10 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 	strRefsCSV := csv.NewWriter(strRefsBuf)
 	defer func() {
 		strRefsCSV.Flush()
-		strRefsBuf.Flush()
-		strRefsFile.Close()
+		_ = strRefsBuf.Flush()
+		_ = strRefsFile.Close()
 	}()
-	callersFile, err := os.Create(filepath.Join(indexesDir, "callers.csv"))
+	callersFile, err := os.Create(filepath.Join(indexesDir, "callers.csv")) //nolint:gosec // G304: fixed file name under srcDir, the pipeline's own output tree
 	if err != nil {
 		return nil, fmt.Errorf("create callers.csv: %w", err)
 	}
@@ -268,8 +269,8 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 	callersCSV := csv.NewWriter(callersBuf)
 	defer func() {
 		callersCSV.Flush()
-		callersBuf.Flush()
-		callersFile.Close()
+		_ = callersBuf.Flush()
+		_ = callersFile.Close()
 	}()
 	if err := strRefsCSV.Write([]string{"function", "address", "string"}); err != nil {
 		return nil, fmt.Errorf("write string_refs header: %w", err)
@@ -286,7 +287,7 @@ func splitDecompiledC(combinedCPath, srcDir, funcsDir string) (*splitResult, err
 	classSet := make(map[string]bool)
 
 	bw := newBucketWriter(funcsDir)
-	defer bw.closeOpen()
+	defer func() { _ = bw.closeOpen() }()
 
 	// recordState accumulates one function record while streaming.
 	var (
@@ -522,7 +523,7 @@ func streamLines(r io.Reader, fn func(line string) error) error {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		if err == bufio.ErrTooLong {
+		if errors.Is(err, bufio.ErrTooLong) {
 			// Fall back to a manual reader loop from where the scanner stopped.
 			return streamLinesReader(br, fn)
 		}
@@ -605,7 +606,7 @@ func (b *bucketWriter) write(addrHex, block string) (string, error) {
 		return "", err
 	}
 	if !strings.HasSuffix(block, "\n") {
-		b.curBuf.WriteByte('\n')
+		_ = b.curBuf.WriteByte('\n')
 		b.curWritten++
 	}
 	b.curWritten += int64(len(block))
@@ -626,7 +627,7 @@ func (b *bucketWriter) openFile(bucket string, index int) error {
 	// causes this (bucket,index) file to be re-opened, we append to it instead
 	// of truncating already-written functions. We seed curWritten with the
 	// existing size so the soft-cap roll stays accurate across re-opens.
-	f, err := os.OpenFile(full, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	f, err := os.OpenFile(full, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644) //nolint:gosec // G304: name is generated from the bucket index under funcsDir, the pipeline's own output tree
 	if err != nil {
 		return err
 	}
@@ -649,7 +650,7 @@ func (b *bucketWriter) closeOpen() error {
 		return nil
 	}
 	if err := b.curBuf.Flush(); err != nil {
-		b.curFile.Close()
+		_ = b.curFile.Close()
 		b.curFile = nil
 		return err
 	}

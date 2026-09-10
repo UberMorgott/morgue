@@ -34,6 +34,11 @@ func main() {
 	// froze the user's machine). Applied once, here, for every code path.
 	applyMemoryCap()
 
+	// Drop the binary displaced by a previous self-update, if any. Windows
+	// cannot delete a running .exe, so the swap leaves <exe>.old behind for the
+	// next start to clean up.
+	selfupdate.CleanupOld()
+
 	// If CLI args provided → cobra
 	if len(os.Args) > 1 {
 		runCLI()
@@ -98,6 +103,9 @@ func runGUI() {
 				webview2.ShowError("WebView2 still not available after installation. Try restarting the application.")
 				os.Exit(1)
 			}
+			if isLocal {
+				browserPath = webview2.LocalRuntimePath()
+			}
 		case webview2.ResultPortable:
 			if err := webview2.InstallPortable(); err != nil {
 				webview2.ShowError(fmt.Sprintf("Portable install failed:\n%v", err))
@@ -139,9 +147,13 @@ func runGUI() {
 			WebviewBrowserPath:  browserPath,
 		},
 		OnShutdown: func() {
-			pipelineSvc.Stop()
+			if err := pipelineSvc.Stop(); err != nil {
+				log.Printf("shutdown: stop pipeline: %v", err)
+			}
 			if apiSrv != nil {
-				apiSrv.Stop()
+				if err := apiSrv.Stop(); err != nil {
+					log.Printf("shutdown: stop api server: %v", err)
+				}
 			}
 		},
 	})
@@ -297,7 +309,9 @@ func gamedataCmd() *cobra.Command {
 	cmd.Flags().StringP("out", "o", "", "Output directory for the organized game-data tree (required)")
 	cmd.Flags().String("inventory", "", "AssetStudio inventory CSV to merge (optional)")
 	cmd.Flags().String("full", "", "Separate full-export dir for prefabs/scenes (optional)")
-	cmd.MarkFlagRequired("out")
+	if err := cmd.MarkFlagRequired("out"); err != nil {
+		log.Printf("gamedata: mark --out required: %v", err)
+	}
 	return cmd
 }
 

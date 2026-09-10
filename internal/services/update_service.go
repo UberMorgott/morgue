@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/exec"
@@ -111,7 +112,11 @@ func relaunch(app *application.App) {
 		return
 	}
 
-	cmd := exec.Command(exe, os.Args[1:]...)
+	// context.Background(), deliberately: the replacement process must outlive this
+	// one, so it must not be bound to a context this process can cancel.
+	//nolint:gosec // G204: `exe` is os.Executable() — this process's own binary, not
+	// user input; relaunching ourselves is the whole point of this function.
+	cmd := exec.CommandContext(context.Background(), exe, os.Args[1:]...)
 	cmd.Env = append(os.Environ(), "MORGUE_RELAUNCHED=1")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -121,6 +126,8 @@ func relaunch(app *application.App) {
 		// running so the user isn't left with nothing.
 		return
 	}
-	log.Printf("relaunch: started %s (pid %d), quitting current process", exe, cmd.Process.Pid)
+	//nolint:gosec // G706: `exe` is os.Executable(), this process's own path — not
+	// attacker-controlled input — and %q escapes it anyway.
+	log.Printf("relaunch: started %q (pid %d), quitting current process", exe, cmd.Process.Pid)
 	app.Quit()
 }

@@ -32,7 +32,7 @@ func TestAttachParentConsoleKeepsRedirectedStdout(t *testing.T) {
 		os.Stdout = orig
 		t.Fatalf("write to redirected stdout failed after attachParentConsole: %v", err)
 	}
-	w.Close()
+	_ = w.Close()
 	os.Stdout = orig
 
 	var buf bytes.Buffer

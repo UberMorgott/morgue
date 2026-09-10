@@ -17,7 +17,7 @@ var prefabDocHeader = regexp.MustCompile(`^!u!(\d+)\s+&(\d+)`)
 func organizePrefabs(opts Options, rep *Report) {
 	_ = filepath.WalkDir(opts.FullExportDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
-			return nil
+			return nil //nolint:nilerr // an unreadable entry is skipped so the rest of the export still yields prefabs
 		}
 		if !strings.EqualFold(filepath.Ext(d.Name()), ".prefab") {
 			return nil
@@ -25,7 +25,7 @@ func organizePrefabs(opts Options, rep *Report) {
 		docs, perr := parsePrefab(path)
 		if perr != nil {
 			rep.Failed = append(rep.Failed, relPath(opts.FullExportDir, path)+": "+perr.Error())
-			return nil
+			return nil //nolint:nilerr // recorded in rep.Failed; one bad prefab must not abort the walk
 		}
 		name := strings.TrimSuffix(d.Name(), filepath.Ext(d.Name()))
 		out := map[string]any{"name": name, "objects": docs}
@@ -41,7 +41,7 @@ func organizePrefabs(opts Options, rep *Report) {
 // document, so a streaming decode fails after doc 1; we split on "--- "
 // boundaries and strip the per-doc tag/anchor header before parsing.
 func parsePrefab(path string) ([]any, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // path comes from WalkDir over the caller's local export dir
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func splitUnityDocs(s string) []string {
 			cur = nil
 		}
 	}
-	for _, ln := range strings.Split(s, "\n") {
+	for ln := range strings.SplitSeq(s, "\n") {
 		switch {
 		case strings.HasPrefix(ln, "--- "):
 			flush()
@@ -103,12 +103,12 @@ func splitUnityDocs(s string) []string {
 // stripDocHeader removes the leading "!u!N &M [stripped]" line from a document
 // chunk and returns its classID, pathID, and the remaining YAML body.
 func stripDocHeader(chunk string) (classID, pathID, body string) {
-	nl := strings.IndexByte(chunk, '\n')
-	if nl < 0 {
+	head, rest, found := strings.Cut(chunk, "\n")
+	if !found {
 		return "", "", ""
 	}
-	first := strings.TrimSpace(chunk[:nl])
-	body = chunk[nl+1:]
+	first := strings.TrimSpace(head)
+	body = rest
 	if m := prefabDocHeader.FindStringSubmatch(first); m != nil {
 		classID, pathID = m[1], m[2]
 	}

@@ -76,10 +76,7 @@ func (h *Header) View() string {
 	// Calculate spacing
 	leftLen := lipgloss.Width(left)
 	rightLen := lipgloss.Width(right)
-	spacerLen := h.width - leftLen - rightLen
-	if spacerLen < 1 {
-		spacerLen = 1
-	}
+	spacerLen := max(h.width-leftLen-rightLen, 1)
 	spacer := strings.Repeat(" ", spacerLen)
 
 	// Track settings button position for mouse click detection.

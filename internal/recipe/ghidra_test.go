@@ -16,8 +16,8 @@ func TestBuildIndexHappyPath(t *testing.T) {
 
 	// Source files with known byte contents. countLines counts '\n' bytes:
 	// use newline-terminated lines so counts are deterministic.
-	aContent := []byte("int a(void) { return 1; }\n")        // 26 bytes, 1 newline
-	bContent := []byte("class B {\nvoid f() {}\n};\n")        // 25 bytes, 3 newlines
+	aContent := []byte("int a(void) { return 1; }\n")  // 26 bytes, 1 newline
+	bContent := []byte("class B {\nvoid f() {}\n};\n") // 25 bytes, 3 newlines
 	if err := os.WriteFile(filepath.Join(dir, "a.c"), aContent, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestBuildIndexHappyPath(t *testing.T) {
 
 	// index.json must have been written to the indexed dir.
 	indexPath := filepath.Join(dir, "index.json")
-	data, err := os.ReadFile(indexPath)
+	data, err := os.ReadFile(indexPath) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("index.json not written: %v", err)
 	}

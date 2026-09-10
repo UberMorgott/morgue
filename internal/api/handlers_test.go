@@ -22,7 +22,7 @@ func newTestServer() *Server {
 func TestHandleGetTools(t *testing.T) {
 	s := newTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/tools", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/tools", nil)
 	rec := httptest.NewRecorder()
 
 	s.handleGetTools(rec, req)
@@ -47,7 +47,7 @@ func TestHandleGetTools(t *testing.T) {
 func TestHandleGetSettings(t *testing.T) {
 	s := newTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/settings", nil)
 	rec := httptest.NewRecorder()
 
 	s.handleGetSettings(rec, req)
@@ -73,7 +73,7 @@ func TestHandleRunDecompilation(t *testing.T) {
 		"path":   "test.exe",
 		"output": "out",
 	})
-	req := httptest.NewRequest(http.MethodPost, "/api/run", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/run", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -96,7 +96,7 @@ func TestHandleRunMissingPath(t *testing.T) {
 	s := newTestServer()
 
 	body, _ := json.Marshal(map[string]string{"output": "out"})
-	req := httptest.NewRequest(http.MethodPost, "/api/run", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/run", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
 	s.handleRun(rec, req)
@@ -109,7 +109,7 @@ func TestHandleRunMissingPath(t *testing.T) {
 func TestHandleGetPipelineStatus(t *testing.T) {
 	s := newTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/run/status", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/run/status", nil)
 	rec := httptest.NewRecorder()
 
 	s.handleGetPipelineStatus(rec, req)

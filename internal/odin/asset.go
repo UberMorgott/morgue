@@ -14,17 +14,17 @@ const serializedMarker = "SerializedBytes:"
 // getHex scans an Asset file for the first "SerializedBytes:" line and returns
 // the decoded raw blob. Mirrors C# Program.GetHex.
 func getHex(path string) ([]byte, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // decoding a caller-chosen asset file IS this function's job; the path is a local extraction artifact, not attacker-controlled
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 256*1024), 8*1024*1024)
 	for sc.Scan() {
 		line := sc.Text()
-		if idx := strings.Index(line, serializedMarker); idx >= 0 {
-			h := strings.TrimSpace(line[idx+len(serializedMarker):])
+		if _, after, found := strings.Cut(line, serializedMarker); found {
+			h := strings.TrimSpace(after)
 			b, err := hex.DecodeString(h)
 			if err != nil {
 				return nil, fmt.Errorf("decode hex in %s: %w", path, err)
@@ -81,12 +81,12 @@ func DecodeDir(dir string, files []string) string {
 	for _, fn := range files {
 		path := filepath.Join(dir, fn)
 		if _, statErr := os.Stat(path); statErr != nil {
-			sb.WriteString(fmt.Sprintf("## %s: MISSING\n", fn))
+			fmt.Fprintf(&sb, "## %s: MISSING\n", fn)
 			continue
 		}
 		text, n, err := DecodeAssetFile(path)
 		sb.WriteString("\n" + rule + "\n")
-		sb.WriteString(fmt.Sprintf("## %s  (%d bytes)\n", fn, n))
+		fmt.Fprintf(&sb, "## %s  (%d bytes)\n", fn, n)
 		sb.WriteString(rule + "\n")
 		if err != nil {
 			sb.WriteString("  DECODE ERROR: " + err.Error() + "\n")

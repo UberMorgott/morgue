@@ -71,7 +71,7 @@ func (d *Delphi) Execute(ctx *Context) error {
 	report(0, Running, 0, nil, "")
 	start = time.Now()
 	origDir := filepath.Join(ctx.Output, "original")
-	os.MkdirAll(origDir, 0755)
+	_ = os.MkdirAll(origDir, 0755)
 	if err := copyFile(ctx.Target, filepath.Join(origDir, filepath.Base(ctx.Target))); err != nil {
 		report(0, Failed, time.Since(start), err, "")
 		return err
@@ -89,7 +89,7 @@ func (d *Delphi) Execute(ctx *Context) error {
 		stringsOut := filepath.Join(ctx.Output, "strings.txt")
 		r, _ := util.RunCmd(ctx.Ctx, stringsPath, []string{"-nobanner", "-accepteula", ctx.Target}, "")
 		if r != nil {
-			os.WriteFile(stringsOut, []byte(r.Stdout), 0644)
+			_ = os.WriteFile(stringsOut, []byte(r.Stdout), 0644)
 		}
 		// Analyze and structure strings
 		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
@@ -110,7 +110,7 @@ func (d *Delphi) Execute(ctx *Context) error {
 			report(2, Skipped, time.Since(start), nil, "idr")
 		} else {
 			idrOut := filepath.Join(ctx.Output, "idr")
-			os.MkdirAll(idrOut, 0755)
+			_ = os.MkdirAll(idrOut, 0755)
 			result, _ := util.RunCmd(ctx.Ctx, idrPath, []string{"-a", ctx.Target, "-o", idrOut}, "")
 			if result != nil && result.ExitCode != 0 {
 				logTool("idr", fmt.Sprintf("IDR failed: exit %d", result.ExitCode))

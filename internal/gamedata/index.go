@@ -50,15 +50,15 @@ func writeIndex(opts Options, rep Report) error {
 
 	var md strings.Builder
 	md.WriteString("# GameData Index\n\n")
-	md.WriteString(fmt.Sprintf("- Unity version: %s\n", orNA(opts.UnityVersion)))
-	md.WriteString(fmt.Sprintf("- Extraction date: %s\n", date))
-	md.WriteString(fmt.Sprintf("- Total defs: %d\n", total))
-	md.WriteString(fmt.Sprintf("- Actions: %d\n", rep.ActionCount))
-	md.WriteString(fmt.Sprintf("- Failed: %d\n", len(rep.Failed)))
+	fmt.Fprintf(&md, "- Unity version: %s\n", orNA(opts.UnityVersion))
+	fmt.Fprintf(&md, "- Extraction date: %s\n", date)
+	fmt.Fprintf(&md, "- Total defs: %d\n", total)
+	fmt.Fprintf(&md, "- Actions: %d\n", rep.ActionCount)
+	fmt.Fprintf(&md, "- Failed: %d\n", len(rep.Failed))
 	if len(opts.ToolVersions) > 0 {
 		md.WriteString("\n## Tool versions\n\n")
 		for _, k := range sortedKeysStr(opts.ToolVersions) {
-			md.WriteString(fmt.Sprintf("- %s: %s\n", k, opts.ToolVersions[k]))
+			fmt.Fprintf(&md, "- %s: %s\n", k, opts.ToolVersions[k])
 		}
 	}
 	writeCountSection(&md, "Defs by type", rep.DefCountsByType)
@@ -99,7 +99,7 @@ func writeCountSection(md *strings.Builder, title string, counts map[string]int)
 		return
 	}
 	for _, k := range sortedKeysInt(counts) {
-		md.WriteString(fmt.Sprintf("- %s: %d\n", k, counts[k]))
+		fmt.Fprintf(md, "- %s: %d\n", k, counts[k])
 	}
 }
 

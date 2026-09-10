@@ -241,7 +241,7 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 
 		baseName := strings.TrimSuffix(dllName, filepath.Ext(dllName))
 		outDir := filepath.Join(srcDir, baseName)
-		os.MkdirAll(outDir, 0755)
+		_ = os.MkdirAll(outDir, 0755)
 
 		logTool("ilspycmd", fmt.Sprintf("Decompiling %s...", dllName))
 		decompArgs := append([]string{"-p", "-o", outDir, dll}, langVerArgs...)
@@ -255,8 +255,8 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 
 		if runErr != nil || ec != 0 {
 			// Retry without project mode
-			os.RemoveAll(outDir)
-			os.MkdirAll(outDir, 0755)
+			_ = os.RemoveAll(outDir)
+			_ = os.MkdirAll(outDir, 0755)
 			retryArgs := append([]string{"-o", outDir, dll}, langVerArgs...)
 			rBin, rRun := dotnetExec(ctx.Ctx, ilspyPath, retryArgs)
 			res, runErr = util.RunCmd(ctx.Ctx, rBin, rRun, "")
@@ -327,7 +327,7 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 			logTool("assetripper", fmt.Sprintf("AssetRipper export failed (non-fatal): %v", rerr))
 			report(3, Failed, time.Since(start), rerr, "assetripper")
 		} else {
-			os.WriteFile(rippedMarker, []byte("ok"), 0644)
+			_ = os.WriteFile(rippedMarker, []byte("ok"), 0644)
 			reportCount(3, time.Since(start), "assetripper", countAssetFiles(layout.DataDir), "assets")
 		}
 	}
@@ -352,12 +352,14 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 				continue
 			}
 			outBuf.WriteString("\n" + rule + "\n")
-			outBuf.WriteString(fmt.Sprintf("## %s  (%d bytes)\n", filepath.Base(af), n))
+			fmt.Fprintf(&outBuf, "## %s  (%d bytes)\n", filepath.Base(af), n)
 			outBuf.WriteString(rule + "\n")
 			outBuf.WriteString(text)
 			decoded++
 		}
-		os.WriteFile(filepath.Join(layout.DataDir, "odin-decoded.txt"), []byte(outBuf.String()), 0644)
+		if werr := os.WriteFile(filepath.Join(layout.DataDir, "odin-decoded.txt"), []byte(outBuf.String()), 0644); werr != nil {
+			logTool("odin", fmt.Sprintf("write odin-decoded.txt: %v", werr))
+		}
 		logTool("odin", fmt.Sprintf("Decoded %d Odin config files", decoded))
 		reportCount(4, time.Since(start), "odin", decoded, "configs")
 	}
@@ -392,7 +394,7 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 			}
 		})
 		if res != nil {
-			os.WriteFile(stringsOut, []byte(res.Stdout), 0644)
+			_ = os.WriteFile(stringsOut, []byte(res.Stdout), 0644)
 			logTool("strings", fmt.Sprintf("Extracted %d strings from GameAssembly.dll", strLineCount))
 		}
 		// Analyze and structure strings
@@ -422,9 +424,9 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 // findGlobalMetadata searches for global-metadata.dat under the given root directory.
 func findGlobalMetadata(root string) string {
 	var found string
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
-			return nil
+			return nil //nolint:nilerr // an unreadable entry cannot be the file we are looking for; keep searching the rest of the tree
 		}
 		if strings.EqualFold(filepath.Base(path), "global-metadata.dat") {
 			found = path
@@ -523,9 +525,9 @@ func firstDataDir(parent string) string {
 // collectAssetFiles walks a directory tree for *.asset files (recursive).
 func collectAssetFiles(root string) []string {
 	var out []string
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
-			return nil
+			return nil //nolint:nilerr // an unreadable entry is skipped; the rest of the asset tree must still be collected
 		}
 		if strings.EqualFold(filepath.Ext(path), ".asset") {
 			out = append(out, path)

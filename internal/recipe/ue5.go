@@ -69,9 +69,9 @@ func findUsmap(roots ...string) string {
 			continue
 		}
 		var found string
-		filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
-				return nil
+				return nil //nolint:nilerr // an unreadable entry is skipped; the walk must still cover the rest of the tree
 			}
 			if strings.ToLower(filepath.Ext(path)) == ".usmap" {
 				found = path
@@ -185,8 +185,8 @@ func (u *UE5) Execute(ctx *Context) error {
 				// source dir), so clearing it can't touch the game files. Clear it
 				// up front so stale assets from a prior run can't fake a success.
 				extractDir := filepath.Join(ctx.Output, "extracted")
-				os.RemoveAll(extractDir)
-				os.MkdirAll(extractDir, 0755)
+				_ = os.RemoveAll(extractDir)
+				_ = os.MkdirAll(extractDir, 0755)
 
 				okDirs := 0
 				failedDirs := 0
@@ -204,7 +204,7 @@ func (u *UE5) Execute(ctx *Context) error {
 					outDir := extractDir
 					if multi {
 						outDir = filepath.Join(extractDir, fmt.Sprintf("%02d_%s", i, filepath.Base(dir)))
-						os.MkdirAll(outDir, 0755)
+						_ = os.MkdirAll(outDir, 0755)
 					}
 					log(fmt.Sprintf("Converting (to-legacy): %s", dir))
 					result, runErr := util.RunCmdStreaming(ctx.Ctx, retocPath,
@@ -215,7 +215,7 @@ func (u *UE5) Execute(ctx *Context) error {
 					producedThisRun += dirProduced
 					if multi && dirProduced == 0 {
 						log(fmt.Sprintf("no assets extracted from %s (empty/patch container) — removing empty root", dir))
-						os.RemoveAll(outDir)
+						_ = os.RemoveAll(outDir)
 					}
 					switch {
 					case runErr != nil:
@@ -326,7 +326,7 @@ func (u *UE5) Execute(ctx *Context) error {
 				log(fmt.Sprintf("Extracting strings from: %s", filepath.Base(gameExe)))
 				result, _ := util.RunCmd(ctx.Ctx, stringsPath, []string{"-nobanner", "-accepteula", gameExe}, "")
 				if result != nil {
-					os.WriteFile(stringsOut, []byte(result.Stdout), 0644)
+					_ = os.WriteFile(stringsOut, []byte(result.Stdout), 0644)
 					lines := strings.Count(result.Stdout, "\n")
 					log(fmt.Sprintf("Extracted %d strings", lines))
 				}
@@ -427,7 +427,7 @@ func (u *UE5) Execute(ctx *Context) error {
 				}
 			}
 			if fileExists(symbolsPath) {
-				if data, rerr := os.ReadFile(symbolsPath); rerr == nil {
+				if data, rerr := os.ReadFile(symbolsPath); rerr == nil { //nolint:gosec // G304: symbolsPath is a fixed file under the pipeline's own output tree
 					var sm symbolMap
 					if json.Unmarshal(data, &sm) == nil {
 						nr.SymbolsSource = "ghidra"
@@ -457,7 +457,7 @@ func (u *UE5) Execute(ctx *Context) error {
 			}
 			log("Note: address->UObject / runtime-vtable resolution requires runtime (UE4SS) data — skipped")
 			if data, merr := json.MarshalIndent(&nr, "", "  "); merr == nil {
-				os.WriteFile(filepath.Join(ctx.Output, "name_resolution.json"), data, 0644)
+				_ = os.WriteFile(filepath.Join(ctx.Output, "name_resolution.json"), data, 0644)
 			}
 			reportCount(4, time.Since(start), "", named, "symbols")
 		}
@@ -577,9 +577,9 @@ func utocDirs(files []string) []string {
 // countFilesRecursive counts regular files under root (0 if root is absent).
 func countFilesRecursive(root string) int {
 	n := 0
-	filepath.WalkDir(root, func(_ string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(_ string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // an unreadable entry is skipped; the walk must still cover the rest of the tree
 		}
 		if !d.IsDir() {
 			n++
@@ -592,9 +592,9 @@ func countFilesRecursive(root string) int {
 // findPakFiles recursively finds .pak and .utoc files under root.
 func findPakFiles(root string) []string {
 	var paks []string
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // an unreadable entry is skipped; the walk must still cover the rest of the tree
 		}
 		ext := strings.ToLower(filepath.Ext(path))
 		if ext == ".pak" || ext == ".utoc" {
@@ -621,9 +621,9 @@ var engineToolExes = map[string]bool{
 func findUEShippingExe(root string) string {
 	var shipping, bestWin64 string
 	var bestWin64Size int64
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
-			return nil
+			return nil //nolint:nilerr // an unreadable entry is skipped; the walk must still cover the rest of the tree
 		}
 		if strings.ToLower(filepath.Ext(path)) != ".exe" {
 			return nil
@@ -643,7 +643,7 @@ func findUEShippingExe(root string) string {
 		} else {
 			info, infoErr := d.Info()
 			if infoErr != nil {
-				return nil
+				return nil //nolint:nilerr // a file that vanished mid-walk is skipped; the walk must still cover the rest of the tree
 			}
 			if info.Size() > bestWin64Size {
 				bestWin64Size = info.Size()
@@ -667,9 +667,9 @@ func findGameExe(root string) string {
 	var best string
 	var bestSize int64
 
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
-			return nil
+			return nil //nolint:nilerr // an unreadable entry is skipped; the walk must still cover the rest of the tree
 		}
 		if strings.ToLower(filepath.Ext(path)) != ".exe" {
 			return nil
@@ -679,7 +679,7 @@ func findGameExe(root string) string {
 		}
 		info, err := d.Info()
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // a file that vanished mid-walk is skipped; the walk must still cover the rest of the tree
 		}
 		if info.Size() > bestSize {
 			bestSize = info.Size()

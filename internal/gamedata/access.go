@@ -2,6 +2,7 @@ package gamedata
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -45,6 +46,9 @@ func asInt(v any) int {
 	case int64:
 		return int(t)
 	case uint64:
+		if t > math.MaxInt {
+			return 0
+		}
 		return int(t)
 	case float64:
 		return int(t)

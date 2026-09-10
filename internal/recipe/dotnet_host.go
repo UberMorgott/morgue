@@ -27,7 +27,7 @@ func findDotnetHost(ctx context.Context) string {
 		}
 		seen[c] = true
 		if c != "dotnet" {
-			if _, err := os.Stat(c); err != nil {
+			if _, err := os.Stat(c); err != nil { //nolint:gosec // G703: candidates are this file's own literals plus %ProgramFiles%\dotnet\dotnet.exe; nothing user-supplied reaches c
 				continue
 			}
 		}

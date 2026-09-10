@@ -26,7 +26,7 @@ func captureStderr(t *testing.T, fn func()) string {
 	}()
 
 	fn()
-	w.Close()
+	_ = w.Close()
 	return <-done
 }
 

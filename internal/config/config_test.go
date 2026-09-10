@@ -11,8 +11,8 @@ func TestDefault(t *testing.T) {
 
 	tests := []struct {
 		name string
-		got  interface{}
-		want interface{}
+		got  any
+		want any
 	}{
 		{"SkipSystemLibs", cfg.SkipSystemLibs, true},
 		{"StepTimeoutMinutes", cfg.StepTimeoutMinutes, 60},

@@ -9,6 +9,16 @@ import (
 	"github.com/UberMorgott/morgue/internal/services"
 )
 
+// httpGetT issues a GET bound to the test's context.
+func httpGetT(t *testing.T, url string) (*http.Response, error) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return http.DefaultClient.Do(req)
+}
+
 func TestServerStartsAndStops(t *testing.T) {
 	pipeline := services.NewPipelineService()
 	tools := services.NewToolsService("")
@@ -24,11 +34,11 @@ func TestServerStartsAndStops(t *testing.T) {
 	// Give the server a moment to start listening.
 	time.Sleep(50 * time.Millisecond)
 
-	resp, err := http.Get("http://127.0.0.1:19876/api/status")
+	resp, err := httpGetT(t, "http://127.0.0.1:19876/api/status")
 	if err != nil {
 		t.Fatalf("GET /api/status error: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -50,8 +60,9 @@ func TestServerStartsAndStops(t *testing.T) {
 	}
 
 	// Verify server is unreachable after stop.
-	_, err = http.Get("http://127.0.0.1:19876/api/status")
+	resp2, err := httpGetT(t, "http://127.0.0.1:19876/api/status")
 	if err == nil {
+		_ = resp2.Body.Close()
 		t.Fatal("expected error after stop, got nil")
 	}
 }

@@ -98,12 +98,12 @@ func TestIsMangledName(t *testing.T) {
 		name string
 		want bool
 	}{
-		{"a", true},        // single lowercase — renamer
-		{"ab", true},       // two lowercase — renamer
-		{"a`1", true},        // mangled generic (arity stripped before check)
-		{"", true}, // private-use-area unicode — renamer
-		{"Id", false},      // two chars but not all-lowercase
-		{"To", false},      // capitalized
+		{"a", true},   // single lowercase — renamer
+		{"ab", true},  // two lowercase — renamer
+		{"a`1", true}, // mangled generic (arity stripped before check)
+		{"", true},  // private-use-area unicode — renamer
+		{"Id", false}, // two chars but not all-lowercase
+		{"To", false}, // capitalized
 		{"GetUserAsync", false},
 		{"<Module>", false},
 		{"WebMapController", false},

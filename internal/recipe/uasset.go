@@ -91,7 +91,7 @@ func (r *byteReader) int32() (int32, error) {
 	if err := r.need(4); err != nil {
 		return 0, err
 	}
-	v := int32(binary.LittleEndian.Uint32(r.data[r.pos:]))
+	v := int32(binary.LittleEndian.Uint32(r.data[r.pos:])) //nolint:gosec // G115: UE serializes these as signed int32; the int32() is a deliberate two's-complement reinterpretation of the wire value
 	r.pos += 4
 	return v, nil
 }
@@ -110,7 +110,7 @@ func (r *byteReader) peekInt32() (int32, bool) {
 	if r.remaining() < 4 {
 		return 0, false
 	}
-	return int32(binary.LittleEndian.Uint32(r.data[r.pos:])), true
+	return int32(binary.LittleEndian.Uint32(r.data[r.pos:])), true //nolint:gosec // G115: UE serializes these as signed int32; the int32() is a deliberate two's-complement reinterpretation of the wire value
 }
 
 func (r *byteReader) skip(n int) error {
@@ -185,7 +185,7 @@ func parseUAsset(path string) (info *UAssetInfo, err error) {
 		}
 	}()
 
-	data, rerr := os.ReadFile(path)
+	data, rerr := os.ReadFile(path) //nolint:gosec // G304: path comes from walking the pipeline's own extracted/ tree
 	if rerr != nil {
 		return nil, rerr
 	}
@@ -372,10 +372,7 @@ func readNameTable(data []byte, offset, count int) (names []string, hashBytesSee
 	if r.seek(offset) != nil {
 		return nil, false
 	}
-	capHint := count
-	if capHint > 1024 {
-		capHint = 1024
-	}
+	capHint := min(count, 1024)
 	names = make([]string, 0, capHint)
 	for range count {
 		// Read one entry as a length-prefixed printable FString. We deliberately
@@ -435,7 +432,7 @@ func scanNameTableStart(data []byte) int {
 // reader uses.
 func isFNameRunStart(data []byte, off int) bool {
 	pos := off
-	for entries := 0; entries < 2; entries++ {
+	for range 2 {
 		s, consumed, ok := plausibleFStringAt(data, pos)
 		if !ok || len(s) < 2 {
 			return false
@@ -462,7 +459,7 @@ func plausibleFStringAt(data []byte, pos int) (string, int, bool) {
 	if pos+4 > len(data) {
 		return "", 0, false
 	}
-	n := int(int32(binary.LittleEndian.Uint32(data[pos:])))
+	n := int(int32(binary.LittleEndian.Uint32(data[pos:]))) //nolint:gosec // G115: UE serializes these as signed int32; the int32() is a deliberate two's-complement reinterpretation of the wire value
 	if n <= 0 || n > 1024 || pos+4+n > len(data) {
 		return "", 0, false
 	}
@@ -489,7 +486,7 @@ func peekFStringLen(data []byte, pos int) (int32, bool) {
 	if pos+4 > len(data) {
 		return 0, false
 	}
-	return int32(binary.LittleEndian.Uint32(data[pos:])), true
+	return int32(binary.LittleEndian.Uint32(data[pos:])), true //nolint:gosec // G115: UE serializes these as signed int32; the int32() is a deliberate two's-complement reinterpretation of the wire value
 }
 
 // readImports best-effort reads FObjectImport entries. FObjectImport =
@@ -599,16 +596,16 @@ func buildAssetsIndex(outDir, extractedDir string) (*assetsIndex, error) {
 	}
 
 	ndjsonPath := filepath.Join(outDir, "assets.ndjson")
-	ndjsonFile, err := os.Create(ndjsonPath)
+	ndjsonFile, err := os.Create(ndjsonPath) //nolint:gosec // G304: fixed file name under outDir, the pipeline's own output tree
 	if err != nil {
 		return idx, err
 	}
 	ndjsonBuf := bufio.NewWriterSize(ndjsonFile, 64*1024)
 	ndjsonEnc := json.NewEncoder(ndjsonBuf)
 
-	filepath.WalkDir(extractedDir, func(path string, d os.DirEntry, werr error) error {
+	_ = filepath.WalkDir(extractedDir, func(path string, d os.DirEntry, werr error) error {
 		if werr != nil || d.IsDir() {
-			return nil
+			return nil //nolint:nilerr // an unreadable entry is skipped; the rest of the asset tree must still be indexed
 		}
 		ext := strings.ToLower(filepath.Ext(path))
 		if ext != ".uasset" && ext != ".umap" {
@@ -617,7 +614,7 @@ func buildAssetsIndex(outDir, extractedDir string) (*assetsIndex, error) {
 		info, perr := parseUAsset(path)
 		if perr != nil || info == nil {
 			idx.AssetsFailed++
-			return nil
+			return nil //nolint:nilerr // parse failure is counted in AssetsFailed and the walk continues
 		}
 		// Normalize path to a slash-relative form for portability.
 		if rel, rerr := filepath.Rel(extractedDir, path); rerr == nil {
@@ -629,7 +626,7 @@ func buildAssetsIndex(outDir, extractedDir string) (*assetsIndex, error) {
 		idx.TotalNames += int64(info.TotalNames)
 		if encErr := ndjsonEnc.Encode(info); encErr != nil {
 			// NDJSON write failure shouldn't abort the whole walk.
-			return nil
+			return nil //nolint:nilerr // one unwritable record must not abort indexing of the remaining assets
 		}
 		if len(idx.Sample) < assetsSampleCap {
 			idx.Sample = append(idx.Sample, *info)
@@ -637,8 +634,8 @@ func buildAssetsIndex(outDir, extractedDir string) (*assetsIndex, error) {
 		return nil
 	})
 
-	ndjsonBuf.Flush()
-	ndjsonFile.Close()
+	_ = ndjsonBuf.Flush()
+	_ = ndjsonFile.Close()
 
 	return idx, writeAssetsIndex(outDir, idx)
 }

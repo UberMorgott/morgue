@@ -34,11 +34,11 @@ func buildDecompressedNSIS(t *testing.T) (stream []byte, hdrSize int) {
 
 	// String table (ANSI, null-terminated). Offsets are relative to stringsOff.
 	var strTab []byte
-	strTab = append(strTab, 0x00)              // rel 0: empty string
-	dirOff := len(strTab)                       // rel 1
+	strTab = append(strTab, 0x00) // rel 0: empty string
+	dirOff := len(strTab)         // rel 1
 	strTab = append(strTab, []byte("OUT")...)
 	strTab = append(strTab, 0x00)
-	fileOff := len(strTab)                       // rel 5
+	fileOff := len(strTab) // rel 5
 	strTab = append(strTab, []byte("hello.txt")...)
 	strTab = append(strTab, 0x00)
 
@@ -49,8 +49,8 @@ func buildDecompressedNSIS(t *testing.T) (stream []byte, hdrSize int) {
 	// flags = 0 (header[0:4] already zero)
 	putBlock := func(idx, off, num int) {
 		base := 4 + idx*8
-		copy(header[base:base+4], le32(uint32(off)))
-		copy(header[base+4:base+8], le32(uint32(num)))
+		copy(header[base:base+4], le32(uint32(off)))   //nolint:gosec // G115: test fixture values are small constants that cannot overflow
+		copy(header[base+4:base+8], le32(uint32(num))) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 	}
 	putBlock(nbEntries, entriesOff, 2)
 	putBlock(nbStrings, stringsOff, 0)
@@ -60,15 +60,15 @@ func buildDecompressedNSIS(t *testing.T) (stream []byte, hdrSize int) {
 	// Entry 0: SetOutPath (EW_CREATEDIR, param1 != 0) -> dir "OUT".
 	e0 := header[entriesOff:]
 	copy(e0[0:4], le32(ewCreateDir))
-	copy(e0[4:8], le32(uint32(dirOff)))  // param0 = path string
-	copy(e0[8:12], le32(1))              // param1 = 1 -> SetOutPath
+	copy(e0[4:8], le32(uint32(dirOff))) //nolint:gosec // G115: param0 = path string, a small test fixture offset
+	copy(e0[8:12], le32(1))             // param1 = 1 -> SetOutPath
 
 	// Entry 1: EW_EXTRACTFILE -> "hello.txt" at data position 0.
 	e1 := header[entriesOff+nsisEntrySize:]
 	copy(e1[0:4], le32(ewExtractFile))
-	copy(e1[4:8], le32(0))                 // param0 = overwrite
-	copy(e1[8:12], le32(uint32(fileOff)))  // param1 = name string
-	copy(e1[12:16], le32(0))               // param2 = position in data block
+	copy(e1[4:8], le32(0))                // param0 = overwrite
+	copy(e1[8:12], le32(uint32(fileOff))) //nolint:gosec // G115: param1 = name string, a small test fixture offset
+	copy(e1[12:16], le32(0))              // param2 = position in data block
 
 	// Copy the string table into the header.
 	copy(header[stringsOff:stringsOff+len(strTab)], strTab)
@@ -76,8 +76,8 @@ func buildDecompressedNSIS(t *testing.T) (stream []byte, hdrSize int) {
 	// File data record after the header: [int32 size][bytes].
 	rec := append(le32(uint32(len(fileContent))), []byte(fileContent)...)
 
-	stream = append(header, rec...)
-	return stream, hdrSize
+	out := append([]byte(nil), header...)
+	return append(out, rec...), hdrSize
 }
 
 // nsisLZMA compresses stream into NSIS-style LZMA: a 5-byte header
@@ -125,13 +125,12 @@ func wrapNSISArchive(t *testing.T, stream []byte, hdrSize int, flipSig bool) str
 	var fhr []byte
 	fhr = append(fhr, 0, 0, 0, 0) // flags
 	fhr = append(fhr, sig...)
-	fhr = append(fhr, le32(uint32(hdrSize))...)
+	fhr = append(fhr, le32(uint32(hdrSize))...) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 	archiveSize := nsisFirstHeaderSize + len(comp)
-	fhr = append(fhr, le32(uint32(archiveSize))...)
+	fhr = append(fhr, le32(uint32(archiveSize))...) //nolint:gosec // G115: test fixture values are small constants that cannot overflow
 
-	file := append(fhr, comp...)
 	path := filepath.Join(t.TempDir(), "installer.exe")
-	if err := os.WriteFile(path, file, 0644); err != nil {
+	if err := os.WriteFile(path, append(fhr, comp...), 0644); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -157,7 +156,7 @@ func TestNSISUnpack_ExtractSeverity(t *testing.T) {
 			}
 		}
 		var man nsisManifest
-		mdata, err := os.ReadFile(filepath.Join(outDir, "nsis-manifest.json"))
+		mdata, err := os.ReadFile(filepath.Join(outDir, "nsis-manifest.json")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 		if err != nil {
 			t.Fatalf("manifest: %v", err)
 		}
@@ -227,7 +226,7 @@ func TestNSISUnpack_Execute(t *testing.T) {
 			}
 
 			// The extracted file must exist with the right bytes.
-			got, err := os.ReadFile(filepath.Join(outDir, "extracted", "OUT", "hello.txt"))
+			got, err := os.ReadFile(filepath.Join(outDir, "extracted", "OUT", "hello.txt")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 			if err != nil {
 				t.Fatalf("expected extracted/OUT/hello.txt: %v", err)
 			}
@@ -236,7 +235,7 @@ func TestNSISUnpack_Execute(t *testing.T) {
 			}
 
 			// Manifest sanity.
-			mdata, err := os.ReadFile(filepath.Join(outDir, "nsis-manifest.json"))
+			mdata, err := os.ReadFile(filepath.Join(outDir, "nsis-manifest.json")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
 			if err != nil {
 				t.Fatalf("expected nsis-manifest.json: %v", err)
 			}

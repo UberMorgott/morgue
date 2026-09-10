@@ -1,10 +1,10 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -35,6 +35,8 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	// Progress is available via GET /api/run/status and SSE /api/events.
 	// Opt-in via ?direct=true — used by CLI --wait to poll completion.
 	if r.URL.Query().Get("direct") == "true" {
+		//nolint:contextcheck // the run must outlive this HTTP request; PipelineService.Run
+		// owns its own cancellable context, cancelled by Stop(), not by the response returning.
 		go func() {
 			if err := s.pipeline.Run(req.Path, req.Output); err != nil {
 				s.events.Broadcast("pipeline:error", marshalJSON(map[string]string{
@@ -247,12 +249,14 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	path = filepath.Clean(path)
+
 	if _, err := os.Stat(path); err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
 		return
 	}
 
-	result, err := recon.Classify(context.Background(), path)
+	result, err := recon.Classify(r.Context(), path)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return

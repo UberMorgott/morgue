@@ -162,11 +162,8 @@ func runGhidra(
 	// headroom for the OS and flooring at the 2G default.
 	if os.Getenv("GHIDRA_HEADLESS_MAXMEM") == "" && os.Getenv("GHIDRA_MAXMEM") == "" {
 		if totalBytes := util.TotalPhysicalMemoryBytes(); totalBytes > 0 {
-			totalGB := int(totalBytes / (1024 * 1024 * 1024))
-			heapGB := min(totalGB*70/100, totalGB-3)
-			if heapGB < 2 {
-				heapGB = 2
-			}
+			totalGB := int(totalBytes / (1024 * 1024 * 1024)) //nolint:gosec // G115: physical RAM in GB is far below MaxInt on any machine that can run Ghidra
+			heapGB := max(min(totalGB*70/100, totalGB-3), 2)
 			ghidraEnv = append(ghidraEnv, fmt.Sprintf("GHIDRA_HEADLESS_MAXMEM=%dG", heapGB))
 			log(fmt.Sprintf("Ghidra heap set to %dG (of %dG physical RAM)", heapGB, totalGB))
 		}
@@ -184,7 +181,7 @@ func runGhidra(
 	if err != nil {
 		return 0, err
 	}
-	defer os.RemoveAll(projDir)
+	defer func() { _ = os.RemoveAll(projDir) }()
 
 	// Write the export script to a temp file.
 	// The filename MUST be MorgueExport.java — Ghidra requires the filename
@@ -193,7 +190,7 @@ func runGhidra(
 	if err != nil {
 		return 0, err
 	}
-	defer os.RemoveAll(scriptDir)
+	defer func() { _ = os.RemoveAll(scriptDir) }()
 	scriptPath := filepath.Join(scriptDir, "MorgueExport.java")
 	if err = os.WriteFile(scriptPath, []byte(ghidraExportScript), 0644); err != nil {
 		return 0, err
@@ -217,7 +214,7 @@ func runGhidra(
 		if mkErr != nil {
 			return 0, mkErr
 		}
-		defer os.RemoveAll(stage)
+		defer func() { _ = os.RemoveAll(stage) }()
 		runBinary = filepath.Join(stage, filepath.Base(binaryPath))
 		runOutput = filepath.Join(stage, baseName+".c")
 		if cpErr := copyFile(binaryPath, runBinary); cpErr != nil {
@@ -248,7 +245,7 @@ func runGhidra(
 		if strings.HasPrefix(line, "Morgue:fn:") {
 			parts := strings.SplitN(line, ":", 4)
 			if len(parts) >= 4 {
-				fmt.Sscanf(parts[2], "%d", &ghidraFuncCount)
+				_, _ = fmt.Sscanf(parts[2], "%d", &ghidraFuncCount)
 				if time.Since(lastLogTime) >= time.Second {
 					log(fmt.Sprintf("Decompiled %d functions (%s)", ghidraFuncCount, parts[3]))
 					if onPhase != nil {
@@ -430,9 +427,9 @@ func buildIndexWith(outDir string, roots []string, exts map[string]bool) (*outpu
 
 	seen := map[string]bool{}
 	for _, root := range roots {
-		filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
-				return nil
+				return nil //nolint:nilerr // an unreadable entry is left out of the index; the walk must still cover the rest
 			}
 			ext := strings.ToLower(filepath.Ext(path))
 			if !exts[ext] {
@@ -449,7 +446,7 @@ func buildIndexWith(outDir string, roots []string, exts map[string]bool) (*outpu
 			seen[rel] = true
 			info, infoErr := d.Info()
 			if infoErr != nil {
-				return nil
+				return nil //nolint:nilerr // a file that vanished mid-walk is left out of the index; the walk must still cover the rest
 			}
 			lines := 0
 			if sourceExts[ext] {

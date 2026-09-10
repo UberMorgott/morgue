@@ -53,11 +53,6 @@ func (tc *ToolCheck) Update(msg tea.Msg) tea.Cmd {
 		}
 	case ToolCheckDoneMsg:
 		tc.done = true
-	case tea.KeyPressMsg:
-		key := tea.Key(msg)
-		if key.Code == tea.KeyEnter && tc.done {
-			// signal to advance
-		}
 	}
 	return nil
 }
@@ -78,7 +73,7 @@ func (tc *ToolCheck) View() string {
 		} else {
 			icon = errStyle.Render("✗")
 		}
-		b.WriteString(fmt.Sprintf("  %s %s\n", icon, s.Name))
+		fmt.Fprintf(&b, "  %s %s\n", icon, s.Name)
 	}
 
 	if tc.done {

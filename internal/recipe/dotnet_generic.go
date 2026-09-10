@@ -113,7 +113,7 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 			}
 		})
 		if result != nil {
-			os.WriteFile(stringsOut, []byte(result.Stdout), 0644)
+			_ = os.WriteFile(stringsOut, []byte(result.Stdout), 0644)
 		}
 		// Analyze and structure strings
 		analyzeStrings(stringsOut, filepath.Join(ctx.Output, "strings.json"))
@@ -130,7 +130,7 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 		return fmt.Errorf("ilspycmd not available: %w", err)
 	}
 	srcDir := filepath.Join(ctx.Output, "src")
-	os.MkdirAll(srcDir, 0755)
+	_ = os.MkdirAll(srcDir, 0755)
 	ilspyArgs := []string{"-p", "-o", srcDir, ctx.Target}
 	if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
 		ilspyArgs = append(ilspyArgs, "--languageversion", ctx.Config.CSharpLanguageVersion)
@@ -148,8 +148,8 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 			msg += "\n" + strings.TrimSpace(result.Stderr)
 		}
 		logTool("ilspycmd", msg)
-		os.RemoveAll(srcDir)
-		os.MkdirAll(srcDir, 0755)
+		_ = os.RemoveAll(srcDir)
+		_ = os.MkdirAll(srcDir, 0755)
 		retryArgs := []string{"-o", srcDir, ctx.Target}
 		if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
 			retryArgs = append(retryArgs, "--languageversion", ctx.Config.CSharpLanguageVersion)
@@ -222,8 +222,8 @@ func perTypeFallback(ctx context.Context, ilspyPath, target, srcDir string, log 
 	}
 
 	log(fmt.Sprintf("per-type fallback: found %d types, decompiling individually...", len(types)))
-	os.RemoveAll(srcDir)
-	os.MkdirAll(srcDir, 0o755)
+	_ = os.RemoveAll(srcDir)
+	_ = os.MkdirAll(srcDir, 0o755)
 
 	succeeded := 0
 	failed := 0
@@ -254,7 +254,7 @@ func perTypeFallback(ctx context.Context, ilspyPath, target, srcDir string, log 
 // Each line has the format "TypeKind FullName", e.g. "Class Foo.Bar".
 func parseTypeList(output string) []string {
 	var types []string
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "ilspycmd") || strings.HasPrefix(line, "ICSharpCode") {
 			continue
@@ -276,7 +276,7 @@ func parseTypeList(output string) []string {
 
 // countLines counts newline-separated lines in a file.
 func countLines(path string) int {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: path is a decompiled .cs the pipeline just wrote, not user input
 	if err != nil {
 		return 0
 	}
@@ -286,7 +286,7 @@ func countLines(path string) int {
 // countFilesWithExt recursively counts files with the given extension.
 func countFilesWithExt(dir, ext string) int {
 	count := 0
-	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err == nil && !d.IsDir() && filepath.Ext(path) == ext {
 			count++
 		}
@@ -301,13 +301,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 
 	out, err := os.Create(util.LongPath(dst))
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	if _, err := io.Copy(out, in); err != nil {
 		return err
