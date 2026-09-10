@@ -239,6 +239,7 @@ func runCmd() *cobra.Command {
 			exclude, _ := cmd.Flags().GetStringSlice("exclude")
 			allowDynamic, _ := cmd.Flags().GetBool("allow-dynamic")
 			cflow, _ := cmd.Flags().GetBool("cflow")
+			codeOnly, _ := cmd.Flags().GetBool("code-only")
 			gameDataOut, _ := cmd.Flags().GetString("gamedata-out")
 			toolsMirror, _ := cmd.Flags().GetString("tools-mirror")
 
@@ -253,6 +254,7 @@ func runCmd() *cobra.Command {
 				Quiet:        quiet,
 				AllowDynamic: allowDynamic,
 				Cflow:        cflow,
+				CodeOnly:     codeOnly,
 				GameDataOut:  gameDataOut,
 				ToolsMirror:  toolsMirror,
 			})
@@ -268,6 +270,7 @@ func runCmd() *cobra.Command {
 	cmd.Flags().StringSlice("exclude", nil, "Additional exclude patterns")
 	cmd.Flags().Bool("allow-dynamic", false, "Allow recipe steps that EXECUTE target code (e.g. ConfuserEx embedded-assembly extraction)")
 	cmd.Flags().Bool("cflow", false, "Enable control-flow deobfuscation pass (experimental, off by default)")
+	cmd.Flags().Bool("code-only", false, "Skip Unity asset extraction (AssetRipper) — decompiled code only")
 	cmd.Flags().String("gamedata-out", "", "Destination for the organized game-data tree (unity-mono recipe; default: <output>/GameData)")
 	cmd.Flags().String("tools-mirror", "", "Rewrite tool download URL hosts to this mirror (offline/firewalled installs)")
 

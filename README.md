@@ -104,6 +104,10 @@ morgue run <target>                    Decompile a file or directory
                                        (e.g. ConfuserEx embedded-assembly extraction)
       --cflow                          Enable control-flow deobfuscation pass
                                        (experimental, off by default)
+      --code-only                      Skip Unity asset extraction (AssetRipper);
+                                       decompiled code only. Persistent equivalent:
+                                       unity_extract_assets: false in morgue.yaml
+                                       (Settings -> Unity in the GUI)
 
 morgue tools check                     List managed tools and their install status
 morgue tools install [name]           Install all missing tools, or a specific one

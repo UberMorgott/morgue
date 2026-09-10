@@ -62,6 +62,10 @@ type Config struct {
 	// exports config-only PrimaryContent (ScriptableObjects/MonoBehaviour/TextAsset),
 	// true exports the full Unity project (opt-in; tens of GB).
 	IL2CPPFullExport bool `json:"IL2CPPFullExport" yaml:"il2cpp_full_export"`
+	// UnityExtractAssets enables the AssetRipper asset export (unity-mono and
+	// il2cpp recipes). On by default; turn it off (or pass `run --code-only`) to
+	// get only the decompiled C# and skip the multi-GB asset tree.
+	UnityExtractAssets bool `json:"UnityExtractAssets" yaml:"unity_extract_assets"`
 
 	// Native pipeline step toggles
 	NativeGhidraDecompile bool `json:"NativeGhidraDecompile" yaml:"native_ghidra_decompile"`
@@ -97,6 +101,8 @@ func Default() Config {
 		UE5NameResolution:  true,
 		UE5BuildIndexes:    true,
 		UE5ExportHookable:  true,
+
+		UnityExtractAssets: true,
 
 		NativeGhidraDecompile: true,
 

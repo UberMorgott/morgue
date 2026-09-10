@@ -301,7 +301,10 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 	start = time.Now()
 	rippedMarker := filepath.Join(layout.DataDir, ".ripped")
 	gameDataDir := findGameDataDir(ctx.Target)
-	if ripperPath, rErr := ctx.Tools.Resolve("assetripper"); rErr != nil {
+	if ctx.SkipAssets() {
+		logTool("assetripper", "asset extraction disabled (--code-only / UnityExtractAssets), skipping data layer")
+		report(3, Skipped, time.Since(start), nil, "assetripper")
+	} else if ripperPath, rErr := ctx.Tools.Resolve("assetripper"); rErr != nil {
 		logTool("assetripper", fmt.Sprintf("assetripper unavailable, skipping data layer: %v", rErr))
 		report(3, Skipped, time.Since(start), nil, "assetripper")
 	} else if gameDataDir == "" {

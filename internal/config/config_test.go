@@ -29,6 +29,7 @@ func TestDefault(t *testing.T) {
 		{"LogTimestamps", cfg.LogTimestamps, true},
 		{"SandboxWarning", cfg.SandboxWarning, true},
 		{"AllowDynamicExecution", cfg.AllowDynamicExecution, false},
+		{"UnityExtractAssets", cfg.UnityExtractAssets, true},
 	}
 
 	for _, tt := range tests {

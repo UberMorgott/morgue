@@ -218,6 +218,7 @@ var settingTypes = map[string]string{
 	"UE5NameResolution":      "bool",
 	"UE5BuildIndexes":        "bool",
 	"UE5ExportHookable":      "bool",
+	"UnityExtractAssets":     "bool",
 	// int fields
 	"StepTimeoutMinutes":     "int",
 	"MaxFileSizeMB":          "int",

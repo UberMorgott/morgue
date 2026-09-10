@@ -218,10 +218,13 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 	// downloadable RequiredTools (e.g. the built-on-demand cfxextract), so the
 	// UI shows every participating tool up front instead of popping one in
 	// mid-run. Downloads still use RequiredTools only (see ensureTools).
+	// A code-only run never executes the AssetRipper step, so don't advertise or
+	// download its tools (a multi-hundred-MB fetch for nothing).
+	skipAssets := opts.CodeOnly || !e.cfg.UnityExtractAssets
 	allToolsSeen := map[string]bool{}
 	var allTools []string
 	for _, t := range tasks {
-		toolsForDisplay := t.recipe.RequiredTools()
+		toolsForDisplay := recipeTools(t.recipe, skipAssets)
 		if dp, ok := t.recipe.(interface{ DisplayTools() []string }); ok {
 			if dt := dp.DisplayTools(); len(dt) > 0 {
 				toolsForDisplay = dt
@@ -262,7 +265,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 		}
 
 		// Check runtime dependencies
-		if err := e.ensureRuntimeDeps(t.filePath, t.recipe, em); err != nil {
+		if err := e.ensureRuntimeDeps(t.filePath, t.recipe, em, skipAssets); err != nil {
 			results = append(results, TargetResult{
 				Group: t.group, Recon: t.recon, Recipe: t.recipe,
 				Error: fmt.Errorf("failed to install required runtime"),
@@ -271,7 +274,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 		}
 
 		// Check required tools
-		if err := e.ensureTools(t.filePath, t.recipe, em); err != nil {
+		if err := e.ensureTools(t.filePath, t.recipe, em, skipAssets); err != nil {
 			results = append(results, TargetResult{
 				Group: t.group, Recon: t.recon, Recipe: t.recipe, Error: err,
 			})
@@ -394,10 +397,28 @@ func (e *Engine) classifyTarget(
 	return reconResult, nil
 }
 
+// recipeTools returns the recipe's required tools, dropping the Unity asset
+// extractors when the asset step is skipped — a code-only run must not download
+// AssetRipper for a step that never executes.
+func recipeTools(rec recipe.Recipe, skipAssets bool) []string {
+	names := rec.RequiredTools()
+	if !skipAssets {
+		return names
+	}
+	kept := make([]string, 0, len(names))
+	for _, n := range names {
+		if n == "assetripper" || n == "assetstudiomod" {
+			continue
+		}
+		kept = append(kept, n)
+	}
+	return kept
+}
+
 // ensureRuntimeDeps installs missing runtime dependencies for a recipe.
-func (e *Engine) ensureRuntimeDeps(filePath string, rec recipe.Recipe, em emitter) error {
+func (e *Engine) ensureRuntimeDeps(filePath string, rec recipe.Recipe, em emitter, skipAssets bool) error {
 	runtimeSeen := map[tools.RuntimeKind]bool{}
-	for _, tName := range rec.RequiredTools() {
+	for _, tName := range recipeTools(rec, skipAssets) {
 		td, ok := tools.FindByName(tName)
 		if !ok {
 			continue
@@ -454,8 +475,8 @@ func (e *Engine) ensureRuntimeDeps(filePath string, rec recipe.Recipe, em emitte
 }
 
 // ensureTools installs missing tools for a recipe.
-func (e *Engine) ensureTools(filePath string, rec recipe.Recipe, em emitter) error {
-	needed := e.tools.ToolsNeeded(rec.RequiredTools())
+func (e *Engine) ensureTools(filePath string, rec recipe.Recipe, em emitter, skipAssets bool) error {
+	needed := e.tools.ToolsNeeded(recipeTools(rec, skipAssets))
 	if len(needed) == 0 {
 		return nil
 	}
@@ -531,7 +552,7 @@ func (e *Engine) ensureTools(filePath string, rec recipe.Recipe, em emitter) err
 	// Re-check after install: only genuinely still-missing REQUIRED tools are
 	// fatal. Missing OPTIONAL tools (e.g. ghidra for the native recipe) must not
 	// kill the task — the recipe runs a degraded path (imports/strings fallback).
-	needed = e.tools.ToolsNeeded(rec.RequiredTools())
+	needed = e.tools.ToolsNeeded(recipeTools(rec, skipAssets))
 	fatal := fatalMissingTools(needed)
 	for _, name := range needed {
 		if !contains(fatal, name) {
@@ -682,6 +703,7 @@ func (e *Engine) executeRecipe(
 		Cflow:        opts.Cflow,
 		GameDataOut:  opts.GameDataOut,
 		SharedOut:    opts.Output,
+		CodeOnly:     opts.CodeOnly,
 	}
 
 	execErr := rec.Execute(rctx)
@@ -824,6 +846,7 @@ func (e *Engine) executeRecipeWithFilter(
 		Cflow:        opts.Cflow,
 		GameDataOut:  opts.GameDataOut,
 		SharedOut:    opts.Output,
+		CodeOnly:     opts.CodeOnly,
 	}
 
 	execErr := rec.Execute(rctx)
