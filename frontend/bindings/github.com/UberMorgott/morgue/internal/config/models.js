@@ -293,6 +293,16 @@ export class Config {
              */
             this["IL2CPPFullExport"] = false;
         }
+        if (!("UnityExtractAssets" in $$source)) {
+            /**
+             * UnityExtractAssets enables the AssetRipper asset export (unity-mono and
+             * il2cpp recipes). On by default; turn it off (or pass `run --code-only`) to
+             * get only the decompiled C# and skip the multi-GB asset tree.
+             * @member
+             * @type {boolean}
+             */
+            this["UnityExtractAssets"] = false;
+        }
         if (!("NativeGhidraDecompile" in $$source)) {
             /**
              * Native pipeline step toggles

@@ -106,6 +106,15 @@ type Context struct {
 	// off by default. The pass is a near no-op on typical targets and only does
 	// real work on pure-constant-chain targets, so it is opt-in.
 	Cflow bool
+	// CodeOnly skips asset extraction (AssetRipper) so the run delivers only
+	// decompiled code. Off by default.
+	CodeOnly bool
+}
+
+// SkipAssets reports whether the Unity asset export (AssetRipper) is off for
+// this run — either via the --code-only flag or the UnityExtractAssets toggle.
+func (c *Context) SkipAssets() bool {
+	return c.CodeOnly || (c.Config != nil && !c.Config.UnityExtractAssets)
 }
 
 // Recipe is the interface that all decompilation recipes must implement.

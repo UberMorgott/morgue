@@ -147,6 +147,14 @@
           </div>
         </section>
 
+        <!-- Section: Unity -->
+        <section class="settings-card glass">
+          <h3 class="card-title">{t(lang, 'settings.unity')}</h3>
+          <div class="card-rows">
+            <SettingsToggle label={t(lang, 'settings.unity.extractAssets')} hint={t(lang, 'settings.unity.extractAssetsHint')} active={config.UnityExtractAssets} onToggle={() => toggleField('UnityExtractAssets')} />
+          </div>
+        </section>
+
         <!-- Section: .NET -->
         <section class="settings-card glass">
           <h3 class="card-title">{t(lang, 'settings.dotnet')}</h3>

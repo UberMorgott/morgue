@@ -159,6 +159,7 @@ var settingsAllowlist = map[string]bool{
 	"DelphiIDRAnalysis":     true,
 	"DelphiGhidraDecompile": true,
 	"AllowDynamicExecution": true,
+	"UnityExtractAssets":    true,
 }
 
 func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {

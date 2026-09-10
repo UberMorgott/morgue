@@ -38,6 +38,8 @@ type RunOptions struct {
 	AllowDynamic bool
 	// Cflow opts into the experimental control-flow deobfuscation pass (default off).
 	Cflow bool
+	// CodeOnly skips asset extraction (AssetRipper) — decompiled code only.
+	CodeOnly bool
 	// GameDataOut is the destination for the organized game-data tree
 	// (unity-mono recipe). Empty falls back to <target output>/GameData.
 	GameDataOut string
@@ -121,6 +123,7 @@ func Run(opts RunOptions) error {
 
 		AllowDynamic: opts.AllowDynamic,
 		Cflow:        opts.Cflow,
+		CodeOnly:     opts.CodeOnly,
 		GameDataOut:  opts.GameDataOut,
 	}
 

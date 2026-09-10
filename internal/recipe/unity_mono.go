@@ -216,7 +216,10 @@ func (u *UnityMono) Execute(ctx *Context) error {
 	rawExportDir := filepath.Join(assetRoot, "raw-export")
 	tmpDir := filepath.Join(assetRoot, ".tmp")
 	rippedMarker := filepath.Join(rawExportDir, ".ripped")
-	if ripperPath, rErr := ctx.Tools.Resolve("assetripper"); rErr != nil {
+	if ctx.SkipAssets() {
+		logTool("assetripper", "asset extraction disabled (--code-only / UnityExtractAssets), skipping game-asset export")
+		report(4, Skipped, time.Since(start), nil, "assetripper")
+	} else if ripperPath, rErr := ctx.Tools.Resolve("assetripper"); rErr != nil {
 		logTool("assetripper", fmt.Sprintf("assetripper unavailable, skipping game-asset export: %v", rErr))
 		report(4, Skipped, time.Since(start), nil, "assetripper")
 	} else if gameDataDir == "" {

@@ -291,6 +291,9 @@ const translations: Record<string, Record<Lang, string>> = {
   'settings.ue5.buildIndexesHint': { en: 'Create cross-reference indexes (who calls what, string references, class hierarchy). Enables AI to navigate the codebase instantly.', ru: 'Создание индексов перекрёстных ссылок (кто вызывает что, ссылки на строки, иерархия классов). ИИ мгновенно навигирует по коду.' },
   'settings.ue5.exportHookable': { en: 'Export hookable symbols', ru: 'Экспорт хукаемых символов' },
   'settings.ue5.exportHookableHint': { en: 'List all functions that can be hooked from Lua/UE4SS. Essential for mod development.', ru: 'Список всех функций, которые можно хукнуть из Lua/UE4SS. Необходимо для разработки модов.' },
+  'settings.unity': { en: 'Unity', ru: 'Unity' },
+  'settings.unity.extractAssets': { en: 'Extract game assets', ru: 'Извлечение игровых ассетов' },
+  'settings.unity.extractAssetsHint': { en: 'Run AssetRipper to export the Unity asset tree. Turn off if you only need decompiled C# — the export can take tens of GB.', ru: 'Запуск AssetRipper для экспорта дерева ассетов Unity. Отключите, если нужен только декомпилированный C# — экспорт занимает десятки ГБ.' },
 
   'settings.dotnet': { en: '.NET', ru: '.NET' },
 

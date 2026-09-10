@@ -123,6 +123,8 @@ func RunWatch(opts RunOptions) error {
 			Recipe:  opts.Recipe,
 			NoSkip:  opts.NoSkip,
 			Exclude: opts.Exclude,
+
+			CodeOnly: opts.CodeOnly,
 		}
 		pipeErr = eng.Run(ctx, pipeOpts, events)
 		p.Send(tui.PipelineDoneMsg{Err: pipeErr})
