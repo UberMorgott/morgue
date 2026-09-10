@@ -15,12 +15,10 @@ import (
 	"github.com/google/go-github/v74/github"
 )
 
-// httpDo issues a request with the background context. These calls happen
-// during tool installation / version checks, which run outside any cancellable
-// pipeline context (see the contextcheck note on Manager.Install); the client's
-// Timeout is what bounds them.
-func httpDo(client *http.Client, method, url string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(context.Background(), method, url, nil)
+// httpDo issues a request bound to ctx, so a cancelled install/pipeline aborts
+// the in-flight call instead of waiting out the client Timeout.
+func httpDo(ctx context.Context, client *http.Client, method, url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -74,11 +72,11 @@ func saveReleaseCache(baseDir string, rc releaseCache) {
 
 // fetchLatestCommit returns the short hash of the latest commit on default branch.
 // Uses atom feed — no API, no rate limit.
-func fetchLatestCommit(repo string) (string, error) {
+func fetchLatestCommit(ctx context.Context, repo string) (string, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
 	for _, branch := range []string{"main", "master"} {
 		url := fmt.Sprintf("https://github.com/%s/commits/%s.atom", repo, branch)
-		resp, err := httpDo(client, http.MethodGet, url)
+		resp, err := httpDo(ctx, client, http.MethodGet, url)
 		if err != nil {
 			continue
 		}
@@ -119,7 +117,7 @@ func fetchLatestCommit(repo string) (string, error) {
 
 // fetchLatestVersion gets the latest release tag from GitHub without using the API.
 // It issues a GET to /releases/latest and parses the redirect URL.
-func fetchLatestVersion(repo string) (string, error) {
+func fetchLatestVersion(ctx context.Context, repo string) (string, error) {
 	url := fmt.Sprintf("https://github.com/%s/releases/latest", repo)
 
 	client := &http.Client{
@@ -129,7 +127,7 @@ func fetchLatestVersion(repo string) (string, error) {
 		},
 	}
 
-	resp, err := httpDo(client, http.MethodGet, url)
+	resp, err := httpDo(ctx, client, http.MethodGet, url)
 	if err != nil {
 		return "", fmt.Errorf("check latest version %s: %w", repo, err)
 	}
@@ -156,7 +154,7 @@ func fetchLatestVersion(repo string) (string, error) {
 
 // fetchLatestRelease gets the latest release info from GitHub API.
 // This consumes API rate limit — prefer fetchLatestVersion + cache.
-func fetchLatestRelease(repo, token string) (tagName string, assets []assetInfo, err error) {
+func fetchLatestRelease(ctx context.Context, repo, token string) (tagName string, assets []assetInfo, err error) {
 	parts := strings.SplitN(repo, "/", 2)
 	if len(parts) != 2 {
 		return "", nil, fmt.Errorf("invalid repo: %s", repo)
@@ -169,7 +167,7 @@ func fetchLatestRelease(repo, token string) (tagName string, assets []assetInfo,
 		client = github.NewClient(nil)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	release, _, err := client.Repositories.GetLatestRelease(ctx, parts[0], parts[1])
@@ -197,7 +195,7 @@ func resolveInstallTag(tool ToolDef, latestTag string) string {
 }
 
 // fetchReleaseByTag fetches a specific release (not "latest") via the GitHub API.
-func fetchReleaseByTag(repo, token, tag string) (string, []assetInfo, error) {
+func fetchReleaseByTag(ctx context.Context, repo, token, tag string) (string, []assetInfo, error) {
 	parts := strings.SplitN(repo, "/", 2)
 	if len(parts) != 2 {
 		return "", nil, fmt.Errorf("invalid repo: %s", repo)
@@ -208,7 +206,7 @@ func fetchReleaseByTag(repo, token, tag string) (string, []assetInfo, error) {
 	} else {
 		client = github.NewClient(nil)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	release, _, err := client.Repositories.GetReleaseByTag(ctx, parts[0], parts[1], tag)
 	if err != nil {
@@ -222,10 +220,10 @@ func fetchReleaseByTag(repo, token, tag string) (string, []assetInfo, error) {
 }
 
 // downloadAndExtract downloads each matched asset into destDir, extracting archives.
-func downloadAndExtract(matched []assetInfo, destDir string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
+func downloadAndExtract(ctx context.Context, matched []assetInfo, destDir string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
 	for _, asset := range matched {
 		archivePath := filepath.Join(destDir, asset.Name)
-		if err := downloadFile(asset.URL, archivePath, onProgress); err != nil {
+		if err := downloadFile(ctx, asset.URL, archivePath, onProgress); err != nil {
 			_ = os.Remove(archivePath)
 			return err
 		}
@@ -246,7 +244,7 @@ func downloadAndExtract(matched []assetInfo, destDir string, onProgress func(byt
 // fetchReleaseCached returns release info, using cache when available.
 // On cache miss it calls the GitHub API and saves the result.
 // On API error it falls back to stale cache if available.
-func fetchReleaseCached(baseDir, repo, token string) (string, []assetInfo, error) {
+func fetchReleaseCached(ctx context.Context, baseDir, repo, token string) (string, []assetInfo, error) {
 	cacheMu.Lock()
 	defer cacheMu.Unlock()
 
@@ -258,7 +256,7 @@ func fetchReleaseCached(baseDir, repo, token string) (string, []assetInfo, error
 	}
 
 	// Cache miss or stale — call API
-	tag, assets, err := fetchLatestRelease(repo, token)
+	tag, assets, err := fetchLatestRelease(ctx, repo, token)
 	if err != nil {
 		// API failed — use stale cache if available
 		if entry, ok := cache.Entries[repo]; ok {
@@ -383,7 +381,7 @@ func validateBinaryInstalled(tool ToolDef, destDir string) error {
 // Uses cached release info to avoid API rate limits.
 // Falls back to direct URL download when API is unavailable.
 // Returns the version tag on success.
-func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) (string, error) {
+func installFromGitHub(ctx context.Context, tool ToolDef, destDir, token string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) (string, error) {
 	baseDir := filepath.Dir(destDir)
 
 	// Pinned version: reproducibility requires the EXACT tag. Fetch it via API and
@@ -391,7 +389,7 @@ func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(byte
 	// to scrape/latest, which would defeat the lock.
 	if tool.Version != "" {
 		tag := resolveInstallTag(tool, "")
-		_, assets, err := fetchReleaseByTag(tool.Repo, token, tag)
+		_, assets, err := fetchReleaseByTag(ctx, tool.Repo, token, tag)
 		if err != nil {
 			return "", fmt.Errorf("pinned release %s for %s not found: %w", tag, tool.Name, err)
 		}
@@ -401,7 +399,7 @@ func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(byte
 			return "", fmt.Errorf("pinned release %s for %s: no installable asset matched glob %q (found %d assets)",
 				tag, tool.Name, tool.AssetGlob, len(assets))
 		}
-		if derr := downloadAndExtract([]assetInfo{*primary}, destDir, onProgress, onExtract); derr != nil {
+		if derr := downloadAndExtract(ctx, []assetInfo{*primary}, destDir, onProgress, onExtract); derr != nil {
 			return "", derr
 		}
 		if verr := validateBinaryInstalled(tool, destDir); verr != nil {
@@ -411,7 +409,7 @@ func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(byte
 		return tag, nil
 	}
 
-	tagName, assets, err := fetchReleaseCached(baseDir, tool.Repo, token)
+	tagName, assets, err := fetchReleaseCached(ctx, baseDir, tool.Repo, token)
 	if err == nil {
 		matched := matchAssets(assets, tool.AssetGlob)
 		if len(matched) > 0 {
@@ -421,7 +419,7 @@ func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(byte
 				// Reuse the shared downloader so this release-asset path gets the
 				// same bounded retry-with-backoff and enriched (URL + timeout)
 				// errors as every other download.
-				if err := downloadFile(asset.URL, archivePath, onProgress); err != nil {
+				if err := downloadFile(ctx, asset.URL, archivePath, onProgress); err != nil {
 					_ = os.Remove(archivePath)
 					return "", err
 				}
@@ -446,7 +444,7 @@ func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(byte
 	}
 
 	// Fallback: direct download without API
-	version, verErr := fetchLatestVersion(tool.Repo)
+	version, verErr := fetchLatestVersion(ctx, tool.Repo)
 	if verErr != nil {
 		// Return original API error if version redirect also fails
 		if err != nil {
@@ -455,7 +453,7 @@ func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(byte
 		return "", verErr
 	}
 
-	if dlErr := tryDirectDownload(tool, version, destDir, onProgress, onExtract); dlErr != nil {
+	if dlErr := tryDirectDownload(ctx, tool, version, destDir, onProgress, onExtract); dlErr != nil {
 		return "", fmt.Errorf("install %s: API unavailable and direct download failed: %w", tool.Name, dlErr)
 	}
 
@@ -466,8 +464,8 @@ func installFromGitHub(tool ToolDef, destDir, token string, onProgress func(byte
 // tryDirectDownload attempts to download a release asset without using the GitHub API.
 // It scrapes the expanded_assets HTML page to discover real asset names,
 // then matches them using the same glob logic as the API path.
-func tryDirectDownload(tool ToolDef, version, destDir string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
-	assets, err := scrapeReleaseAssets(tool.Repo, version)
+func tryDirectDownload(ctx context.Context, tool ToolDef, version, destDir string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
+	assets, err := scrapeReleaseAssets(ctx, tool.Repo, version)
 	if err != nil {
 		return fmt.Errorf("scrape assets for %s %s: %w", tool.Repo, version, err)
 	}
@@ -480,7 +478,7 @@ func tryDirectDownload(tool ToolDef, version, destDir string, onProgress func(by
 
 	for _, asset := range matched {
 		archivePath := filepath.Join(destDir, asset.Name)
-		if err := downloadFile(asset.URL, archivePath, onProgress); err != nil {
+		if err := downloadFile(ctx, asset.URL, archivePath, onProgress); err != nil {
 			_ = os.Remove(archivePath)
 			return fmt.Errorf("download %s: %w", asset.Name, err)
 		}
@@ -501,11 +499,11 @@ func tryDirectDownload(tool ToolDef, version, destDir string, onProgress func(by
 
 // scrapeReleaseAssets fetches the expanded_assets HTML fragment for a GitHub release
 // and extracts download links. This does not use the GitHub API and is not rate-limited.
-func scrapeReleaseAssets(repo, tag string) ([]assetInfo, error) {
+func scrapeReleaseAssets(ctx context.Context, repo, tag string) ([]assetInfo, error) {
 	url := fmt.Sprintf("https://github.com/%s/releases/expanded_assets/%s", repo, tag)
 
 	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := httpDo(client, http.MethodGet, url)
+	resp, err := httpDo(ctx, client, http.MethodGet, url)
 	if err != nil {
 		return nil, err
 	}

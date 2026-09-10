@@ -140,7 +140,7 @@ var Registry = []ToolDef{
 		Repo:        "AssetRipper/AssetRipper",
 		AssetGlob:   "AssetRipper_win_x64*",
 		Binary:      "AssetRipper.GUI.Free.exe",
-		Version:     "1.3.14",
+		Version:     "2.0.0",
 		Optional:    false,
 	},
 	{

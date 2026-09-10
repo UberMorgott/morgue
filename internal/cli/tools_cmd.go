@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -91,7 +92,7 @@ func cliCallbacks() *tools.InstallCallbacks {
 
 // ToolsInstall installs all missing tools. With force=true every tool is
 // removed and reinstalled.
-func ToolsInstall(force bool) error {
+func ToolsInstall(ctx context.Context, force bool) error {
 	cfg, _ := config.Load(util.ConfigPath())
 	mgr := tools.NewManager(util.ToolsBaseDir(), cfg)
 
@@ -116,9 +117,12 @@ func ToolsInstall(force bool) error {
 				continue
 			}
 		}
-		version, err := mgr.Install(name, cb)
+		version, err := mgr.Install(ctx, name, cb)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\rInstalling %s... FAILED: %v\n", name, err)
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			continue
 		}
 		fmt.Fprintf(os.Stderr, "\rInstalling %s... done (%s)\n", name, version)
@@ -129,7 +133,7 @@ func ToolsInstall(force bool) error {
 
 // ToolsInstallOne installs a single tool by name. With force=true an already
 // installed tool is removed and reinstalled (i.e. updated).
-func ToolsInstallOne(name string, force bool) error {
+func ToolsInstallOne(ctx context.Context, name string, force bool) error {
 	cfg, _ := config.Load(util.ConfigPath())
 	mgr := tools.NewManager(util.ToolsBaseDir(), cfg)
 
@@ -149,7 +153,7 @@ func ToolsInstallOne(name string, force bool) error {
 	}
 
 	cb := cliCallbacks()
-	version, err := mgr.Install(name, cb)
+	version, err := mgr.Install(ctx, name, cb)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\rInstalling %s... FAILED: %v\n", name, err)
 		return err

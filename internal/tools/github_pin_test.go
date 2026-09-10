@@ -85,7 +85,7 @@ func TestPinnedTagNotFoundNoFallback(t *testing.T) {
 		AssetGlob: "*",
 		Binary:    "nope.exe",
 	}
-	_, err := installFromGitHub(tool, dest, "", nil, nil)
+	_, err := installFromGitHub(t.Context(), tool, dest, "", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for non-existent pinned release")
 	}

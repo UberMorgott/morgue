@@ -18,6 +18,10 @@
     {/if}
   </div>
 
+  {#if state.filesTotal === 0 && state.reconResults.length === 0}
+    <div class="alert-block alert-warning">{t(lang, 'home.summary.noTargets')}</div>
+  {/if}
+
   <div class="summary-stats">
     <div class="stat card-sm">
       <span class="stat-num font-accent">{state.reconResults.length}</span>

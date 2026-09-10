@@ -281,10 +281,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 		}
 
 		// Check required tools
-		//nolint:contextcheck // reaches tools.Manager.Install -> installFromGitHub, which builds
-		// its own context. Making tool downloads cancellable from the pipeline needs a ctx
-		// parameter on the public Manager.Install API — a real change, tracked separately.
-		if err := e.ensureTools(t.filePath, t.recipe, em, skipAssets); err != nil {
+		if err := e.ensureTools(ctx, t.filePath, t.recipe, em, skipAssets); err != nil {
 			results = append(results, TargetResult{
 				Group: t.group, Recon: t.recon, Recipe: t.recipe, Error: err,
 			})
@@ -492,7 +489,7 @@ func (e *Engine) ensureRuntimeDeps(filePath string, rec recipe.Recipe, em emitte
 }
 
 // ensureTools installs missing tools for a recipe.
-func (e *Engine) ensureTools(filePath string, rec recipe.Recipe, em emitter, skipAssets bool) error {
+func (e *Engine) ensureTools(ctx context.Context, filePath string, rec recipe.Recipe, em emitter, skipAssets bool) error {
 	needed := e.tools.ToolsNeeded(recipeTools(rec, skipAssets))
 	if len(needed) == 0 {
 		return nil
@@ -545,8 +542,12 @@ func (e *Engine) ensureTools(filePath string, rec recipe.Recipe, em emitter, ski
 			} else {
 				em.emit("install", filePath, fmt.Sprintf("Retrying %s (attempt %d/%d)...", name, attempt, installAttempts))
 			}
-			if _, err := e.tools.Install(name, installCb); err != nil {
+			if _, err := e.tools.Install(ctx, name, installCb); err != nil {
 				lastErr = err
+				// A cancelled run must not burn the remaining retries.
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
 				continue
 			}
 			lastErr = nil

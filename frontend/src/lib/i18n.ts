@@ -140,6 +140,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'home.summary.files': { en: 'files', ru: 'файлов' },
   'home.summary.decompiled': { en: 'decompiled', ru: 'декомпилировано' },
   'home.summary.skipped': { en: 'skipped', ru: 'пропущено' },
+  'home.summary.noTargets': {
+    en: 'No supported files found — nothing to decompile in this folder.',
+    ru: 'Поддерживаемых файлов не найдено — в этой папке нечего декомпилировать.',
+  },
   'home.summary.log': { en: 'Full log', ru: 'Полный лог' },
 
   // Home — pipeline controls
