@@ -339,9 +339,9 @@ func toolsCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			force, _ := cmd.Flags().GetBool("force")
 			if len(args) == 1 {
-				return cli.ToolsInstallOne(args[0], force)
+				return cli.ToolsInstallOne(cmd.Context(), args[0], force)
 			}
-			return cli.ToolsInstall(force)
+			return cli.ToolsInstall(cmd.Context(), force)
 		},
 	}
 	installCmd.Flags().BoolP("force", "f", false, "Remove and reinstall even if already installed (update)")

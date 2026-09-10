@@ -121,20 +121,30 @@ func isNetworkTimeout(err error) bool {
 // Transient network timeouts are retried with bounded exponential backoff, and
 // the returned error carries the target URL plus a network-timeout hint so a
 // failure is actionable in a headless/redirected log.
-func downloadFile(url, destPath string, onProgress func(bytesDown, bytesTotal int64)) error {
+func downloadFile(ctx context.Context, url, destPath string, onProgress func(bytesDown, bytesTotal int64)) error {
 	// Route through a configured mirror (offline / firewalled installs).
 	url = rewriteMirror(url, currentAssetMirror())
 	var lastErr error
 	for attempt := 1; attempt <= downloadMaxAttempts; attempt++ {
-		lastErr = downloadOnce(url, destPath, onProgress)
+		lastErr = downloadOnce(ctx, url, destPath, onProgress)
 		if lastErr == nil {
 			return nil
+		}
+		// A cancelled context is final: drop the partial file and give up now.
+		if ctx.Err() != nil {
+			_ = os.Remove(destPath)
+			return fmt.Errorf("download %s: %w", url, ctx.Err())
 		}
 		if !isNetworkTimeout(lastErr) {
 			break
 		}
 		if attempt < downloadMaxAttempts {
-			time.Sleep(time.Duration(attempt) * 2 * time.Second)
+			select {
+			case <-ctx.Done():
+				_ = os.Remove(destPath)
+				return fmt.Errorf("download %s: %w", url, ctx.Err())
+			case <-time.After(time.Duration(attempt) * 2 * time.Second):
+			}
 		}
 	}
 
@@ -146,12 +156,13 @@ func downloadFile(url, destPath string, onProgress func(bytesDown, bytesTotal in
 }
 
 // downloadOnce performs a single download attempt.
-func downloadOnce(url, destPath string, onProgress func(bytesDown, bytesTotal int64)) error {
+func downloadOnce(ctx context.Context, url, destPath string, onProgress func(bytesDown, bytesTotal int64)) error {
 	client := grab.NewClient()
 	req, err := grab.NewRequest(destPath, url)
 	if err != nil {
 		return fmt.Errorf("create download request for %s: %w", destPath, err)
 	}
+	req = req.WithContext(ctx)
 
 	resp := client.Do(req)
 
@@ -268,10 +279,11 @@ func extractZip(archivePath, destDir string) error {
 
 // installFromURLs downloads multiple files from direct URLs into destDir.
 // Archives (.zip) are extracted; plain files are kept as-is.
-func installFromURLs(urls []string, destDir string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
+func installFromURLs(ctx context.Context, urls []string, destDir string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
 	for _, u := range urls {
 		destPath := filepath.Join(destDir, filepath.Base(u))
-		if err := downloadFile(u, destPath, onProgress); err != nil {
+		if err := downloadFile(ctx, u, destPath, onProgress); err != nil {
+			_ = os.Remove(destPath)
 			return fmt.Errorf("download %s: %w", filepath.Base(u), err)
 		}
 		if isArchiveFile(destPath) {
@@ -288,9 +300,11 @@ func installFromURLs(urls []string, destDir string, onProgress func(bytesDown, b
 }
 
 // installFromURL downloads a tool from a direct URL and extracts it.
-func installFromURL(tool ToolDef, destDir string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
+func installFromURL(ctx context.Context, tool ToolDef, destDir string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
 	destPath := filepath.Join(destDir, filepath.Base(tool.URL))
-	if err := downloadFile(tool.URL, destPath, onProgress); err != nil {
+	if err := downloadFile(ctx, tool.URL, destPath, onProgress); err != nil {
+		// Never leave a truncated binary behind for Resolve() to find.
+		_ = os.Remove(destPath)
 		return err
 	}
 	if err := verifyHash(destPath, tool.SHA256); err != nil {
@@ -310,13 +324,13 @@ func installFromURL(tool ToolDef, destDir string, onProgress func(bytesDown, byt
 
 // installDotnetTool installs a .NET global tool.
 // It prefers a local portable dotnet SDK, then falls back to the system one.
-func installDotnetTool(tool ToolDef, destDir string) error {
+func installDotnetTool(ctx context.Context, tool ToolDef, destDir string) error {
 	dotnetBin, err := findDotnetBin(destDir)
 	if err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
 	args := []string{"tool", "install", tool.DotnetID, "--tool-path", destDir}
@@ -330,9 +344,9 @@ func installDotnetTool(tool ToolDef, destDir string) error {
 // installFromGitBuild downloads a GitHub repo as zip, builds it with dotnet, and
 // places the output binaries in destDir. This is used for tools that have no
 // pre-built releases.
-func installFromGitBuild(tool ToolDef, destDir string, onProgress func(string, int64, int64), onExtract func()) (string, error) {
+func installFromGitBuild(ctx context.Context, tool ToolDef, destDir string, onProgress func(string, int64, int64), onExtract func()) (string, error) {
 	// 1. Check for a tagged release; fall back to "main" branch.
-	version, _ := fetchLatestVersion(tool.Repo)
+	version, _ := fetchLatestVersion(ctx, tool.Repo)
 	if version == "" {
 		version = "main"
 	}
@@ -344,7 +358,7 @@ func installFromGitBuild(tool ToolDef, destDir string, onProgress func(string, i
 	}
 
 	zipPath := filepath.Join(destDir, "source.zip")
-	err := downloadFile(zipURL, zipPath, func(down, total int64) {
+	err := downloadFile(ctx, zipURL, zipPath, func(down, total int64) {
 		if onProgress != nil {
 			onProgress(tool.Name, down, total)
 		}
@@ -381,12 +395,12 @@ func installFromGitBuild(tool ToolDef, destDir string, onProgress func(string, i
 		return "", err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	buildCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
 	//nolint:gosec // dotnetBin is resolved by findDotnetBin from our own managed
 	// tools dir / PATH; args are fixed literals, nothing here is user input.
-	cmd := exec.CommandContext(ctx, dotnetBin, "build", "-c", "Release", "-o", destDir)
+	cmd := exec.CommandContext(buildCtx, dotnetBin, "build", "-c", "Release", "-o", destDir)
 	cmd.Dir = projectDir
 	util.HideCmdWindow(cmd)
 	output, err := cmd.CombinedOutput()
@@ -409,11 +423,11 @@ func installFromGitBuild(tool ToolDef, destDir string, onProgress func(string, i
 
 // installFromNuGet downloads a NuGet package (.nupkg) and extracts it as a ZIP.
 // This bypasses `dotnet tool install` which requires a matching SDK version.
-func installFromNuGet(tool ToolDef, destDir string, onProgress func(int64, int64), onExtract func(string)) (string, error) {
+func installFromNuGet(ctx context.Context, tool ToolDef, destDir string, onProgress func(int64, int64), onExtract func(string)) (string, error) {
 	version := tool.DotnetVersion
 	if version == "" {
 		var err error
-		version, err = fetchNuGetLatestVersion(tool.DotnetID)
+		version, err = fetchNuGetLatestVersion(ctx, tool.DotnetID)
 		if err != nil {
 			return "", fmt.Errorf("fetch latest version: %w", err)
 		}
@@ -422,11 +436,12 @@ func installFromNuGet(tool ToolDef, destDir string, onProgress func(int64, int64
 	url := fmt.Sprintf("https://www.nuget.org/api/v2/package/%s/%s", tool.DotnetID, version)
 	nupkgPath := filepath.Join(destDir, "package.zip")
 
-	if err := downloadFile(url, nupkgPath, func(down, total int64) {
+	if err := downloadFile(ctx, url, nupkgPath, func(down, total int64) {
 		if onProgress != nil {
 			onProgress(down, total)
 		}
 	}); err != nil {
+		_ = os.Remove(nupkgPath)
 		return "", fmt.Errorf("download nupkg: %w", err)
 	}
 

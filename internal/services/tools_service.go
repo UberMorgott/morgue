@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sync"
@@ -193,8 +194,11 @@ func (s *ToolsService) installCallbacks() *tools.InstallCallbacks {
 	}
 }
 
-// Install downloads and installs a single tool by name.
-func (s *ToolsService) Install(name string) error {
+// Install downloads and installs a single tool by name. Cancelling ctx aborts
+// an in-flight download.
+func (s *ToolsService) Install(ctx context.Context, name string) error {
+	//nolint:contextcheck // reaches tools.Manager.RuntimePath -> systemDotNetHasAspNet10, a local
+	// `dotnet --list-runtimes` probe that already bounds itself to 10s (same note as engine.Run).
 	if err := s.ensureRuntimeDeps(name); err != nil {
 		return err
 	}
@@ -202,7 +206,7 @@ func (s *ToolsService) Install(name string) error {
 	if app := application.Get(); app != nil {
 		app.Event.Emit("tool:download:start", map[string]string{"tool": name})
 	}
-	version, err := s.manager.Install(name, s.installCallbacks())
+	version, err := s.manager.Install(ctx, name, s.installCallbacks())
 	s.removeOp(name)
 	if app := application.Get(); app != nil {
 		if err != nil {
@@ -241,7 +245,7 @@ func (s *ToolsService) InstallAll() error {
 
 	for _, st := range statuses {
 		if !st.Installed {
-			if err := s.Install(st.Name); err != nil {
+			if err := s.Install(context.Background(), st.Name); err != nil {
 				return err
 			}
 		}
@@ -369,7 +373,7 @@ func (s *ToolsService) StartupAutoUpdate() map[string]any {
 				"index": i + 1,
 				"total": len(updatable),
 			})
-			if err := s.Install(st.Name); err != nil {
+			if err := s.Install(context.Background(), st.Name); err != nil {
 				log.Printf("startup: auto-update tool %s failed: %v", st.Name, err)
 			} else {
 				result["autoApplied"] = true

@@ -17,7 +17,7 @@ func TestFetchLatestVersion(t *testing.T) {
 		"NationalSecurityAgency/ghidra",
 	}
 	for _, repo := range repos {
-		ver, err := fetchLatestVersion(repo)
+		ver, err := fetchLatestVersion(t.Context(), repo)
 		if err != nil {
 			t.Errorf("fetchLatestVersion(%s): %v", repo, err)
 			continue
@@ -48,7 +48,7 @@ func TestInstallStrings(t *testing.T) {
 		},
 	}
 
-	ver, err := mgr.Install("strings", cb)
+	ver, err := mgr.Install(t.Context(), "strings", cb)
 	fmt.Println()
 	if err != nil {
 		t.Fatalf("Install strings: %v", err)
@@ -96,7 +96,7 @@ func TestScrapeReleaseAssets(t *testing.T) {
 		{"mandiant/GoReSym", "v3.3"},
 	}
 	for _, tt := range tests {
-		assets, err := scrapeReleaseAssets(tt.repo, tt.tag)
+		assets, err := scrapeReleaseAssets(t.Context(), tt.repo, tt.tag)
 		if err != nil {
 			t.Fatalf("scrapeReleaseAssets(%s, %s): %v", tt.repo, tt.tag, err)
 		}
@@ -124,7 +124,7 @@ func TestInstallGitHubToolDirect(t *testing.T) {
 		t.Fatal("goresym not in registry")
 	}
 
-	version, err := fetchLatestVersion(tool.Repo)
+	version, err := fetchLatestVersion(t.Context(), tool.Repo)
 	if err != nil {
 		t.Fatalf("fetchLatestVersion: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestInstallGitHubToolDirect(t *testing.T) {
 	destDir := filepath.Join(baseDir, tool.Name)
 	_ = os.MkdirAll(destDir, 0755)
 
-	err = tryDirectDownload(tool, version, destDir, func(down, total int64) {
+	err = tryDirectDownload(t.Context(), tool, version, destDir, func(down, total int64) {
 		if total > 0 {
 			t.Logf("  download: %d/%d (%d%%)", down, total, down*100/total)
 		}

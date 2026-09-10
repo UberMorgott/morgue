@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -94,9 +95,9 @@ func (s *Server) handleInstallTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//nolint:contextcheck // the install must outlive this HTTP request.
+	//nolint:contextcheck // Background on purpose: the install must outlive this HTTP request.
 	go func() {
-		if err := s.tools.Install(req.Name); err != nil {
+		if err := s.tools.Install(context.Background(), req.Name); err != nil {
 			log.Printf("api: install %s: %v", req.Name, err)
 		}
 	}()

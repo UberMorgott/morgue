@@ -311,7 +311,7 @@ func (m *Manager) installDotnetSDK(cb *InstallCallbacks) error {
 		}
 	}
 
-	if err := downloadFile(url, zipPath, progressCb); err != nil {
+	if err := downloadFile(context.Background(), url, zipPath, progressCb); err != nil {
 		return fmt.Errorf("download .NET SDK: %w", err)
 	}
 	defer func() { _ = os.Remove(zipPath) }()
@@ -392,7 +392,7 @@ func (m *Manager) installJavaJRE(cb *InstallCallbacks) error {
 		}
 	}
 
-	if err := downloadFile(downloadURL, zipPath, progressCb); err != nil {
+	if err := downloadFile(context.Background(), downloadURL, zipPath, progressCb); err != nil {
 		return fmt.Errorf("download Java JRE: %w", err)
 	}
 	defer func() { _ = os.Remove(zipPath) }()
@@ -465,7 +465,7 @@ func (m *Manager) installAspNetRuntime(cb *InstallCallbacks) error {
 		}
 	}
 
-	if err := downloadFile(url, zipPath, progressCb); err != nil {
+	if err := downloadFile(context.Background(), url, zipPath, progressCb); err != nil {
 		return fmt.Errorf("download .NET ASP.NET runtime: %w", err)
 	}
 	defer func() { _ = os.Remove(zipPath) }()

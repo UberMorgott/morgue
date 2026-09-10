@@ -26,6 +26,7 @@ export interface PipelineState {
   lastMessage: string;     // last status message from engine
   startedAt: number;       // timestamp when pipeline started
   scanInfo: string;          // "Found 3 files in 1 group"
+  filesTotal: number;        // targets the scan found; 0 means nothing to decompile
   reconResults: Array<{ file: string; kind: string; reconKind: string; compiler: string; obfuscator: string; size: number }>;  // classification results
   toolsInfo: string;         // "All tools ready" or "Installing ilspycmd..."
   logs: string[];            // last N log messages (keep max 20)
@@ -65,6 +66,7 @@ const initial: PipelineState = {
   lastMessage: '',
   startedAt: 0,
   scanInfo: '',
+  filesTotal: 0,
   reconResults: [],
   toolsInfo: '',
   logs: [],
@@ -115,6 +117,7 @@ export function startPipeline(inputPath: string) {
     lastMessage: '',
     startedAt: Date.now(),
     scanInfo: '',
+    filesTotal: 0,
     reconResults: [],
     toolsInfo: '',
     logs: [],
@@ -183,6 +186,12 @@ export function updateFromEvent(data: any) {
     // Accumulate per-phase data
     if (phase === 'scan' && message) {
       next.scanInfo = message;
+    }
+    // The scan event carries how many targets the run found. A folder with no
+    // supported binaries legitimately yields zero, and the summary then says so
+    // instead of showing three bare zeros.
+    if (typeof d.FilesTotal === 'number') {
+      next.filesTotal = d.FilesTotal;
     }
 
     if (phase === 'recon' && target) {

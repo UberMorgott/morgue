@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,11 +10,11 @@ import (
 )
 
 // fetchNuGetLatestVersion returns the latest version of a NuGet package.
-func fetchNuGetLatestVersion(packageID string) (string, error) {
+func fetchNuGetLatestVersion(ctx context.Context, packageID string) (string, error) {
 	url := fmt.Sprintf("https://api.nuget.org/v3-flatcontainer/%s/index.json", strings.ToLower(packageID))
 
 	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := httpDo(client, http.MethodGet, url)
+	resp, err := httpDo(ctx, client, http.MethodGet, url)
 	if err != nil {
 		return "", err
 	}

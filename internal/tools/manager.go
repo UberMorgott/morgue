@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -184,7 +185,8 @@ func (m *Manager) IsInstalled(name string) bool {
 
 // Install downloads and installs a tool. Returns the installed version and an error if any.
 // Callbacks are optional — pass nil for no progress reporting.
-func (m *Manager) Install(name string, cb *InstallCallbacks) (string, error) {
+// Cancelling ctx aborts an in-flight download and removes the partial file.
+func (m *Manager) Install(ctx context.Context, name string, cb *InstallCallbacks) (string, error) {
 	tool, ok := FindByName(name)
 	if !ok {
 		return "", fmt.Errorf("unknown tool: %s", name)
@@ -231,7 +233,7 @@ func (m *Manager) Install(name string, cb *InstallCallbacks) (string, error) {
 
 	switch tool.Method {
 	case MethodGitHubRelease:
-		version, err := installFromGitHub(tool, destDir, m.cfg.GitHubToken, progressCb, extractCb)
+		version, err := installFromGitHub(ctx, tool, destDir, m.cfg.GitHubToken, progressCb, extractCb)
 		if err == nil {
 			_ = m.RecordInstall(name, version)
 		}
@@ -239,9 +241,9 @@ func (m *Manager) Install(name string, cb *InstallCallbacks) (string, error) {
 	case MethodDirectURL:
 		var err error
 		if len(tool.DownloadURLs) > 0 {
-			err = installFromURLs(tool.DownloadURLs, destDir, progressCb, extractCb)
+			err = installFromURLs(ctx, tool.DownloadURLs, destDir, progressCb, extractCb)
 		} else {
-			err = installFromURL(tool, destDir, progressCb, extractCb)
+			err = installFromURL(ctx, tool, destDir, progressCb, extractCb)
 		}
 		if err != nil {
 			return "", err
@@ -255,7 +257,7 @@ func (m *Manager) Install(name string, cb *InstallCallbacks) (string, error) {
 		_ = m.RecordInstall(name, ver)
 		return ver, nil
 	case MethodDotnetTool:
-		err := installDotnetTool(tool, destDir)
+		err := installDotnetTool(ctx, tool, destDir)
 		if err != nil {
 			return "", err
 		}
@@ -268,7 +270,7 @@ func (m *Manager) Install(name string, cb *InstallCallbacks) (string, error) {
 		_ = m.RecordInstall(name, ver)
 		return ver, nil
 	case MethodNuGet:
-		ver, err := installFromNuGet(tool, destDir, progressCb, onExtractNuGet)
+		ver, err := installFromNuGet(ctx, tool, destDir, progressCb, onExtractNuGet)
 		if err != nil {
 			return "", err
 		}
@@ -277,7 +279,7 @@ func (m *Manager) Install(name string, cb *InstallCallbacks) (string, error) {
 		_ = m.RecordInstall(name, ver)
 		return ver, nil
 	case MethodGitBuild:
-		version, err := installFromGitBuild(tool, destDir, onProgressGitBuild, extractCb)
+		version, err := installFromGitBuild(ctx, tool, destDir, onProgressGitBuild, extractCb)
 		if err == nil {
 			_ = m.RecordInstall(name, version)
 		}
@@ -317,6 +319,9 @@ func pinnedVersion(t ToolDef) (string, bool) {
 // CheckAllWithUpdates returns status of all tools including latest GitHub versions.
 // Uses HTTP redirect to check versions — no GitHub API calls, no rate limit.
 func (m *Manager) CheckAllWithUpdates() []ToolStatus {
+	// Version probes are short, self-bounded by the client Timeout, and have no
+	// caller context (Wails binding / periodic startup check).
+	ctx := context.Background()
 	statuses := make([]ToolStatus, 0, len(Registry))
 	for _, t := range Registry {
 		st := m.Check(t.Name)
@@ -332,7 +337,7 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 
 		switch {
 		case t.Method == MethodGitHubRelease && t.Repo != "":
-			tagName, err := fetchLatestVersion(t.Repo)
+			tagName, err := fetchLatestVersion(ctx, t.Repo)
 			if err == nil {
 				tagName = cleanVersionTag(tagName)
 				st.LatestVersion = tagName
@@ -343,7 +348,7 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 			// On error: LatestVersion stays empty, frontend shows "–"
 		case t.Method == MethodDotnetTool && t.DotnetID != "",
 			t.Method == MethodNuGet && t.DotnetID != "":
-			ver, err := fetchNuGetLatestVersion(t.DotnetID)
+			ver, err := fetchNuGetLatestVersion(ctx, t.DotnetID)
 			if err == nil {
 				st.LatestVersion = ver
 				if st.Installed && st.Version != "" && st.Version != ver {
@@ -351,7 +356,7 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 				}
 			}
 		case t.Method == MethodGitBuild && t.Repo != "":
-			commit, err := fetchLatestCommit(t.Repo)
+			commit, err := fetchLatestCommit(ctx, t.Repo)
 			if err == nil && commit != "" {
 				st.LatestVersion = commit
 				if st.Installed && st.Version != "" && st.Version != commit {
@@ -360,7 +365,7 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 			}
 		case t.Method == MethodDirectURL && t.URL != "":
 			client := &http.Client{Timeout: 15 * time.Second}
-			resp, err := httpDo(client, http.MethodHead, t.URL)
+			resp, err := httpDo(ctx, client, http.MethodHead, t.URL)
 			if err == nil {
 				_ = resp.Body.Close()
 				if lm := resp.Header.Get("Last-Modified"); lm != "" {
@@ -386,6 +391,7 @@ func (m *Manager) CheckLatestVersionSingle(name string) (latestVersion string, u
 		return "", false
 	}
 
+	ctx := context.Background() // no caller context; probes are Timeout-bounded
 	st := m.Check(name)
 	installedVersion := cleanVersionTag(st.Version)
 
@@ -395,24 +401,24 @@ func (m *Manager) CheckLatestVersionSingle(name string) (latestVersion string, u
 
 	switch {
 	case tool.Method == MethodGitHubRelease && tool.Repo != "":
-		ver, err := fetchLatestVersion(tool.Repo)
+		ver, err := fetchLatestVersion(ctx, tool.Repo)
 		if err == nil {
 			latestVersion = cleanVersionTag(ver)
 		}
 	case tool.Method == MethodGitBuild && tool.Repo != "":
-		commit, err := fetchLatestCommit(tool.Repo)
+		commit, err := fetchLatestCommit(ctx, tool.Repo)
 		if err == nil {
 			latestVersion = commit
 		}
 	case tool.Method == MethodDotnetTool && tool.DotnetID != "",
 		tool.Method == MethodNuGet && tool.DotnetID != "":
-		ver, err := fetchNuGetLatestVersion(tool.DotnetID)
+		ver, err := fetchNuGetLatestVersion(ctx, tool.DotnetID)
 		if err == nil {
 			latestVersion = ver
 		}
 	case tool.Method == MethodDirectURL && tool.URL != "":
 		client := &http.Client{Timeout: 15 * time.Second}
-		resp, err := httpDo(client, http.MethodHead, tool.URL)
+		resp, err := httpDo(ctx, client, http.MethodHead, tool.URL)
 		if err == nil {
 			_ = resp.Body.Close()
 			if lm := resp.Header.Get("Last-Modified"); lm != "" {
