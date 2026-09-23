@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	peparser "github.com/saferwall/pe"
 )
 
 func TestClassifyInvalidFile(t *testing.T) {
@@ -83,5 +85,16 @@ func TestClassifyNonexistent(t *testing.T) {
 	}
 	if !result.Fallback {
 		t.Error("Fallback should be true")
+	}
+}
+
+func TestIsNativeAOT(t *testing.T) {
+	aot := &peparser.File{Export: peparser.Export{Functions: []peparser.ExportFunction{{Name: "DotNetRuntimeDebugHeader"}}}}
+	if !isNativeAOT(aot) {
+		t.Error("isNativeAOT = false for image exporting DotNetRuntimeDebugHeader")
+	}
+	plain := &peparser.File{Export: peparser.Export{Functions: []peparser.ExportFunction{{Name: "SDL_Init"}}}}
+	if isNativeAOT(plain) {
+		t.Error("isNativeAOT = true for plain native DLL")
 	}
 }
