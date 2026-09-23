@@ -182,7 +182,26 @@ func classifyNativeCompiler(f *peparser.File) string {
 		}
 	}
 
+	// .NET NativeAOT: no CLR header (no IL to decompile to C#), but the runtime
+	// always exports DotNetRuntimeDebugHeader for debuggers.
+	if isNativeAOT(f) {
+		return NativeAOTCompiler
+	}
+
 	return ""
+}
+
+// NativeAOTCompiler is the Compiler value for .NET NativeAOT executables.
+const NativeAOTCompiler = ".NET NativeAOT"
+
+// isNativeAOT reports whether a CLR-less PE is a .NET NativeAOT image.
+func isNativeAOT(f *peparser.File) bool {
+	for _, fn := range f.Export.Functions {
+		if fn.Name == "DotNetRuntimeDebugHeader" {
+			return true
+		}
+	}
+	return false
 }
 
 // clrTypeNames returns the TypeDef (own type) names from a managed PE's metadata,
