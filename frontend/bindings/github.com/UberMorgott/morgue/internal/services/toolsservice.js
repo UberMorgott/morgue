@@ -84,7 +84,8 @@ export function GetToolsEnriched() {
 }
 
 /**
- * Install downloads and installs a single tool by name.
+ * Install downloads and installs a single tool by name. Cancelling ctx aborts
+ * an in-flight download.
  * @param {string} name
  * @returns {$CancellablePromise<void>}
  */

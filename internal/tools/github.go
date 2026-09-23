@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/go-github/v74/github"
+	"github.com/google/go-github/v92/github"
 )
 
 // httpDo issues a request bound to ctx, so a cancelled install/pipeline aborts
@@ -160,11 +160,9 @@ func fetchLatestRelease(ctx context.Context, repo, token string) (tagName string
 		return "", nil, fmt.Errorf("invalid repo: %s", repo)
 	}
 
-	var client *github.Client
-	if token != "" {
-		client = github.NewClient(nil).WithAuthToken(token)
-	} else {
-		client = github.NewClient(nil)
+	client, err := newGitHubClient(token)
+	if err != nil {
+		return "", nil, err
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -200,11 +198,9 @@ func fetchReleaseByTag(ctx context.Context, repo, token, tag string) (string, []
 	if len(parts) != 2 {
 		return "", nil, fmt.Errorf("invalid repo: %s", repo)
 	}
-	var client *github.Client
-	if token != "" {
-		client = github.NewClient(nil).WithAuthToken(token)
-	} else {
-		client = github.NewClient(nil)
+	client, err := newGitHubClient(token)
+	if err != nil {
+		return "", nil, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -552,4 +548,17 @@ func scrapeReleaseAssets(ctx context.Context, repo, tag string) ([]assetInfo, er
 		return nil, fmt.Errorf("no download links found on expanded_assets page")
 	}
 	return assets, nil
+}
+
+// newGitHubClient returns a go-github client, authenticated when token is set.
+func newGitHubClient(token string) (*github.Client, error) {
+	var opts []github.ClientOptionsFunc
+	if token != "" {
+		opts = append(opts, github.WithAuthToken(token))
+	}
+	client, err := github.NewClient(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("github client: %w", err)
+	}
+	return client, nil
 }

@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/google/go-github/v74/github"
+	"github.com/google/go-github/v92/github"
 )
 
 const (
@@ -83,12 +83,16 @@ type release struct {
 
 // newClient returns a go-github client, authenticated when GITHUB_TOKEN is set
 // (which is what the previous go-selfupdate GitHub source did too).
-func newClient() *github.Client {
-	client := github.NewClient(nil)
+func newClient() (*github.Client, error) {
+	var opts []github.ClientOptionsFunc
 	if tok := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); tok != "" {
-		client = client.WithAuthToken(tok)
+		opts = append(opts, github.WithAuthToken(tok))
 	}
-	return client
+	client, err := github.NewClient(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("github client: %w", err)
+	}
+	return client, nil
 }
 
 // latestRelease returns the newest release and the asset matching this
@@ -98,7 +102,11 @@ func latestRelease(ctx context.Context) (*release, error) {
 	ctx, cancel := context.WithTimeout(ctx, apiTimeout)
 	defer cancel()
 
-	rel, resp, err := newClient().Repositories.GetLatestRelease(ctx, repoOwner, repoName)
+	client, err := newClient()
+	if err != nil {
+		return nil, err
+	}
+	rel, resp, err := client.Repositories.GetLatestRelease(ctx, repoOwner, repoName)
 	if err != nil {
 		if resp != nil && resp.StatusCode == http.StatusNotFound {
 			return nil, nil
