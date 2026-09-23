@@ -197,19 +197,43 @@ func (n *Native) Execute(ctx *Context) error {
 		}
 
 		if ghidraPath != "" {
+			// .NET NativeAOT: recover method tables / vtables / frozen strings
+			// with the ghidra-nativeaot analyzer before the pseudo-C export.
+			// Best-effort — on failure plain Ghidra analysis still runs.
+			javaPath := resolveGhidraJava(ctx.Tools)
+			var pre []ghidraScript
+			if ctx.Compiler == recon.NativeAOTCompiler {
+				if ps, perr := prepareNativeAOT(ctx.Ctx, ctx.Tools, ghidraPath, javaPath,
+					func(msg string) { logTool("ghidra", msg) }); perr != nil {
+					logTool("ghidra", fmt.Sprintf("NativeAOT metadata recovery unavailable (plain analysis): %v", perr))
+				} else {
+					logTool("ghidra", "NativeAOT target — enabling ghidra-nativeaot metadata recovery")
+					pre = append(pre, ps)
+				}
+			}
 			srcDir := filepath.Join(ctx.Output, "src")
-			funcCount, err := runGhidra(ctx.Ctx, ghidraPath, resolveGhidraJava(ctx.Tools), ctx.Target, srcDir,
-				func(msg string) { logTool("ghidra", msg) },
-				func(name string, count int) {
-					if ctx.Progress != nil {
-						ctx.Progress <- StepProgress{
-							Step: 2, Total: total, Name: name,
-							Tool: "ghidra", Status: Running,
-							Count: count, Unit: "functions",
+			ghidraRun := func(pre ...ghidraScript) (int, error) {
+				return runGhidra(ctx.Ctx, ghidraPath, javaPath, ctx.Target, srcDir,
+					func(msg string) { logTool("ghidra", msg) },
+					func(name string, count int) {
+						if ctx.Progress != nil {
+							ctx.Progress <- StepProgress{
+								Step: 2, Total: total, Name: name,
+								Tool: "ghidra", Status: Running,
+								Count: count, Unit: "functions",
+							}
 						}
-					}
-				},
-			)
+					},
+					pre...,
+				)
+			}
+			funcCount, err := ghidraRun(pre...)
+			if err != nil && len(pre) > 0 && ctx.Ctx.Err() == nil {
+				// A third-party analyzer error (e.g. a Ghidra API mismatch) aborts
+				// the whole headless run; retry once without it.
+				logTool("ghidra", fmt.Sprintf("Ghidra run with NativeAOT recovery failed (%v) — retrying with plain analysis", err))
+				funcCount, err = ghidraRun()
+			}
 			if err != nil {
 				report(2, Failed, time.Since(start), err, "ghidra")
 				return err

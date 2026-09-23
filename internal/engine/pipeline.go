@@ -724,6 +724,7 @@ func (e *Engine) executeRecipe(
 		Pause:    pauseChecker(opts.Pause),
 
 		Obfuscator:   reconResult.Obfuscator,
+		Compiler:     reconResult.Compiler,
 		AllowDynamic: opts.AllowDynamic,
 		Cflow:        opts.Cflow,
 		GameDataOut:  opts.GameDataOut,
@@ -868,6 +869,7 @@ func (e *Engine) executeRecipeWithFilter(
 		StepFilter: stepFilter,
 
 		Obfuscator:   reconResult.Obfuscator,
+		Compiler:     reconResult.Compiler,
 		AllowDynamic: opts.AllowDynamic,
 		Cflow:        opts.Cflow,
 		GameDataOut:  opts.GameDataOut,

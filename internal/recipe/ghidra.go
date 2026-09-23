@@ -134,6 +134,7 @@ func runGhidra(
 	ghidraToolPath, javaPath, binaryPath, outDir string,
 	onLog func(msg string),
 	onPhase func(name string, count int),
+	preScripts ...ghidraScript,
 ) (funcCount int, err error) {
 	log := func(msg string) {
 		if onLog != nil {
@@ -195,6 +196,15 @@ func runGhidra(
 	if err = os.WriteFile(scriptPath, []byte(ghidraExportScript), 0644); err != nil {
 		return 0, err
 	}
+	// Pre-scripts run after import, before auto-analysis (e.g. to enable an
+	// analyzer that is off by default). Same filename == class name rule.
+	var preArgs []string
+	for _, ps := range preScripts {
+		if err = os.WriteFile(filepath.Join(scriptDir, ps.Name), []byte(ps.Source), 0644); err != nil {
+			return 0, err
+		}
+		preArgs = append(preArgs, "-preScript", ps.Name)
+	}
 
 	// Prepare output directory and file
 	if err = os.MkdirAll(outDir, 0755); err != nil {
@@ -234,13 +244,18 @@ func runGhidra(
 	// Object memory cap: GHIDRA_HEADLESS_MAXMEM above sizes the heap to ~70% of
 	// physical RAM (tens of GB), far above the per-process cap, so without the
 	// breakaway the JVM OOM-crashes on the large binaries we target.
-	result, runErr := util.RunCmdStreamingEnvBreakaway(ctx, ghidraEnv, analyzeHeadless, []string{
-		projDir, "MorgueProject",
-		"-import", runBinary,
+	args := append([]string{projDir, "MorgueProject", "-import", runBinary}, preArgs...)
+	args = append(args,
 		"-postScript", scriptPath, runOutput,
 		"-scriptPath", filepath.Dir(scriptPath),
 		"-deleteProject",
-	}, "", func(line string) {
+	)
+	result, runErr := util.RunCmdStreamingEnvBreakaway(ctx, ghidraEnv, analyzeHeadless, args, "", func(line string) {
+		// Pre-script status lines ("Morgue:pre:<msg>") go straight to the log.
+		if _, msg, ok := strings.Cut(line, "Morgue:pre:"); ok {
+			log(msg)
+			return
+		}
 		// Parse "Morgue:fn:<count>:<funcName>" from our export script
 		if strings.HasPrefix(line, "Morgue:fn:") {
 			parts := strings.SplitN(line, ":", 4)
