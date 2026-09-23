@@ -50,6 +50,20 @@ var Registry = []ToolDef{
 		RuntimeDeps: []RuntimeKind{RuntimeJava},
 	},
 	{
+		// Ghidra extension recovering .NET NativeAOT metadata (method tables,
+		// vtables, frozen strings). Upstream ships builds only up to Ghidra
+		// 12.0.1; Ghidra 12.1.x loads that build as-is (verified headless).
+		Name:        "ghidra-nativeaot",
+		Description: "Ghidra .NET NativeAOT metadata recovery extension",
+		Category:    CategoryDecompiler,
+		Method:      MethodGitHubRelease,
+		Repo:        "washi1337/ghidra-nativeaot",
+		AssetGlob:   "ghidra_12.0.1_PUBLIC_*_ghidra-nativeaot.zip",
+		Version:     "v1.1.0",
+		Binary:      "ghidra-nativeaot.jar",
+		Optional:    true,
+	},
+	{
 		Name:        "nofuserex",
 		Description: "ConfuserEx anti-tamper remover",
 		Category:    CategoryDeobfuscator,

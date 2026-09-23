@@ -85,6 +85,9 @@ type Context struct {
 	// it to pick tool flags — e.g. de4dot forced `-p crx` for ConfuserEx vs
 	// auto-detect for a generic match.
 	Obfuscator string
+	// Compiler is the recon-detected native compiler (e.g. recon.NativeAOTCompiler).
+	// The native recipe uses it to enable compiler-specific Ghidra analysis.
+	Compiler string
 	// StepFilter limits which steps a recipe executes in batch mode.
 	// Empty string means run all steps. Recipes that support batching
 	// check this field and skip steps that don't match.
