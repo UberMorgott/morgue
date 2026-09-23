@@ -42,7 +42,7 @@ func Scan(root string) (ScanResult, error) {
 		return result, nil
 	}
 
-	err :=filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			log.Printf("scanner: skipping %s: %v", path, err)
 			result.Skipped = append(result.Skipped, SkippedFile{
