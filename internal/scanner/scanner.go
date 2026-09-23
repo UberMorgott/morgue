@@ -14,6 +14,8 @@ var binaryExtensions = map[string]bool{
 	".so":    true,
 	".dylib": true,
 	".dat":   true,
+	".jar":   true,
+	".war":   true,
 }
 
 // unrealExtensions are Unreal Engine pak/IoStore container extensions.
@@ -31,7 +33,16 @@ func Scan(root string) (ScanResult, error) {
 	var result ScanResult
 	var pakFiles []string
 
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	// A file named explicitly is always a target, whatever its extension: the
+	// extension filter only decides which files a directory walk picks up.
+	// Without this, `morgue run app.jar` silently scanned zero files.
+	if info, err := os.Stat(root); err == nil && !info.IsDir() && !unrealExtensions[strings.ToLower(filepath.Ext(root))] {
+		result.Files = []string{root}
+		result.Groups = groupFiles(result.Files, nil)
+		return result, nil
+	}
+
+	err :=filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			log.Printf("scanner: skipping %s: %v", path, err)
 			result.Skipped = append(result.Skipped, SkippedFile{

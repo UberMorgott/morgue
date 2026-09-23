@@ -356,7 +356,7 @@ type outputIndex struct {
 
 // sourceExts are the decompiled-source file extensions buildIndex catalogs.
 var sourceExts = map[string]bool{
-	".c": true, ".h": true, ".cpp": true, ".cs": true,
+	".c": true, ".h": true, ".cpp": true, ".cs": true, ".java": true,
 }
 
 // assetExts are the extracted-asset file extensions the UE index catalogs in

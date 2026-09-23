@@ -20,6 +20,7 @@ const (
 	// appended NSIS archive overlay). Appended at the END of the enum so the
 	// existing Kind integer values stay stable.
 	NSIS // Nullsoft installer — unpack then recurse into the extracted tree
+	Java // JVM bytecode: .jar/.war archive or .class file
 )
 
 var kindNames = [...]string{
@@ -31,6 +32,7 @@ var kindNames = [...]string{
 	"UnrealEngine",
 	"Mixed",
 	"NSIS",
+	"Java",
 }
 
 func (k Kind) String() string {

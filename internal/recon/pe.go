@@ -1,8 +1,10 @@
 package recon
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,7 +64,12 @@ func Classify(ctx context.Context, path string) (Result, error) {
 
 	f, err := parsePE(path)
 	if err != nil {
-		// Not a valid PE — fall back to extension-based classification
+		// Not a valid PE — JVM bytecode is recognised by magic, anything else
+		// falls back to extension-based classification.
+		if isJava(path) {
+			r.Kind = Java
+			return r, nil
+		}
 		r.Kind = classifyByExtension(filepath.Ext(path))
 		r.Fallback = true
 		return r, nil
@@ -142,6 +149,31 @@ func Classify(ctx context.Context, path string) (Result, error) {
 // placeholder set by the generic-obfuscation layer).
 func hasSpecificObfuscator(obf string) bool {
 	return obf != "" && obf != GenericObfuscated
+}
+
+// isJava reports whether path is JVM bytecode: a .jar/.war zip archive or a
+// .class file (magic CAFEBABE). The extension is required too, because
+// CAFEBABE is also the Mach-O universal binary magic and PK is any zip.
+func isJava(path string) bool {
+	var want []byte
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".jar", ".war":
+		want = []byte("PK\x03\x04")
+	case ".class":
+		want = []byte{0xCA, 0xFE, 0xBA, 0xBE}
+	default:
+		return false
+	}
+	f, err := os.Open(util.LongPath(path))
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	magic := make([]byte, 4)
+	if _, err := io.ReadFull(f, magic); err != nil {
+		return false
+	}
+	return bytes.Equal(magic, want)
 }
 
 // classifyByExtension provides a best-guess Kind based on file extension.
