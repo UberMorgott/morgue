@@ -222,3 +222,20 @@ func TestScanEmpty(t *testing.T) {
 		t.Errorf("Scan() found %d files in empty dir, want 0", len(result.Files))
 	}
 }
+
+func TestScanExplicitFileAnyExtension(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "server.jar")
+	if err := os.WriteFile(p, []byte("PK\x03\x04"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Scan(p)
+	if err != nil {
+		t.Fatalf("Scan() error: %v", err)
+	}
+	if len(result.Files) != 1 || result.Files[0] != p {
+		t.Fatalf("Files = %v, want [%s]", result.Files, p)
+	}
+	if len(result.Groups) != 1 {
+		t.Fatalf("Groups = %d, want 1", len(result.Groups))
+	}
+}

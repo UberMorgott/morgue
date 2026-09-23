@@ -157,6 +157,20 @@ var Registry = []ToolDef{
 		Version:   "v0.19.0",
 		Optional:  true,
 	},
+	{
+		Name:        "vineflower",
+		Description: "Vineflower — Java bytecode decompiler (.jar/.class → .java)",
+		Category:    CategoryDecompiler,
+		Method:      MethodDirectURL,
+		// DownloadURLs (not URL): a .jar is a zip, and the single-URL path would
+		// try to extract it; the multi-URL path keeps non-.zip files as-is.
+		DownloadURLs: []string{
+			"https://github.com/Vineflower/vineflower/releases/download/1.12.0/vineflower-1.12.0.jar",
+		},
+		Binary:      "vineflower-1.12.0.jar",
+		Version:     "1.12.0",
+		RuntimeDeps: []RuntimeKind{RuntimeJava},
+	},
 }
 
 // FindByName looks up a tool definition by name.

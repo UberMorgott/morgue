@@ -147,12 +147,16 @@ func Run(opts RunOptions) error {
 			}
 		}
 
-		// Print human-readable summary to stderr
-		if !opts.Quiet {
-			var summary engine.PipelineSummary
-			if json.Unmarshal(data, &summary) == nil {
+		var summary engine.PipelineSummary
+		if json.Unmarshal(data, &summary) == nil {
+			// Print human-readable summary to stderr
+			if !opts.Quiet {
 				fmt.Fprintf(os.Stderr, "\nPipeline complete: %d targets — %d success, %d failed, %d skipped (%s)\n",
 					summary.Stats.Total, summary.Stats.Success, summary.Stats.Failed, summary.Stats.Skipped, summary.Stats.Duration)
+			}
+			if summary.Stats.Success == 0 {
+				return fmt.Errorf("nothing was decompiled in %s: %d failed, %d skipped (unsupported or unrecognised input?)",
+					opts.Target, summary.Stats.Failed, summary.Stats.Skipped)
 			}
 		}
 	}

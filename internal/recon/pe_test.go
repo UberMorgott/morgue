@@ -98,3 +98,31 @@ func TestIsNativeAOT(t *testing.T) {
 		t.Error("isNativeAOT = true for plain native DLL")
 	}
 }
+
+func TestClassifyJava(t *testing.T) {
+	dir := t.TempDir()
+	cases := []struct {
+		name string
+		data []byte
+		want Kind
+	}{
+		{"app.jar", []byte("PK\x03\x04rest"), Java},
+		{"app.war", []byte("PK\x03\x04rest"), Java},
+		{"Main.class", []byte{0xCA, 0xFE, 0xBA, 0xBE, 0, 0}, Java},
+		{"notes.jar", []byte("plain text"), Unknown},
+		{"fat.bin", []byte{0xCA, 0xFE, 0xBA, 0xBE, 0, 0}, Unknown},
+	}
+	for _, c := range cases {
+		p := filepath.Join(dir, c.name)
+		if err := os.WriteFile(p, c.data, 0644); err != nil {
+			t.Fatal(err)
+		}
+		r, err := Classify(context.Background(), p)
+		if err != nil {
+			t.Fatalf("Classify(%s): %v", c.name, err)
+		}
+		if r.Kind != c.want {
+			t.Errorf("Classify(%s).Kind = %v, want %v", c.name, r.Kind, c.want)
+		}
+	}
+}
