@@ -6,7 +6,7 @@ info:
   productIdentifier: "com.ubermorgott.morgue"
   description: "Binary decompiler orchestrator"
   copyright: "(c) 2025-2026, UberMorgott"
-  version: "0.7.8"
+  version: "0.7.9"
 
 dev_mode:
   root_path: .
