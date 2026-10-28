@@ -167,7 +167,8 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			if !opts.NoSkip {
 				if skip, reason := e.ShouldSkip(filepath.Base(filePath)); skip {
 					results = append(results, TargetResult{
-						Group: group, Skipped: true, SkipReason: reason,
+						Group: group, Recon: recon.Result{Path: filePath},
+						Skipped: true, SkipReason: reason,
 					})
 					em.emit("skip", filePath, fmt.Sprintf("Skipped: %s", reason))
 					continue
@@ -177,7 +178,8 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			// Exclude patterns
 			if matchesExclude(filepath.Base(filePath), opts.Exclude) {
 				results = append(results, TargetResult{
-					Group: group, Skipped: true, SkipReason: "excluded",
+					Group: group, Recon: recon.Result{Path: filePath},
+					Skipped: true, SkipReason: "excluded",
 				})
 				em.emit("skip", filePath, "Excluded by pattern")
 				continue
@@ -186,7 +188,9 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			// Recon + kind override
 			reconResult, err := e.classifyTarget(ctx, group, filePath, em)
 			if err != nil {
-				results = append(results, TargetResult{Group: group, Error: err})
+				results = append(results, TargetResult{
+					Group: group, Recon: recon.Result{Path: filePath}, Error: err,
+				})
 				continue
 			}
 
