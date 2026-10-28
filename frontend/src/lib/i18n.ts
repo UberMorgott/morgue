@@ -239,6 +239,15 @@ const translations: Record<string, Record<Lang, string>> = {
   'composition.noDeobfuscator': { en: 'Deobfuscator unavailable — results will be partial', ru: 'Деобфускатор недоступен — результат будет частичным' },
   'composition.requestSupport': { en: 'Request {name} support', ru: 'Запросить поддержку {name}' },
 
+  // Targets (events v2 target tree)
+  'targets.title': { en: 'Targets', ru: 'Цели' },
+  'targets.pending': { en: 'pending', ru: 'ожидание' },
+  'targets.running': { en: 'running', ru: 'выполняется' },
+  'targets.success': { en: 'success', ru: 'успешно' },
+  'targets.error': { en: 'error', ru: 'ошибка' },
+  'targets.skipped': { en: 'skipped', ru: 'пропущено' },
+  'targets.cancelled': { en: 'cancelled', ru: 'отменено' },
+
   // Execution
   'execution.title': { en: 'Execution', ru: 'Выполнение' },
   'execution.step': { en: 'Step', ru: 'Шаг' },

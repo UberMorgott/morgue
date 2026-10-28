@@ -13,7 +13,11 @@
     startPipeline as storeStartPipeline,
     resetPipeline,
     addHistoryEntry,
+    elapsedMs,
+    formatElapsed,
+    targetTree,
     type PipelinePhase,
+    type PipelineTarget,
   } from '../lib/pipeline';
 
   let { lang = 'en' as Lang, inputPath = '', outputPath = '', startupBusy = false, onselect, onbrowsefile, onbrowsedir, onclear }: {
@@ -77,14 +81,28 @@
   // Restore elapsed on mount if pipeline is running
   if ($pipelineState.startedAt > 0) updateElapsed();
 
+  // Backend-owned start while running, frozen backend duration after
+  // run.finished (see elapsedMs) — never the browser arrival time.
   function updateElapsed() {
-    if ($pipelineState.startedAt > 0) {
-      const sec = Math.floor((Date.now() - $pipelineState.startedAt) / 1000);
-      if (sec < 60) elapsed = `${sec}s`;
-      else if (sec < 3600) elapsed = `${Math.floor(sec / 60)}m ${sec % 60}s`;
-      else elapsed = `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
+    if ($pipelineState.startedAt > 0 || $pipelineState.outcome) {
+      elapsed = formatElapsed(elapsedMs($pipelineState));
     }
   }
+
+  // Re-render when run.started replaces the optimistic local start, and as
+  // soon as the terminal event freezes the duration.
+  $effect(() => {
+    void $pipelineState.startedAt;
+    void $pipelineState.outcome;
+    updateElapsed();
+  });
+
+  // Nested target tree (events v2): shown once the run has more than one target.
+  let targetRows = $derived(targetTree($pipelineState.targets.filter(t => t.id)));
+  const outcomeKey: Record<PipelineTarget['status'], string> = {
+    pending: 'targets.pending', running: 'targets.running', done: 'targets.success',
+    error: 'targets.error', skipped: 'targets.skipped', cancelled: 'targets.cancelled',
+  };
 
   // Section visibility effects
   $effect(() => {
@@ -209,7 +227,8 @@
 
     } catch (e: any) {
       const currentPhase = $pipelineState.phase;
-      if (currentPhase === 'done' || currentPhase === 'cancelled') {
+      // run.finished already set the authoritative outcome.
+      if ($pipelineState.outcome || currentPhase === 'done' || currentPhase === 'cancelled') {
         // Already handled by events
       } else {
         const msg = e.message || String(e);
@@ -256,6 +275,23 @@
       oncancel={handleCancel}
     />
 
+    {#if targetRows.length > 1}
+      <section class="glass pipeline-panel target-tree animate-in">
+        <h3 class="panel-title">{t(lang, 'targets.title')}</h3>
+        <ul class="target-list">
+          {#each targetRows as row (row.target.id)}
+            <li class="target-row row-separator text-sm" style:padding-left="{row.depth * 18}px">
+              <span class="target-name font-mono" title={row.target.path}>{row.target.relativeInput || row.target.path}</span>
+              {#if row.target.recipe}<span class="target-recipe text-xs">{row.target.recipe}</span>{/if}
+              <span class="target-outcome text-xs status-{row.target.status}">{t(lang, outcomeKey[row.target.status])}</span>
+              {#if row.target.error}<span class="target-error text-xs font-mono">{row.target.error}</span>{/if}
+              {#if row.target.skipReason}<span class="target-skip text-xs">{row.target.skipReason}</span>{/if}
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/if}
+
     <!-- New file button (done/cancelled/error) -->
     {#if phase === 'done' || phase === 'cancelled' || phase === 'error'}
       <button class="btn btn-primary" onclick={handleClear}>
@@ -275,6 +311,19 @@
     padding: 32px;
     overflow-y: auto;
   }
+
+  .target-tree { width: 100%; }
+  .target-list { list-style: none; margin: 0; padding: 0; }
+  .target-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding-block: 6px; }
+  .target-name { color: var(--text-primary); overflow-wrap: anywhere; }
+  .target-recipe, .target-skip { color: var(--text-muted); }
+  .target-outcome { margin-left: auto; }
+  .target-error { flex-basis: 100%; color: var(--error); overflow-wrap: anywhere; }
+  .status-done { color: var(--success); }
+  .status-error { color: var(--error); }
+  .status-cancelled, .status-skipped { color: var(--warning); }
+  .status-running { color: var(--accent); }
+  .status-pending { color: var(--text-muted); }
 
   .home-hero { text-align: center; }
   .hero-title {

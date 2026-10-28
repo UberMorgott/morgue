@@ -11,9 +11,9 @@
   import { ReconService, UpdateService, ToolsService } from './lib/api';
   import { currentLang, startupBusy, lastRunPath, updateProgress, resetUpdateProgress } from './lib/stores';
 
-  import { onEvent } from './lib/events';
+  import { onEvent, parseEventV2, EVENT_V2 } from './lib/events';
   import { get } from 'svelte/store';
-  import { updateFromEvent, startPipeline, isRunning } from './lib/pipeline';
+  import { updateFromEvent, applyEventV2, startPipeline, isRunning, pipelineState } from './lib/pipeline';
   import type { Lang } from './lib/i18n';
 
   let currentPage = $state('home');
@@ -25,10 +25,12 @@
   const unsubLang = currentLang.subscribe(v => lang = v);
 
   let cleanupPipelineProgress: (() => void) | null = null;
+  let cleanupPipelineV2: (() => void) | null = null;
   let cleanupUpdateProgress: (() => void) | null = null;
 
   onDestroy(() => {
     cleanupPipelineProgress?.();
+    cleanupPipelineV2?.();
     cleanupUpdateProgress?.();
     unsubLang();
   });
@@ -38,8 +40,30 @@
       console.error('Unhandled promise rejection:', e.reason);
     });
 
+    // events v2: authoritative run identity, backend clock, targets and outcome.
+    cleanupPipelineV2 = onEvent(EVENT_V2, (raw: any) => {
+      const ev = parseEventV2(raw);
+      if (!ev) return;
+      const wasRunning = get(isRunning);
+      const prevRun = get(pipelineState).runId;
+      const res = applyEventV2(ev);
+      // A new run this GUI did not start (HTTP API / CLI, or reconnect): adopt
+      // its input and switch to Home once, not on every event.
+      if (res === 'applied' && ev.run !== prevRun && !wasRunning) {
+        const target = get(pipelineState).inputPath;
+        // lastRunPath first: guards HomePage's auto-start effect from
+        // re-launching the adopted path.
+        $lastRunPath = target;
+        pipelineInputPath = target;
+        pipelineOutputPath = '';
+        currentPage = 'home';
+      }
+    });
+
     cleanupPipelineProgress = onEvent('pipeline:progress', (data: any) => {
       const d = data?.data?.[0] ?? data?.data ?? data;
+      // With a v2 engine the v2 handler owns adoption; legacy events only enrich.
+      if (get(pipelineState).runId) { updateFromEvent(data); return; }
       // A progress event while the local store is not running means the run
       // was started elsewhere (HTTP API / CLI): GUI-started runs call
       // startPipeline before PipelineService.Run. Reset the previous run's
