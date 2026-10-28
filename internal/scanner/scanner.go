@@ -16,6 +16,7 @@ var binaryExtensions = map[string]bool{
 	".dat":   true,
 	".jar":   true,
 	".war":   true,
+	".class": true,
 }
 
 // unrealExtensions are Unreal Engine pak/IoStore container extensions.

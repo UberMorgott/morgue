@@ -239,3 +239,23 @@ func TestScanExplicitFileAnyExtension(t *testing.T) {
 		t.Fatalf("Groups = %d, want 1", len(result.Groups))
 	}
 }
+
+// TestScanDirFindsClassFiles verifies a directory walk picks up loose JVM
+// .class files, which recon already classifies as Java.
+func TestScanDirFindsClassFiles(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "com", "example", "Main.class")
+	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte{0xCA, 0xFE, 0xBA, 0xBE}, 0644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Scan(dir)
+	if err != nil {
+		t.Fatalf("Scan() error: %v", err)
+	}
+	if len(result.Files) != 1 || result.Files[0] != p {
+		t.Fatalf("Files = %v, want [%s]", result.Files, p)
+	}
+}
