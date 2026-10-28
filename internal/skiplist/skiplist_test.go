@@ -32,6 +32,26 @@ func TestShouldSkipSystemLibs(t *testing.T) {
 	}
 }
 
+// TestShouldSkipSelfContainedDotNetNatives covers the runtime natives a
+// self-contained .NET app ships next to its own assemblies (cosmoteer#6a).
+func TestShouldSkipSelfContainedDotNetNatives(t *testing.T) {
+	sl := New(config.Default())
+	for _, name := range []string{
+		"clrgc.dll", "clrgcexp.dll", "clretwrc.dll", "clrjit.dll", "coreclr.dll",
+		"mscordaccore.dll", "mscordaccore_amd64_amd64_8.0.1124.51707.dll",
+		"mscordbi.dll", "mscorrc.dll", "createdump.exe", "msquic.dll",
+		"hostfxr.dll", "hostpolicy.dll", "Microsoft.DiaSymReader.Native.amd64.dll",
+	} {
+		skip, cat := sl.ShouldSkip(name)
+		if !skip || cat != "dotnet_bcl" {
+			t.Errorf("ShouldSkip(%q) = %v/%q, want true/dotnet_bcl", name, skip, cat)
+		}
+	}
+	if skip, _ := sl.ShouldSkip("Cosmoteer.dll"); skip {
+		t.Error("ShouldSkip(Cosmoteer.dll) = true, want false")
+	}
+}
+
 func TestShouldSkipDisabled(t *testing.T) {
 	cfg := config.Default()
 	cfg.SkipSystemLibs = false

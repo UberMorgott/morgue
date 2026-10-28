@@ -51,6 +51,18 @@ var builtinPatterns = map[string][]string{
 		"coreclr.dll",
 		"hostpolicy.dll",
 		"hostfxr.dll",
+		// Self-contained .NET runtime natives shipped next to the app.
+		// Microsoft.DiaSymReader.Native.*.dll is already covered by Microsoft.*.dll.
+		"clrgc*.dll",
+		"clretwrc.dll",
+		"clrcompression.dll",
+		"mscordaccore*.dll",
+		"mscordbi.dll",
+		"mscorrc.dll",
+		"createdump.exe",
+		"msquic.dll",
+		"coreclrtraceptprovider.dll",
+		"dbgshim.dll",
 	},
 	"unity_engine": {
 		"UnityEngine.dll",
