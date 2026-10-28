@@ -383,9 +383,38 @@ export function updateFromEvent(data: any) {
       }
     }
 
+    // Error text: the engine sends a wire-safe `error` string; older builds sent
+    // `Error` as a Go error interface, which marshals to `{}`.
+    const errText = eventErrorText(d);
+    const runOutcome: string = d.RunOutcome || '';
+    const targetOutcome: string = d.TargetOutcome || '';
+
+    // One target failing must not flip the whole run to error while other
+    // targets continue: record it on the target and in the log only.
+    if (!d.Done && (errText || targetOutcome === 'error')) {
+      const label = target ? `${target}: ${errText || 'failed'}` : errText || 'failed';
+      next.logs = [...(next.logs || s.logs).slice(-19), `ERROR ${label}`];
+      if (target) {
+        const targets = [...(next.targets || s.targets)];
+        const i = targets.findIndex(t => t.path === target);
+        const entry: PipelineTarget = { ...(i >= 0 ? targets[i] : { path: target }), status: 'error', error: errText || undefined };
+        if (i >= 0) targets[i] = entry; else targets.push(entry);
+        next.targets = targets;
+      }
+    }
+
     // Done — mark all tools as _done
     if (d.Done) {
-      next.phase = 'done';
+      // Terminal outcome of the whole run. Without RunOutcome (older engine),
+      // fall back to "an error on the final event means the run failed".
+      if (runOutcome === 'error' || (!runOutcome && errText)) {
+        next.phase = 'error';
+        next.error = errText || 'Pipeline failed';
+      } else if (runOutcome === 'cancelled') {
+        next.phase = 'cancelled';
+      } else {
+        next.phase = 'done';
+      }
       next.progress = 100;
       next.currentTool = '';
       next.outputPath = d.OutputPath || d.Output || s.outputPath;
@@ -402,15 +431,23 @@ export function updateFromEvent(data: any) {
       next.outputPath = d.OutputPath;
     }
 
-    // Error
-    if (d.Error) {
-      const err = d.Error;
-      next.error = typeof err === 'string' ? err : err.message || JSON.stringify(err);
-      next.phase = 'error';
-    }
-
     return next;
   });
+}
+
+/** Extract human-readable error text from a pipeline event (string or object). */
+export function eventErrorText(d: any): string {
+  for (const v of [d?.error, d?.ErrorMsg, d?.Error]) {
+    if (!v) continue;
+    if (typeof v === 'string') return v;
+    if (typeof v === 'object') {
+      const m = v.message || v.error || v.Error;
+      if (typeof m === 'string' && m) return m;
+      const j = JSON.stringify(v);
+      if (j && j !== '{}' && j !== '[]') return j;
+    }
+  }
+  return '';
 }
 
 // --- History ---

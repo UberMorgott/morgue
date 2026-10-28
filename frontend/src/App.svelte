@@ -12,7 +12,8 @@
   import { currentLang, startupBusy, lastRunPath, updateProgress, resetUpdateProgress } from './lib/stores';
 
   import { onEvent } from './lib/events';
-  import { updateFromEvent } from './lib/pipeline';
+  import { get } from 'svelte/store';
+  import { updateFromEvent, startPipeline, isRunning } from './lib/pipeline';
   import type { Lang } from './lib/i18n';
 
   let currentPage = $state('home');
@@ -38,18 +39,24 @@
     });
 
     cleanupPipelineProgress = onEvent('pipeline:progress', (data: any) => {
-      updateFromEvent(data);
-      // A run started from the HTTP API has no local input path and can arrive
-      // while the user sits on another tab. Adopt its target and switch to Home
-      // so the pipeline stays visible. updateFromEvent has already moved the
-      // phase off 'idle', so HomePage's auto-start effect won't re-launch it —
-      // lastRunPath is set as a second guard.
       const d = data?.data?.[0] ?? data?.data ?? data;
-      if (!pipelineInputPath && d?.Target) {
-        pipelineInputPath = d.Target;
-        $lastRunPath = d.Target;
+      // A progress event while the local store is not running means the run
+      // was started elsewhere (HTTP API / CLI): GUI-started runs call
+      // startPipeline before PipelineService.Run. Reset the previous run's
+      // state and start the elapsed clock before applying the event, adopt the
+      // target, and switch to Home once — not on every event, so the user can
+      // keep browsing other pages during the run.
+      if (!get(isRunning) && !d?.Done) {
+        const target = d?.Target || pipelineInputPath;
+        // lastRunPath first: guards HomePage's auto-start effect from
+        // re-launching the adopted path.
+        $lastRunPath = target;
+        pipelineInputPath = target;
+        pipelineOutputPath = '';
+        startPipeline(target);
+        currentPage = 'home';
       }
-      currentPage = 'home';
+      updateFromEvent(data);
     });
 
     // App self-update progress. Backend emits selfupdate.Progress; we surface it
