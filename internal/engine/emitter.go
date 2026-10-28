@@ -16,7 +16,7 @@ func (em emitter) emitErr(phase, target string, err error) {
 	if em.ch == nil {
 		return
 	}
-	em.ch <- PipelineEvent{Phase: phase, Target: target, Error: err}
+	em.send(PipelineEvent{Phase: phase, Target: target, Error: err})
 }
 
 // emitWarn emits a WARN-severity event. Unlike emitErr it does NOT set the Error
@@ -34,6 +34,9 @@ func (em emitter) emitWarn(phase, target, msg string) {
 func (em emitter) send(ev PipelineEvent) {
 	if em.ch == nil {
 		return
+	}
+	if ev.Error != nil {
+		ev.ErrorMsg = ev.Error.Error()
 	}
 	em.ch <- ev
 }

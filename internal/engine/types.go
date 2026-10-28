@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 
 	"github.com/UberMorgott/morgue/internal/recipe"
@@ -22,7 +23,15 @@ type TargetResult struct {
 	SkipReason string
 }
 
-// PipelineEvent is emitted via Wails events. JSON keys are explicit PascalCase.
+// Outcome values are shared by target and run terminal events.
+const (
+	OutcomeSuccess   = "success"
+	OutcomeError     = "error"
+	OutcomeCancelled = "cancelled"
+	OutcomeSkipped   = "skipped"
+)
+
+// PipelineEvent is emitted via Wails events. Errors cross the wire as text.
 type PipelineEvent struct {
 	Phase    string               `json:"Phase"`
 	Target   string               `json:"Target"`
@@ -30,7 +39,12 @@ type PipelineEvent struct {
 	Tool     string               `json:"Tool,omitempty"`
 	Progress *recipe.StepProgress `json:"Progress,omitempty"`
 	Done     bool                 `json:"Done"`
-	Error    error                `json:"Error,omitempty"`
+	// Done marks the top-level run's terminal event, not necessarily success.
+	// TargetOutcome terminates one target without setting Done.
+	RunOutcome    string `json:"RunOutcome,omitempty"`
+	TargetOutcome string `json:"TargetOutcome,omitempty"`
+	Error         error  `json:"-"`
+	ErrorMsg      string `json:"error,omitempty"`
 	// Severity marks non-error events that still deserve attention. "" is a
 	// normal info event; "warn" is a WARN — non-fatal noise (missing optional
 	// tool, benign cert-store output) that renderers show distinctly from an
@@ -49,6 +63,16 @@ type PipelineEvent struct {
 	OutputStats    []string `json:"OutputStats,omitempty"`
 	FilesTotal     int      `json:"FilesTotal,omitempty"`
 	FilesProcessed int      `json:"FilesProcessed,omitempty"`
+}
+
+// MarshalJSON keeps error interfaces inside Go while preserving their message
+// for every JSON transport, including events constructed without an emitter.
+func (ev PipelineEvent) MarshalJSON() ([]byte, error) {
+	type eventDTO PipelineEvent
+	if ev.Error != nil {
+		ev.ErrorMsg = ev.Error.Error()
+	}
+	return json.Marshal(eventDTO(ev))
 }
 
 // PauseGate allows pausing/resuming the pipeline between steps.
