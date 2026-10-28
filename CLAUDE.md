@@ -84,7 +84,8 @@ Theme: "Molten Forge" — dark charcoal + amber glass + neon orange.
 ## Hybrid Mode
 - GUI starts HTTP API on `127.0.0.1:19876` automatically
 - CLI: `morgue api status|stop|run|tools|settings` — control running GUI (CLI `morgue run` stays standalone and invisible to the GUI)
-- Auth: per-launch token written to `os.UserCacheDir()/morgue/api-token` (override `MORGUE_API_TOKEN_FILE`), sent as `X-Morgue-Token`; exempt: `GET /api/status`, `GET /api/instructions`
+- Auth: per-launch token written to `BaseDir()/data/api-token` (override `MORGUE_API_TOKEN_FILE`), sent as `X-Morgue-Token`; exempt: `GET /api/status`, `GET /api/instructions`
+- Portable: nothing written outside `BaseDir()`. `util.InitPortable()` (main) → `data/tmp/p<pid>` as TEMP/TMP, removed on exit; every `exec.Cmd` gets `util.ChildEnv()` (XDG/DOTNET/NuGet → `data/`). New spawns MUST use `util.RunCmd*` or `util.ApplyChildEnv`
 - Admission is synchronous: `PipelineService.Start` / `ToolsService.StartInstall` reserve the slot, then run in a goroutine; busy → `409 {"error":"busy"}`. One run at a time; `POST /api/stop` cancels it
 - Wails events emitted from any goroutine DO reach the webview since v3 beta (`Emit` → `DispatchWailsEvent` → `ExecJS`/`InvokeSync` marshals to the main thread) — the old `PollAPICommand()` command queue is gone
 - SSE endpoint `/api/events` works for external clients (curl/CLI), NOT from Wails webview

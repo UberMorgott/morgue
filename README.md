@@ -19,15 +19,15 @@ result as decompiled source, structured strings, and navigable indexes.
   `409 {"error":"busy"}`; `POST /api/stop` cancels the active run (`409` if idle).
   `morgue api run --wait` exits non-zero when the run fails or is cancelled.
 - API auth: on every launch the GUI writes a random token to
-  `%LOCALAPPDATA%\morgue\api-token` (`os.UserCacheDir()/morgue/api-token`; override
-  with `MORGUE_API_TOKEN_FILE`). Every endpoint except `GET /api/status` and
+  `data\api-token` next to `morgue.exe` (override with `MORGUE_API_TOKEN_FILE`; set it
+  to the GUI's file when the CLI is a different copy of morgue). Every endpoint except `GET /api/status` and
   `GET /api/instructions` requires it in `X-Morgue-Token`; POST/PUT bodies must be
   `application/json`; browser requests from non-localhost origins and non-loopback
   `Host` headers are rejected. The `morgue api` commands read the token
   automatically. With curl (PowerShell):
 
   ```powershell
-  $tok = Get-Content "$env:LOCALAPPDATA\morgue\api-token"
+  $tok = Get-Content "C:\path\to\morgue\data\api-token"
   curl.exe -H "X-Morgue-Token: $tok" -H "Content-Type: application/json" `
     -d '{\"path\":\"C:\\Games\\App.exe\"}' http://127.0.0.1:19876/api/run
   curl.exe -N -H "X-Morgue-Token: $tok" http://127.0.0.1:19876/api/events   # SSE, pings every 20 s
@@ -127,6 +127,18 @@ Windows only (amd64 and arm64). Download the latest release from
 Unzip and run `morgue.exe`. On first launch the GUI installs WebView2 if it is missing
 (system-wide or portable). External tools and runtimes download automatically when a
 job needs them.
+
+Morgue is portable: it keeps everything in its own folder and must be able to write
+there (it refuses to start otherwise). Tools and runtimes go to `tools\`, the GUI's
+WebView2 profile to `.webview2\`, and runtime state to `data\`: `data\tmp\p<pid>`
+(TEMP/TMP for morgue and every tool it spawns, removed on exit, stale ones swept on
+start), `data\home` (`DOTNET_CLI_HOME`), `data\config` / `data\cache` (XDG dirs —
+Ghidra's settings and cache), NuGet caches and .NET bundle extraction under
+`data\cache`, and `data\api-token`. .NET telemetry/first-run are disabled for spawned
+tools. The Sysinternals `strings` EULA key (`HKCU\Software\Sysinternals\Strings`)
+cannot be redirected; morgue deletes it after use unless it already existed.
+Choosing the **system-wide** WebView2 install in the first-launch dialog installs
+Microsoft's runtime machine-wide — pick **portable** to keep it in the folder.
 
 There are no Linux or macOS builds — the GUI backend depends on Windows-only WebView2
 and Win32 APIs.

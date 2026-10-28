@@ -48,9 +48,10 @@ The GUI is running and the user can see your actions in real-time.
 
 ## HTTP API (localhost:19876)
 
-The GUI generates a fresh per-launch token at %LOCALAPPDATA%\morgue\api-token
-on Windows (or the path in MORGUE_API_TOKEN_FILE when set). The CLI reads this
-file and sends X-Morgue-Token automatically. Direct HTTP clients must send the
+The GUI generates a fresh per-launch token at <morgue dir>\data\api-token (next
+to morgue.exe; or the path in MORGUE_API_TOKEN_FILE when set). The CLI reads
+this file and sends X-Morgue-Token automatically when it is the same morgue.exe
+as the GUI; for another copy set MORGUE_API_TOKEN_FILE to the GUI's file. Direct HTTP clients must send the
 current token in X-Morgue-Token; do not print or share the token. GET /api/status
 and GET /api/instructions are token-exempt. POST/PUT require Content-Type:
 application/json, including POST /api/stop with an empty JSON object {}.

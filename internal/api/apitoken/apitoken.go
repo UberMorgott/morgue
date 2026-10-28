@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/UberMorgott/morgue/internal/util"
 )
 
 // Header is the HTTP request header carrying the token.
@@ -22,18 +24,14 @@ const Header = "X-Morgue-Token"
 const EnvPath = "MORGUE_API_TOKEN_FILE"
 
 // Path returns the token file location: $MORGUE_API_TOKEN_FILE if set, else
-// <user cache dir>/morgue/api-token (e.g. %LOCALAPPDATA%\morgue\api-token on
-// Windows). The user cache dir is per-user and shared by every copy of the
-// executable, matching the single fixed API port.
+// <exe dir>/data/api-token. Morgue is portable and writes nothing outside its
+// own folder, so the CLI finds the GUI's token only when both run from the
+// same copy; point MORGUE_API_TOKEN_FILE at the GUI's file to bridge copies.
 func Path() (string, error) {
 	if p := os.Getenv(EnvPath); p != "" {
 		return p, nil
 	}
-	dir, err := os.UserCacheDir()
-	if err != nil {
-		return "", fmt.Errorf("apitoken: user cache dir: %w", err)
-	}
-	return filepath.Join(dir, "morgue", "api-token"), nil
+	return util.APITokenPath(), nil
 }
 
 // Generate returns a new random 256-bit token as hex.
