@@ -43,8 +43,20 @@ font-compare.html
 .claude/
 .superpowers/
 .agents/
+.agentlink/
+.aegis/
+.codex/
+.playwright/
 docs/superpowers/
 *.jsonl
+
+# Scratch / local notes (triage goes to GitHub issues or docs/ROADMAP.md)
+scratch/
+tmp/
+/BUGREPORT-*.md
+/TASKS.md
+# Tests that write to a relative "out" dir
+internal/**/out/
 
 # Sensitive config
 morgue.yaml
