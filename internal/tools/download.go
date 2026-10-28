@@ -3,6 +3,7 @@ package tools
 import (
 	"archive/zip"
 	"context"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -433,28 +434,121 @@ func installFromNuGet(ctx context.Context, tool ToolDef, destDir string, onProgr
 		}
 	}
 
-	url := fmt.Sprintf("https://www.nuget.org/api/v2/package/%s/%s", tool.DotnetID, version)
-	nupkgPath := filepath.Join(destDir, "package.zip")
-
-	if err := downloadFile(ctx, url, nupkgPath, func(down, total int64) {
-		if onProgress != nil {
-			onProgress(down, total)
+	extracted := func() {
+		if onExtract != nil {
+			onExtract(tool.Name)
 		}
-	}); err != nil {
-		_ = os.Remove(nupkgPath)
-		return "", fmt.Errorf("download nupkg: %w", err)
+	}
+	if err := fetchNupkg(ctx, tool.DotnetID, version, destDir, onProgress, extracted); err != nil {
+		return "", err
 	}
 
-	if onExtract != nil {
-		onExtract(tool.Name)
+	// .NET 10 RID-specific tools (ilspycmd >= 11.2) publish the top-level id as
+	// a pointer package: it holds only DotnetToolSettings.xml listing the real
+	// per-RID packages. Follow it to the matching package of the same version.
+	ridID, err := nugetPointerTarget(destDir)
+	if err != nil {
+		return "", err
+	}
+	if ridID != "" {
+		if err := fetchNupkg(ctx, ridID, version, destDir, onProgress, extracted); err != nil {
+			return "", fmt.Errorf("pointer package %s -> %s: %w", tool.DotnetID, ridID, err)
+		}
 	}
 
-	if err := extractArchive(nupkgPath, destDir); err != nil {
-		return "", fmt.Errorf("extract nupkg: %w", err)
+	if err := validateBinaryInstalled(tool, destDir); err != nil {
+		return "", err
 	}
-	_ = os.Remove(nupkgPath)
-
 	return version, nil
+}
+
+// fetchNupkg downloads id/version from nuget.org and extracts it into destDir.
+func fetchNupkg(ctx context.Context, id, version, destDir string, onProgress func(int64, int64), onExtract func()) error {
+	url := fmt.Sprintf("https://www.nuget.org/api/v2/package/%s/%s", id, version)
+	nupkgPath := filepath.Join(destDir, id+".nupkg.zip")
+	if err := downloadFile(ctx, url, nupkgPath, onProgress); err != nil {
+		_ = os.Remove(nupkgPath)
+		return fmt.Errorf("download nupkg %s %s: %w", id, version, err)
+	}
+	defer func() { _ = os.Remove(nupkgPath) }()
+	if onExtract != nil {
+		onExtract()
+	}
+	if err := extractArchive(nupkgPath, destDir); err != nil {
+		return fmt.Errorf("extract nupkg %s: %w", id, err)
+	}
+	return nil
+}
+
+// dotnetToolSettings is the subset of a tool package's DotnetToolSettings.xml
+// needed to detect a RID pointer package.
+type dotnetToolSettings struct {
+	RIDPackages []struct {
+		RuntimeIdentifier string `xml:"RuntimeIdentifier,attr"`
+		ID                string `xml:"Id,attr"`
+	} `xml:"RuntimeIdentifierPackages>RuntimeIdentifierPackage"`
+}
+
+// ridPreference is the order in which RID packages are picked. "any" is the
+// framework-dependent build (an entry-point .dll run by `dotnet`), which is what
+// registry entries such as ilspycmd (Binary: ilspycmd.dll) expect.
+var ridPreference = []string{"any", "win-x64"}
+
+// parsePointerTarget returns the RID package id a pointer DotnetToolSettings.xml
+// delegates to, or "" when the settings describe a regular (self-contained
+// content) tool package.
+func parsePointerTarget(settingsXML []byte) (string, error) {
+	var s dotnetToolSettings
+	if err := xml.Unmarshal(settingsXML, &s); err != nil {
+		return "", fmt.Errorf("parse DotnetToolSettings.xml: %w", err)
+	}
+	if len(s.RIDPackages) == 0 {
+		return "", nil
+	}
+	for _, rid := range ridPreference {
+		for _, p := range s.RIDPackages {
+			if strings.EqualFold(p.RuntimeIdentifier, rid) && p.ID != "" {
+				return p.ID, nil
+			}
+		}
+	}
+	rids := make([]string, 0, len(s.RIDPackages))
+	for _, p := range s.RIDPackages {
+		rids = append(rids, p.RuntimeIdentifier)
+	}
+	return "", fmt.Errorf("pointer tool package offers no supported runtime (have %v, want one of %v)", rids, ridPreference)
+}
+
+// nugetPointerTarget inspects the DotnetToolSettings.xml files extracted into
+// destDir and returns the RID package to follow, or "" if none is a pointer.
+func nugetPointerTarget(destDir string) (string, error) {
+	var target string
+	var firstErr error
+	_ = filepath.WalkDir(filepath.Join(destDir, "tools"), func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.EqualFold(d.Name(), "DotnetToolSettings.xml") {
+			return nil //nolint:nilerr // unreadable entry: skip
+		}
+		data, rerr := os.ReadFile(filepath.Clean(path))
+		if rerr != nil {
+			return nil //nolint:nilerr // unreadable settings file: skip
+		}
+		id, perr := parsePointerTarget(data)
+		if perr != nil {
+			if firstErr == nil {
+				firstErr = perr
+			}
+			return nil
+		}
+		if id != "" {
+			target = id
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	if target != "" {
+		return target, nil
+	}
+	return "", firstErr
 }
 
 // findDotnetBin locates the dotnet binary: local portable first, then system PATH.
