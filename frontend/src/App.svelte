@@ -66,7 +66,7 @@
       if (get(pipelineState).runId) { updateFromEvent(data); return; }
       // A progress event while the local store is not running means the run
       // was started elsewhere (HTTP API / CLI): GUI-started runs call
-      // startPipeline before PipelineService.Run. Reset the previous run's
+      // startPipeline before PipelineService.StartSpec. Reset the previous run's
       // state and start the elapsed clock before applying the event, adopt the
       // target, and switch to Home once — not on every event, so the user can
       // keep browsing other pages during the run.

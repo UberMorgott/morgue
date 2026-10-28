@@ -258,6 +258,38 @@ export class PipelineStatus {
              */
             this["error"] = undefined;
         }
+        if (/** @type {any} */(false)) {
+            /**
+             * RunID identifies the admitted run (events v2 envelope "run").
+             * @member
+             * @type {string | undefined}
+             */
+            this["runId"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * StartedAt is the backend-owned run start; clients derive elapsed from it.
+             * @member
+             * @type {string | null | undefined}
+             */
+            this["startedAt"] = undefined;
+        }
+        if (!("lastSeq" in $$source)) {
+            /**
+             * LastSeq is the highest events v2 sequence delivered for RunID.
+             * @member
+             * @type {number}
+             */
+            this["lastSeq"] = 0;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * Outcome is the terminal run outcome (success/error/cancelled), empty while running.
+             * @member
+             * @type {string | undefined}
+             */
+            this["outcome"] = undefined;
+        }
 
         Object.assign(this, $$source);
     }

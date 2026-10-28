@@ -5,6 +5,7 @@
   import PipelineHistory from '../components/PipelineHistory.svelte';
   import { t, type Lang } from '../lib/i18n';
   import { PipelineService, ToolsService } from '../lib/api';
+  import { RunRequest } from '../../bindings/github.com/UberMorgott/morgue/internal/runmodel/models.js';
   import { lastRunPath } from '../lib/stores';
 
   import {
@@ -194,14 +195,32 @@
   }
 
   onMount(async () => {
-    if (inputPath) {
-      try {
-        const status = await PipelineService.GetStatus();
-        if (status && status.running) {
-          $lastRunPath = inputPath;
-        }
-      } catch (e) { console.error('pipeline status check failed:', e); }
-    }
+    try {
+      const status = await PipelineService.GetStatus();
+      if (status && status.running) {
+        if (inputPath) $lastRunPath = inputPath;
+        // Reconnect: adopt the backend run identity and its backend-owned start
+        // so elapsed is measured from the true run start, not the arrival time
+        // of the first event we happen to observe after reattaching.
+        pipelineState.update(s => {
+          const backendStart = status.startedAt ? Date.parse(status.startedAt) : NaN;
+          if (status.runId && status.runId !== s.runId) {
+            return {
+              ...s,
+              runId: status.runId,
+              lastSeq: status.lastSeq ?? 0,
+              startedAt: Number.isFinite(backendStart) ? backendStart : s.startedAt,
+              phase: s.phase === 'idle' ? 'analysis' : s.phase,
+            };
+          }
+          // Same run already adopted via events: still correct a fallback start.
+          if (Number.isFinite(backendStart) && backendStart !== s.startedAt) {
+            return { ...s, startedAt: backendStart };
+          }
+          return s;
+        });
+      }
+    } catch (e) { console.error('pipeline status check failed:', e); }
   });
 
   async function runPipeline() {
@@ -223,15 +242,32 @@
         // Continue — pipeline will handle errors
       }
 
-      await PipelineService.Run(inputPath, outputPath);
+      // StartSpec admits the run (shared RunRequest admission), reserves the
+      // slot and executes in the background, returning the backend handle. The
+      // typed v2 event stream drives the rest of the UI; execution errors arrive
+      // as run.finished, not as a rejected promise.
+      const handle = await PipelineService.StartSpec(new RunRequest({ path: inputPath, output: outputPath }));
+      // Adopt the backend run identity and clock immediately so elapsed is
+      // backend-owned even before the first event is projected.
+      pipelineState.update(s => {
+        const backendStart = handle?.startedAt ? Date.parse(handle.startedAt) : NaN;
+        return {
+          ...s,
+          runId: handle?.runId || s.runId,
+          startedAt: Number.isFinite(backendStart) ? backendStart : s.startedAt,
+        };
+      });
 
     } catch (e: any) {
       const currentPhase = $pipelineState.phase;
+      const msg = e?.message || String(e);
+      // A concurrent run already holds the slot: the GUI auto-start is a no-op,
+      // the active run keeps driving the UI.
+      if (msg.toLowerCase().includes('busy')) return;
       // run.finished already set the authoritative outcome.
       if ($pipelineState.outcome || currentPhase === 'done' || currentPhase === 'cancelled') {
         // Already handled by events
       } else {
-        const msg = e.message || String(e);
         const isCancelled = msg.includes('context canceled') || msg.includes('context cancelled');
         if (isCancelled) {
           pipelineState.update(s => ({ ...s, phase: 'cancelled', paused: false }));
