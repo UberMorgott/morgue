@@ -108,9 +108,8 @@
 </button>
 
 {#if status === 'fallback'}
-  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-  <div class="fallback-overlay" onclick={closeFallback}>
-    <div class="fallback-panel glass" onclick={(e) => e.stopPropagation()}>
+  <div class="fallback-overlay" role="presentation" onclick={closeFallback}>
+    <div class="fallback-panel glass" role="dialog" aria-modal="true" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.key === 'Escape' && closeFallback()}>
       <p class="fallback-hint">{t(lang, 'settings.copyFailed')}</p>
       <textarea
         class="fallback-textarea log-area font-mono selectable"

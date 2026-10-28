@@ -310,19 +310,4 @@
     letter-spacing: 0.3px;
     margin-top: 2px;
   }
-
-  /* Mini log — max-height only; base styles from global .log-area */
-  .mini-log {
-    max-height: 100px;
-  }
-
-  .log-line {
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-
-  .log-tool {
-    color: var(--accent-warm);
-    font-weight: 600;
-  }
 </style>
