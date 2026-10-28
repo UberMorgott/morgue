@@ -1,0 +1,1046 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "ts",
+    "seq",
+    "run",
+    "type",
+    "data"
+  ],
+  "properties": {
+    "v": {
+      "const": 2
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "run": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "type": {
+      "type": "string"
+    },
+    "targetId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parentTargetId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "data": {
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events-v2.schema.json",
+  "$defs": {
+    "RunStarted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "handle",
+        "spec"
+      ],
+      "properties": {
+        "handle": {
+          "$ref": "#/$defs/RunHandle"
+        },
+        "spec": {
+          "$ref": "#/$defs/RunSpec"
+        }
+      }
+    },
+    "ScanCompleted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "filesTotal",
+        "groupsTotal"
+      ],
+      "properties": {
+        "filesTotal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "groupsTotal": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "TargetDiscovered": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputPath",
+        "relativeInput",
+        "kind",
+        "recipe",
+        "output",
+        "sizeBytes"
+      ],
+      "properties": {
+        "inputPath": {
+          "type": "string"
+        },
+        "relativeInput": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "recipe": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "compiler": {
+          "type": "string"
+        },
+        "obfuscator": {
+          "type": "string"
+        },
+        "deobfuscator": {
+          "type": "string"
+        },
+        "recipeDesc": {
+          "type": "string"
+        },
+        "toolsNeeded": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "TargetFinished": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome",
+        "recipe",
+        "output",
+        "error",
+        "skipReason",
+        "durationMs"
+      ],
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "success",
+            "error",
+            "cancelled",
+            "skipped"
+          ]
+        },
+        "recipe": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "skipReason": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "StepProgress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stepId",
+        "name",
+        "tool",
+        "unit",
+        "stepIndex",
+        "stepTotal",
+        "count",
+        "countTotal",
+        "durationMs",
+        "status",
+        "error"
+      ],
+      "properties": {
+        "stepId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "stepIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stepTotal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "countTotal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "running",
+            "success",
+            "failed",
+            "skipped",
+            "warn"
+          ]
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "ToolProgress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool",
+        "stage",
+        "bytes",
+        "bytesTotal",
+        "version",
+        "error"
+      ],
+      "properties": {
+        "tool": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string",
+          "enum": [
+            "check",
+            "download",
+            "extract",
+            "ready",
+            "failed"
+          ]
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytesTotal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "version": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "LogRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "level",
+        "tool",
+        "message"
+      ],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "info",
+            "warn",
+            "error"
+          ]
+        },
+        "tool": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        }
+      }
+    },
+    "RunFinished": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome",
+        "finishedAt",
+        "durationMs",
+        "error",
+        "targets",
+        "leafTargets"
+      ],
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "success",
+            "error",
+            "cancelled"
+          ]
+        },
+        "finishedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error": {
+          "type": "string"
+        },
+        "targets": {
+          "$ref": "#/$defs/Counts"
+        },
+        "leafTargets": {
+          "$ref": "#/$defs/Counts"
+        }
+      }
+    },
+    "Artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "targetId",
+        "path",
+        "external",
+        "kind",
+        "producer",
+        "sha256",
+        "hashStatus",
+        "complete",
+        "warning"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "targetId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "external": {
+          "type": "boolean"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "producer": {
+          "$ref": "#/$defs/Producer"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hashStatus": {
+          "type": "string"
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      }
+    },
+    "Producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recipe",
+        "stepId",
+        "tool",
+        "version"
+      ],
+      "properties": {
+        "recipe": {
+          "type": "string"
+        },
+        "stepId": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "ArtifactWritten": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact"
+      ],
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/Artifact"
+        }
+      }
+    },
+    "Evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "line",
+        "detail"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "Metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "status",
+        "basis",
+        "evidence"
+      ],
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "basis": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          }
+        }
+      }
+    },
+    "Coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "found",
+        "emitted",
+        "ratio",
+        "comparable"
+      ],
+      "properties": {
+        "found": {
+          "$ref": "#/$defs/Metric"
+        },
+        "emitted": {
+          "$ref": "#/$defs/Metric"
+        },
+        "ratio": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "comparable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "QualityCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "status",
+        "message",
+        "evidence"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          }
+        }
+      }
+    },
+    "QualityReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "family",
+        "status",
+        "functions",
+        "types",
+        "decompilerErrors",
+        "unknownResultTypes",
+        "unresolvedReferences",
+        "residualObfuscation",
+        "stringDecryption",
+        "warnings",
+        "checks"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "family": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "functions": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "types": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "decompilerErrors": {
+          "$ref": "#/$defs/Metric"
+        },
+        "unknownResultTypes": {
+          "$ref": "#/$defs/Metric"
+        },
+        "unresolvedReferences": {
+          "$ref": "#/$defs/Metric"
+        },
+        "residualObfuscation": {
+          "$ref": "#/$defs/Metric"
+        },
+        "stringDecryption": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/QualityCheck"
+          }
+        }
+      }
+    },
+    "QualityUpdated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quality"
+      ],
+      "properties": {
+        "quality": {
+          "$ref": "#/$defs/QualityReport"
+        }
+      }
+    },
+    "RunHandle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "startedAt",
+        "output"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "output": {
+          "type": "string"
+        }
+      }
+    },
+    "Counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "pending",
+        "running",
+        "success",
+        "error",
+        "cancelled",
+        "skipped"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pending": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "running": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "success": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cancelled": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "TargetResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "inputPath",
+        "relativeInput",
+        "kind",
+        "recipe",
+        "output",
+        "outcome",
+        "error",
+        "skipReason",
+        "durationMs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "parentTargetId": {
+          "type": "string"
+        },
+        "inputPath": {
+          "type": "string"
+        },
+        "relativeInput": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "recipe": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "skipReason": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "RunResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "handle",
+        "outcome",
+        "targets",
+        "counts",
+        "leafTargets",
+        "error"
+      ],
+      "properties": {
+        "handle": {
+          "$ref": "#/$defs/RunHandle"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TargetResult"
+          }
+        },
+        "counts": {
+          "$ref": "#/$defs/Counts"
+        },
+        "leafTargets": {
+          "$ref": "#/$defs/Counts"
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "RunRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "recipe": {
+          "type": "string"
+        },
+        "noSkip": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "referencePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowDynamic": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cflow": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "codeOnly": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gameDataOut": {
+          "type": "string"
+        },
+        "toolsMirror": {
+          "type": "string"
+        }
+      }
+    },
+    "RunSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "path",
+        "output",
+        "recipe",
+        "noSkip",
+        "exclude",
+        "referencePaths",
+        "allowDynamic",
+        "cflow",
+        "codeOnly",
+        "extractAssets",
+        "gameDataOut",
+        "toolsMirror"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "path": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "recipe": {
+          "type": "string"
+        },
+        "noSkip": {
+          "type": "boolean"
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "referencePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowDynamic": {
+          "type": "boolean"
+        },
+        "cflow": {
+          "type": "boolean"
+        },
+        "codeOnly": {
+          "type": "boolean"
+        },
+        "extractAssets": {
+          "type": "boolean"
+        },
+        "gameDataOut": {
+          "type": "string"
+        },
+        "toolsMirror": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "type": {
+          "const": "run.started"
+        },
+        "data": {
+          "$ref": "#/$defs/RunStarted"
+        }
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "scan.completed"
+        },
+        "data": {
+          "$ref": "#/$defs/ScanCompleted"
+        }
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "target.discovered"
+        },
+        "data": {
+          "$ref": "#/$defs/TargetDiscovered"
+        }
+      },
+      "required": [
+        "targetId"
+      ]
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "target.finished"
+        },
+        "data": {
+          "$ref": "#/$defs/TargetFinished"
+        }
+      },
+      "required": [
+        "targetId"
+      ]
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "step.progress"
+        },
+        "data": {
+          "$ref": "#/$defs/StepProgress"
+        }
+      },
+      "required": [
+        "targetId"
+      ]
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "tool.progress"
+        },
+        "data": {
+          "$ref": "#/$defs/ToolProgress"
+        }
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "artifact.written"
+        },
+        "data": {
+          "$ref": "#/$defs/ArtifactWritten"
+        }
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "quality.updated"
+        },
+        "data": {
+          "$ref": "#/$defs/QualityUpdated"
+        }
+      },
+      "required": [
+        "targetId"
+      ]
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "log"
+        },
+        "data": {
+          "$ref": "#/$defs/LogRecord"
+        }
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "run.finished"
+        },
+        "data": {
+          "$ref": "#/$defs/RunFinished"
+        }
+      }
+    }
+  ]
+}

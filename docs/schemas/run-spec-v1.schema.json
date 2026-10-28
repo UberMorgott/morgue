@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "run-spec-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "path",
+    "output",
+    "recipe",
+    "noSkip",
+    "exclude",
+    "referencePaths",
+    "allowDynamic",
+    "cflow",
+    "codeOnly",
+    "extractAssets",
+    "gameDataOut",
+    "toolsMirror"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "path": {
+      "type": "string"
+    },
+    "output": {
+      "type": "string"
+    },
+    "recipe": {
+      "type": "string"
+    },
+    "noSkip": {
+      "type": "boolean"
+    },
+    "exclude": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "referencePaths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "allowDynamic": {
+      "type": "boolean"
+    },
+    "cflow": {
+      "type": "boolean"
+    },
+    "codeOnly": {
+      "type": "boolean"
+    },
+    "extractAssets": {
+      "type": "boolean"
+    },
+    "gameDataOut": {
+      "type": "string"
+    },
+    "toolsMirror": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "RunSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "path",
+        "output",
+        "recipe",
+        "noSkip",
+        "exclude",
+        "referencePaths",
+        "allowDynamic",
+        "cflow",
+        "codeOnly",
+        "extractAssets",
+        "gameDataOut",
+        "toolsMirror"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "path": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "recipe": {
+          "type": "string"
+        },
+        "noSkip": {
+          "type": "boolean"
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "referencePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowDynamic": {
+          "type": "boolean"
+        },
+        "cflow": {
+          "type": "boolean"
+        },
+        "codeOnly": {
+          "type": "boolean"
+        },
+        "extractAssets": {
+          "type": "boolean"
+        },
+        "gameDataOut": {
+          "type": "string"
+        },
+        "toolsMirror": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

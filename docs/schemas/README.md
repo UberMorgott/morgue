@@ -1,0 +1,12 @@
+# Run contracts (M1)
+
+- `internal/runmodel` is independent of engine/recipe/services/config/tools. Wire fields use lowerCamelCase, UTC RFC3339Nano timestamps, integer milliseconds and int64 counters.
+- `RunRequest` preserves omitted booleans; `RunSpec` is resolved once. `extractAssets` is resolved-only. Credentials never enter either contract.
+- `events-v2.schema.json` is the canonical event envelope/payload schema. All ten event kinds are declared; artifact/quality production starts in later milestones. `run-spec-v1.schema.json` describes resolved specs.
+- `runmodel.NewEvent(runID, seq, ts, targetID, parentID, payload)` accepts sealed typed payloads. The engine owns IDs, time, contiguous sequence and lifecycle validation. `runmodel.EventName` is `pipeline:event:v2`.
+- `TargetDiscovered` adds optional compiler/obfuscator/deobfuscator/recipeDesc/toolsNeeded fields for typed UI data. LogRecord.phase is optional legacy-display context, never a progress counter.
+- Engine implementation contract: `(*Engine).PrepareRun(context.Context, runmodel.RunRequest) (*Run,error)`; invalid user input wraps `engine.ErrInvalidRun`; output I/O failures do not. `(*Run).Handle() runmodel.RunHandle`, `(*Run).Spec() runmodel.RunSpec`, `(*Run).Execute(context.Context,*PauseGate,chan<- runmodel.Event) (runmodel.RunResult,error)`, `(*Run).Close() error`. Execute is single-use and does not close the caller's channel. Nil output channel discards notifications. `Close` on an abandoned admission prevents execution.
+- `engine.LegacyEvent(runmodel.Event) engine.PipelineEvent` projects v2 to the old renderer; no separate execution path is required. Existing `Engine.Run(ctx,Options,chan<- PipelineEvent)` remains available during migration.
+- `recipe.Context.Children` implements `ChildObserver.Discover(inputPath,output,recipeName) (id,error)` and `Finish(id,outcome,errorText) error`. Child registration errors propagate. `StepProgress.StepID` is additive; old recipes receive an engine-derived stable index ID until manifest migration.
+- Adapters reserve their busy slot before PrepareRun, and release it if preparation fails. CLI/Wails/HTTP all call PrepareRun/Execute, so defaults, outcomes and IDs are shared. `run.started` is first; `run.finished` is exactly once and last, including pre-cancelled execution.
+- Notification delivery is bounded/nonblocking. Status clients use sequence gaps to detect lost notifications; durable replay arrives in M2. Successful final state is returned in RunResult even if no notification consumer exists.

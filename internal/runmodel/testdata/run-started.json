@@ -1,0 +1,2 @@
+{"v":2,"ts":"2026-10-29T00:00:00Z","seq":1,"run":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","type":"run.started","data":{"handle":{"runId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","startedAt":"2026-10-29T00:00:00Z","output":"out"},"spec":{"version":1,"path":"game","output":"out","recipe":"","noSkip":false,"exclude":[],"referencePaths":[],"allowDynamic":false,"cflow":false,"codeOnly":false,"extractAssets":false,"gameDataOut":"","toolsMirror":""}}}
+

@@ -53,6 +53,7 @@ type StepInfo struct {
 
 // StepProgress reports the progress of a single step.
 type StepProgress struct {
+	StepID     string        `json:"StepID,omitempty"`
 	Step       int           `json:"Step"`
 	Total      int           `json:"Total"`
 	Name       string        `json:"Name"`
@@ -85,8 +86,15 @@ type PauseChecker interface {
 	WaitIfPaused(ctx context.Context) error
 }
 
+// ChildObserver registers recipe-managed children in the enclosing run.
+type ChildObserver interface {
+	Discover(inputPath, output, recipeName string) (string, error)
+	Finish(id, outcome, errorText string) error
+}
+
 // Context provides everything a recipe needs to execute.
 type Context struct {
+	Children ChildObserver
 	Target   string
 	Output   string
 	Progress chan StepProgress
