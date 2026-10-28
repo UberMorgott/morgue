@@ -396,6 +396,14 @@ func apiCmd() *cobra.Command {
 			return cli.APIStatus()
 		},
 	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "stop",
+		Short: "Cancel the GUI's active decompilation run",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.APIStop()
+		},
+	})
 
 	apiRunCmd := &cobra.Command{
 		Use:   "run <path>",

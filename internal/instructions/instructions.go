@@ -25,6 +25,7 @@ The GUI is running and the user can see your actions in real-time.
   morgue run <target> --recipe <name>   — force specific recipe
   morgue run <target> --no-skip         — process all files (skip nothing)
   morgue run <target> --exclude a,b     — additional exclude patterns
+  morgue run <target> --ref <dir>       — .NET dependency directory (repeat for multiple directories)
 
 ### Tools Management
   morgue tools check                    — list all tools with status
@@ -36,6 +37,7 @@ The GUI is running and the user can see your actions in real-time.
   morgue api run <file>                 — decompile (visible in GUI window)
   morgue api run <file> -o <dir>        — with custom output
   morgue api run <file> --wait          — decompile and wait for completion
+  morgue api stop                       — request cancellation of the active GUI run
   morgue api tools                      — list tools via GUI
   morgue api tools --wait               — wait for tool operations
   morgue api tools install              — install all missing tools via GUI
@@ -46,9 +48,17 @@ The GUI is running and the user can see your actions in real-time.
 
 ## HTTP API (localhost:19876)
 
+The GUI generates a fresh per-launch token at %LOCALAPPDATA%\morgue\api-token
+on Windows (or the path in MORGUE_API_TOKEN_FILE when set). The CLI reads this
+file and sends X-Morgue-Token automatically. Direct HTTP clients must send the
+current token in X-Morgue-Token; do not print or share the token. GET /api/status
+and GET /api/instructions are token-exempt. POST/PUT require Content-Type:
+application/json, including POST /api/stop with an empty JSON object {}.
+
   GET  /api/status              — {"port":"19876","running":true}
   GET  /api/info?path=<file>    — binary classification JSON
   POST /api/run                 — start decompilation (GUI shows progress)
+  POST /api/stop                — request cancellation of the active pipeline
   GET  /api/run/status          — pipeline progress (phase, step, files)
   GET  /api/tools               — tool list with install status
   GET  /api/tools?wait=30       — long-poll until tool state changes (max 120s)
@@ -58,6 +68,18 @@ The GUI is running and the user can see your actions in real-time.
   PUT  /api/settings            — update settings {"key":"...","value":"..."}
   GET  /api/events              — SSE event stream (real-time progress)
   GET  /api/instructions        — this text
+
+POST /api/run and POST /api/tools/install return 202 Accepted when admitted;
+202 means the operation started, not that it completed. Concurrent submissions
+return 409 Conflict with {"error":"busy"}. POST /api/stop returns 202 Accepted
+with {"status":"stopping"}, or 409 Conflict with {"error":"not running"} when
+idle. Poll GET /api/run/status until running=false to observe the final phase
+and error; cancellation is asynchronous. Missing/invalid tokens return 401.
+
+--ref applies to the standalone morgue run command; repeat it for each .NET
+dependency directory, for example --ref <game_Data/Managed> --ref <BepInEx/core>.
+The original assembly directory and extracted sibling DLL directories are added
+automatically. The HTTP /api/run request does not currently accept --ref paths.
 
 ### Tool Status Response
 
