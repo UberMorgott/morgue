@@ -13,6 +13,7 @@ import (
 
 	"github.com/UberMorgott/morgue/internal/config"
 	"github.com/UberMorgott/morgue/internal/engine"
+	"github.com/UberMorgott/morgue/internal/runmodel"
 	"github.com/UberMorgott/morgue/internal/tui"
 	"github.com/UberMorgott/morgue/internal/util"
 )
@@ -84,53 +85,43 @@ func RunWatch(opts RunOptions) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	if opts.ToolsMirror != "" {
-		cfg.ToolsMirror = opts.ToolsMirror
-	}
-
-	if opts.Output == "" {
-		opts.Output = cfg.DefaultOutputDir
-	}
-	if opts.Output == "" {
-		// Implicit default: most-free disk (avoids C:/E:). Explicit -o / configured
-		// dir still wins above.
-		opts.Output = util.AutoOutputRoot()
-	}
-	if err := os.MkdirAll(opts.Output, 0755); err != nil {
-		return fmt.Errorf("create output dir %s: %w", opts.Output, err)
-	}
-
-	eng := engine.New(cfg, util.ToolsBaseDir())
-
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
+
+	// Shared admission: resolve defaults, validate and reserve output once,
+	// exactly like the plain CLI, HTTP API and GUI (plan C1). The TUI then
+	// renders the single typed v2 event stream, adapted to the legacy event
+	// shape the PipelineView still consumes.
+	req := opts.request()
+	run, err := engine.New(cfg, util.ToolsBaseDir()).PrepareRun(ctx, req)
+	if err != nil {
+		return err
+	}
+	opts.Output = run.Handle().Output
 
 	m := newWatchModel()
 	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
 
-	events := make(chan engine.PipelineEvent, 100)
+	events := make(chan runmodel.Event, 4096)
 
-	// Forward pipeline events to TUI
+	// Forward typed v2 events to the TUI through the legacy adapter.
+	forwarded := make(chan struct{})
 	go func() {
+		defer close(forwarded)
 		for ev := range events {
-			p.Send(tui.PipelineEventMsg{Event: ev})
+			p.Send(tui.PipelineEventMsg{Event: engine.LegacyEvent(ev)})
 		}
 	}()
 
 	// Run pipeline in background
 	var pipeErr error
 	go func() {
-		pipeOpts := engine.Options{
-			Input:          opts.Target,
-			Output:         opts.Output,
-			Recipe:         opts.Recipe,
-			NoSkip:         opts.NoSkip,
-			Exclude:        opts.Exclude,
-			ReferencePaths: opts.ReferencePaths,
-
-			CodeOnly: opts.CodeOnly,
-		}
-		pipeErr = eng.Run(ctx, pipeOpts, events)
+		_, pipeErr = run.Execute(ctx, nil, events)
+		// Execute never closes the caller's channel: close it so the forwarder
+		// drains, then signal the TUI that the run is terminal.
+		close(events)
+		<-forwarded
+		_ = run.Close()
 		p.Send(tui.PipelineDoneMsg{Err: pipeErr})
 	}()
 

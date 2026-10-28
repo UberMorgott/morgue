@@ -276,52 +276,32 @@ func runCmd() *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := strings.Join(args, " ")
-			output, _ := cmd.Flags().GetString("output")
 			watch, _ := cmd.Flags().GetBool("watch")
 			forceWatch, _ := cmd.Flags().GetBool("force-watch")
 			quiet, _ := cmd.Flags().GetBool("quiet")
-			recipe, _ := cmd.Flags().GetString("recipe")
-			noSkip, _ := cmd.Flags().GetBool("no-skip")
-			exclude, _ := cmd.Flags().GetStringSlice("exclude")
-			referencePaths, _ := cmd.Flags().GetStringArray("ref")
-			allowDynamic, _ := cmd.Flags().GetBool("allow-dynamic")
-			cflow, _ := cmd.Flags().GetBool("cflow")
-			codeOnly, _ := cmd.Flags().GetBool("code-only")
-			gameDataOut, _ := cmd.Flags().GetString("gamedata-out")
-			toolsMirror, _ := cmd.Flags().GetString("tools-mirror")
 
+			// Build the run request from flags so an explicitly provided
+			// --allow-dynamic=false (or --no-skip=false etc.) is preserved as a
+			// deliberate false, while an omitted bool flag stays nil and inherits
+			// the loaded config default during admission (plan C1: explicit >
+			// config > built-in). This is the same request admission shared with
+			// the HTTP API and the Wails GUI.
+			req := cli.RequestFromFlags(cmd, target)
 			return cli.Run(cli.RunOptions{
-				Target:         target,
-				Output:         output,
-				Recipe:         recipe,
-				NoSkip:         noSkip,
-				Exclude:        exclude,
-				ReferencePaths: referencePaths,
-				Watch:          watch || forceWatch,
-				ForceWatch:     forceWatch,
-				Quiet:          quiet,
-				AllowDynamic:   allowDynamic,
-				Cflow:          cflow,
-				CodeOnly:       codeOnly,
-				GameDataOut:    gameDataOut,
-				ToolsMirror:    toolsMirror,
+				Watch:      watch || forceWatch,
+				ForceWatch: forceWatch,
+				Quiet:      quiet,
+				Request:    &req,
 			})
 		},
 	}
 
-	cmd.Flags().StringP("output", "o", "", "Output directory (default: <binary dir>/output)")
+	// Run-request flags (names/defaults match the HTTP RunRequest one-to-one).
+	cli.AddRunFlags(cmd)
+	// CLI-only rendering flags, not part of the run request.
 	cmd.Flags().Bool("watch", false, "Show TUI progress in stderr")
 	cmd.Flags().Bool("force-watch", false, "Force the watch TUI even when stderr is not a terminal")
 	cmd.Flags().BoolP("quiet", "q", false, "Suppress stderr output, only emit JSON to stdout")
-	cmd.Flags().String("recipe", "", "Force specific recipe")
-	cmd.Flags().Bool("no-skip", false, "Disable auto skip-list")
-	cmd.Flags().StringSlice("exclude", nil, "Additional exclude patterns")
-	cmd.Flags().StringArray("ref", nil, "Dependency search directory for .NET assemblies (repeatable)")
-	cmd.Flags().Bool("allow-dynamic", false, "Allow recipe steps that EXECUTE target code (e.g. ConfuserEx embedded-assembly extraction)")
-	cmd.Flags().Bool("cflow", false, "Enable control-flow deobfuscation pass (experimental, off by default)")
-	cmd.Flags().Bool("code-only", false, "Skip Unity asset extraction (AssetRipper) — decompiled code only")
-	cmd.Flags().String("gamedata-out", "", "Destination for the organized game-data tree (unity-mono recipe; default: <output>/GameData)")
-	cmd.Flags().String("tools-mirror", "", "Rewrite tool download URL hosts to this mirror (offline/firewalled installs)")
 
 	return cmd
 }

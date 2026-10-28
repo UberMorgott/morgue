@@ -222,7 +222,7 @@ func Run(opts RunOptions) error {
 					return runErr
 				}
 				return fmt.Errorf("nothing was decompiled in %s: %d failed, %d skipped (unsupported or unrecognised input?)",
-					opts.Target, summary.Stats.Failed, summary.Stats.Skipped)
+					req.Path, summary.Stats.Failed, summary.Stats.Skipped)
 			}
 		}
 	}
