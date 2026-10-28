@@ -108,6 +108,9 @@ type fileTask struct {
 	filePath string
 	recon    recon.Result
 	recipe   recipe.Recipe
+	// outName is the target's output directory name under Options.Output,
+	// unique within the run (see assignOutputNames).
+	outName string
 }
 
 // Run executes the full pipeline: scan → analyse all → emit tools → execute all → save.
@@ -221,6 +224,8 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 		}
 	}
 
+	assignOutputNames(tasks, opts.Input)
+
 	// Emit ONE aggregated tools event with all unique tools in execution order.
 	// A recipe may expose DisplayTools() to list tools it runs that are not
 	// downloadable RequiredTools (e.g. the built-on-demand cfxextract), so the
@@ -306,7 +311,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 		}
 
 		// Execute non-native recipes immediately
-		tr := e.executeRecipe(ctx, t.filePath, &opts, t.recipe, t.recon, t.group, em)
+		tr := e.executeRecipe(ctx, t.filePath, t.outName, &opts, t.recipe, t.recon, t.group, em)
 		results = append(results, tr)
 
 		// Installer recipes (NSIS) unpack a nested file tree; recurse into it so
@@ -330,7 +335,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 					return err
 				}
 			}
-			tr := e.executeRecipeWithFilter(ctx, t.filePath, &opts, t.recipe, t.recon, t.group, em, "strings")
+			tr := e.executeRecipeWithFilter(ctx, t.filePath, t.outName, &opts, t.recipe, t.recon, t.group, em, "strings")
 			if tr.Error != nil {
 				// Strings failure is non-fatal; still attempt ghidra later
 				em.emitErr("execute", t.filePath, tr.Error)
@@ -348,13 +353,13 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 					return err
 				}
 			}
-			tr := e.executeRecipeWithFilter(ctx, t.filePath, &opts, t.recipe, t.recon, t.group, em, "ghidra")
+			tr := e.executeRecipeWithFilter(ctx, t.filePath, t.outName, &opts, t.recipe, t.recon, t.group, em, "ghidra")
 			results = append(results, tr)
 		}
 	} else if len(nativeTasks) == 1 {
 		// Single native file — no batching needed, run all steps
 		t := nativeTasks[0]
-		tr := e.executeRecipe(ctx, t.filePath, &opts, t.recipe, t.recon, t.group, em)
+		tr := e.executeRecipe(ctx, t.filePath, t.outName, &opts, t.recipe, t.recon, t.group, em)
 		results = append(results, tr)
 	}
 
@@ -648,13 +653,14 @@ func writeReconJSON(targetOutput string, reconResult recon.Result) error {
 func (e *Engine) executeRecipe(
 	ctx context.Context,
 	filePath string,
+	outName string,
 	opts *Options,
 	rec recipe.Recipe,
 	reconResult recon.Result,
 	group scanner.TargetGroup,
 	em emitter,
 ) TargetResult {
-	targetOutput := filepath.Join(opts.Output, sanitizeName(filepath.Base(filePath)))
+	targetOutput := filepath.Join(opts.Output, outName)
 	if err := os.MkdirAll(targetOutput, 0755); err != nil {
 		em.emitErr("execute", filePath, fmt.Errorf("create output dir: %w", err))
 		return TargetResult{
@@ -793,6 +799,7 @@ func (e *Engine) executeRecipe(
 func (e *Engine) executeRecipeWithFilter(
 	ctx context.Context,
 	filePath string,
+	outName string,
 	opts *Options,
 	rec recipe.Recipe,
 	reconResult recon.Result,
@@ -800,7 +807,7 @@ func (e *Engine) executeRecipeWithFilter(
 	em emitter,
 	stepFilter string,
 ) TargetResult {
-	targetOutput := filepath.Join(opts.Output, sanitizeName(filepath.Base(filePath)))
+	targetOutput := filepath.Join(opts.Output, outName)
 	if err := os.MkdirAll(targetOutput, 0755); err != nil {
 		em.emitErr("execute", filePath, fmt.Errorf("create output dir: %w", err))
 		return TargetResult{
@@ -926,6 +933,7 @@ type summaryEntry struct {
 	Path       string `json:"path"`
 	Kind       string `json:"kind"`
 	Recipe     string `json:"recipe,omitempty"`
+	Output     string `json:"output,omitempty"`
 	Skipped    bool   `json:"skipped,omitempty"`
 	SkipReason string `json:"skip_reason,omitempty"`
 	Error      string `json:"error,omitempty"`
@@ -941,6 +949,7 @@ func buildSummary(results []TargetResult, elapsed time.Duration) PipelineSummary
 	for _, r := range results {
 		e := summaryEntry{
 			Path:       r.Recon.Path,
+			Output:     r.Output,
 			Kind:       r.Recon.Kind.String(),
 			Skipped:    r.Skipped,
 			SkipReason: r.SkipReason,
