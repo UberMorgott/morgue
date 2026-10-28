@@ -1,10 +1,13 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/UberMorgott/morgue/internal/runmodel"
 )
 
 // sseKeepAlive is how often an idle SSE stream gets a comment ping, so proxies
@@ -88,8 +91,16 @@ func (eb *EventBroadcaster) HandleSSE(w http.ResponseWriter, r *http.Request) {
 // Broadcast sends an event to all connected SSE clients.
 // Messages are dropped if a client channel is full (non-blocking send).
 func (eb *EventBroadcaster) Broadcast(event string, data []byte) {
-	msg := fmt.Sprintf("event: %s\ndata: %s\n\n", event, data)
+	eb.send(fmt.Sprintf("event: %s\ndata: %s\n\n", event, data))
+}
 
+// BroadcastWithID is Broadcast with an SSE id field (events v2 use
+// "<run>:<seq>" so clients can detect gaps and reconcile via /api/run/status).
+func (eb *EventBroadcaster) BroadcastWithID(event, id string, data []byte) {
+	eb.send(fmt.Sprintf("event: %s\nid: %s\ndata: %s\n\n", event, id, data))
+}
+
+func (eb *EventBroadcaster) send(msg string) {
 	eb.mu.RLock()
 	defer eb.mu.RUnlock()
 
@@ -115,4 +126,16 @@ func (eb *EventBroadcaster) Shutdown() {
 			delete(eb.clients, ch)
 		}
 	})
+}
+
+// broadcastRunEvent relays one events v2 record to SSE clients as
+// "event: pipeline:event:v2", "id: <run>:<seq>" and the identical JSON the
+// Wails webview receives. A slow client may miss notifications (non-blocking
+// fan-out); it reconciles through GET /api/run/status lastSeq.
+func (s *Server) broadcastRunEvent(ev runmodel.Event) {
+	data, err := json.Marshal(ev)
+	if err != nil {
+		return
+	}
+	s.events.BroadcastWithID(runmodel.EventName, fmt.Sprintf("%s:%d", ev.Run, ev.Seq), data)
 }

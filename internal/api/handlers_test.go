@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -76,8 +77,13 @@ func TestHandleRunDecompilation(t *testing.T) {
 	finished := make(chan struct{})
 	services.SetRunFinishedHook(s.pipeline, func(error) { close(finished) })
 
+	// Admission validates the input now, so the target must exist.
+	in := filepath.Join(t.TempDir(), "test.exe")
+	if err := os.WriteFile(in, []byte("MZ"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	body, _ := json.Marshal(map[string]string{
-		"path":   filepath.Join(t.TempDir(), "test.exe"),
+		"path":   in,
 		"output": filepath.Join(t.TempDir(), "out"),
 	})
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/run", bytes.NewReader(body))

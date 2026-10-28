@@ -54,6 +54,7 @@ func NewServer(pipeline *services.PipelineService, tools *services.ToolsService,
 			s.events.Broadcast("pipeline:error", marshalJSON(map[string]string{"error": runErr.Error()}))
 		}
 	})
+	services.SetEventHook(pipeline, s.broadcastRunEvent)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/status", s.handleStatus)

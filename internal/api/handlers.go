@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -10,22 +11,43 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/UberMorgott/morgue/internal/engine"
 	"github.com/UberMorgott/morgue/internal/recipe"
 	"github.com/UberMorgott/morgue/internal/recon"
+	"github.com/UberMorgott/morgue/internal/runmodel"
 	"github.com/UberMorgott/morgue/internal/services"
 )
 
 // --- Pipeline handlers ---
 
-type runRequest struct {
-	Path   string `json:"path"`
-	Output string `json:"output"`
+// decodeRunRequest strictly decodes a runmodel.RunRequest: unknown fields,
+// wrong types and trailing JSON values are rejected. The legacy {path,output}
+// body is a valid subset.
+func decodeRunRequest(r *http.Request) (runmodel.RunRequest, error) {
+	var req runmodel.RunRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		return req, err
+	}
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return req, errors.New("request body must contain a single JSON object")
+	}
+	return req, nil
+}
+
+// runStarted is the 202 body of POST /api/run.
+type runStarted struct {
+	Status    string    `json:"status"`
+	RunID     string    `json:"runId"`
+	StartedAt time.Time `json:"startedAt"`
+	Output    string    `json:"output"`
 }
 
 func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
-	var req runRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	req, err := decodeRunRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body: " + err.Error()})
 		return
 	}
 	if req.Path == "" {
@@ -33,25 +55,27 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Reserve the single run slot synchronously so concurrent POSTs get exactly
-	// one admission; the run itself executes in a background goroutine. Wails
-	// events emitted from it reach the webview (Emit marshals to the main
-	// thread), so the GUI follows along live; CLI clients poll GET
-	// /api/run/status or SSE /api/events.
-	// Run errors are broadcast as pipeline:error via the hook set in NewServer.
-	//nolint:contextcheck // the run must outlive this request; Start gives it its own cancellable ctx (POST /api/stop)
-	err := s.pipeline.Start(req.Path, req.Output)
-	if errors.Is(err, services.ErrBusy) {
+	// StartSpec reserves the single run slot and prepares the run synchronously
+	// (validation + output reservation), so concurrent POSTs get exactly one
+	// admission and the client learns the handle; execution continues in a
+	// background goroutine. CLI clients follow GET /api/run/status or SSE
+	// /api/events (pipeline:event:v2). Run errors are broadcast as
+	// pipeline:error via the hook set in NewServer.
+	//nolint:contextcheck // the run must outlive this request; StartSpec gives it its own cancellable ctx (POST /api/stop)
+	h, err := s.pipeline.StartSpec(req)
+	switch {
+	case errors.Is(err, services.ErrBusy), errors.Is(err, engine.ErrOutputBusy):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "busy"})
 		return
-	}
-	if err != nil {
+	case errors.Is(err, engine.ErrInvalidRun):
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	case err != nil:
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
+	writeJSON(w, http.StatusAccepted, runStarted{Status: "started", RunID: h.ID, StartedAt: h.StartedAt.UTC(), Output: h.Output})
 }
-
 func (s *Server) handleStop(w http.ResponseWriter, _ *http.Request) {
 	if err := s.pipeline.StopActive(); errors.Is(err, services.ErrNotRunning) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "not running"})

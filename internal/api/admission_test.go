@@ -14,13 +14,14 @@ import (
 
 	"github.com/UberMorgott/morgue/internal/api/apitoken"
 	"github.com/UberMorgott/morgue/internal/engine"
+	"github.com/UberMorgott/morgue/internal/runmodel"
 	"github.com/UberMorgott/morgue/internal/services"
 )
 
-// blockingRunner returns a RunFunc that blocks until its context is cancelled
-// (or release is closed), reporting how many runs were started.
-func blockingRunner(started *int32Counter, release <-chan struct{}) services.RunFunc {
-	return func(ctx context.Context, _ *engine.PauseGate, _, _ string) error {
+// blockingRunner returns an exec func that blocks until its context is
+// cancelled (or release is closed), reporting how many runs were started.
+func blockingRunner(started *int32Counter, release <-chan struct{}) func(context.Context) error {
+	return func(ctx context.Context) error {
 		started.inc()
 		select {
 		case <-ctx.Done():
@@ -28,6 +29,56 @@ func blockingRunner(started *int32Counter, release <-chan struct{}) services.Run
 		case <-release:
 			return nil
 		}
+	}
+}
+
+// fakeRun is an admitted run whose execution is exec; it emits a valid
+// run.started / run.finished pair so transports see a real v2 stream.
+type fakeRun struct {
+	h    runmodel.RunHandle
+	spec runmodel.RunSpec
+	exec func(context.Context) error
+}
+
+func (f *fakeRun) Handle() runmodel.RunHandle { return f.h }
+func (f *fakeRun) Close() error               { return nil }
+func (f *fakeRun) Execute(ctx context.Context, _ *engine.PauseGate, events chan<- runmodel.Event) (runmodel.RunResult, error) {
+	if ev, err := runmodel.NewEvent(f.h.ID, 1, f.h.StartedAt, "", "", runmodel.RunStarted{Handle: f.h, Spec: f.spec}); err == nil {
+		events <- ev
+	}
+	err := f.exec(ctx)
+	outcome := runmodel.OutcomeSuccess
+	switch {
+	case errors.Is(err, context.Canceled):
+		outcome = runmodel.OutcomeCancelled
+	case err != nil:
+		outcome = runmodel.OutcomeError
+	}
+	errText := ""
+	if err != nil {
+		errText = err.Error()
+	}
+	now := time.Now().UTC()
+	if ev, e := runmodel.NewEvent(f.h.ID, 2, now, "", "", runmodel.RunFinished{Outcome: outcome, FinishedAt: now, Error: errText}); e == nil {
+		events <- ev
+	}
+	return runmodel.RunResult{Handle: f.h, Outcome: outcome, Error: errText}, err
+}
+
+// fakePrepare admits every request, recording the last one in *last (if non-nil).
+func fakePrepare(exec func(context.Context) error, last *runmodel.RunRequest) services.PrepareFunc {
+	var mu sync.Mutex
+	return func(_ context.Context, req runmodel.RunRequest) (services.AdmittedRun, error) {
+		if last != nil {
+			mu.Lock()
+			*last = req
+			mu.Unlock()
+		}
+		h, err := runmodel.NewHandle(req.Output)
+		if err != nil {
+			return nil, err
+		}
+		return &fakeRun{h: h, spec: runmodel.RunSpec{Version: runmodel.SpecVersion, Path: req.Path, Output: req.Output}, exec: exec}, nil
 	}
 }
 
@@ -45,9 +96,9 @@ func (c *int32Counter) get() int {
 
 // newGuardedServer returns an httptest server running the full middleware
 // chain around a Server whose pipeline uses runner.
-func newGuardedServer(t *testing.T, runner services.RunFunc) (*Server, *httptest.Server) {
+func newGuardedServer(t *testing.T, runner func(context.Context) error) (*Server, *httptest.Server) {
 	t.Helper()
-	pipeline := services.NewPipelineServiceWithRunner(runner)
+	pipeline := services.NewPipelineServiceWithPrepare(fakePrepare(runner, nil))
 	s := NewServer(pipeline, services.NewToolsService(""), &services.ConfigService{}, &services.ReconService{})
 	ts := httptest.NewServer(s.http.Handler)
 	t.Cleanup(ts.Close)
@@ -161,7 +212,7 @@ func TestStopEndpoint(t *testing.T) {
 
 func TestRunFailureStatus(t *testing.T) {
 	boom := errors.New("boom")
-	s, ts := newGuardedServer(t, func(context.Context, *engine.PauseGate, string, string) error { return boom })
+	s, ts := newGuardedServer(t, func(context.Context) error { return boom })
 	body, _ := json.Marshal(map[string]string{"path": "x.exe"})
 	if code, b := doReq(t, http.MethodPost, ts.URL+"/api/run", s.Token(), "application/json", "", body); code != http.StatusAccepted {
 		t.Fatalf("run: got %d %s", code, b)
@@ -176,7 +227,7 @@ func TestRunFailureStatus(t *testing.T) {
 }
 
 func TestSecurityMiddleware(t *testing.T) {
-	s, ts := newGuardedServer(t, func(context.Context, *engine.PauseGate, string, string) error { return nil })
+	s, ts := newGuardedServer(t, func(context.Context) error { return nil })
 	tok := s.Token()
 	stop := ts.URL + "/api/stop"
 
