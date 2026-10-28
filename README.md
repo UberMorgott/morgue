@@ -70,6 +70,27 @@ NuGet, or direct URLs). Inspect and manage them with `morgue tools check` /
 - **nofuserex**, **confuserex-killer**, **proxycall-remover** — ConfuserEx
   anti-tamper / unpacking helpers
 
+### Updating tools
+
+```text
+morgue tools check --updates           Query upstream; adds LATEST and UPDATE columns
+morgue tools install <name> --force    Reinstall/update one tool
+morgue tools install --force           Reinstall/update every tool
+```
+
+- Reinstalls are staged: the new copy is downloaded and validated next to the old one
+  and swapped in only on success, so a failed update keeps the working tool.
+  `tools install` exits non-zero if any tool failed.
+- Pinned tools always install their pinned version; `--updates` flags them only when
+  the installed version differs from the pin. Tools without a version (e.g. `strings`)
+  are compared by the download's Last-Modified date.
+- `auto_update_tools: true` (GUI Settings) applies available tool updates at GUI
+  startup. It needs `auto_update_check: true`, covers managed tools only (not runtimes,
+  not tools taken from PATH) and does not affect the CLI.
+- `prefer_system_tools: true` uses a tool found on `PATH` (e.g. a global
+  `dotnet tool install -g ilspycmd`) instead of the managed copy. Such tools show
+  version `system` and are never updated by Morgue.
+
 ## Install
 
 Windows only (amd64 and arm64). Download the latest release from
@@ -109,8 +130,8 @@ morgue run <target>                    Decompile a file or directory
                                        unity_extract_assets: false in morgue.yaml
                                        (Settings -> Unity in the GUI)
 
-morgue tools check                     List managed tools and their install status
-morgue tools install [name]           Install all missing tools, or a specific one
+morgue tools check [--updates]         List managed tools and their install status
+morgue tools install [name] [--force]  Install all missing tools, or a specific one
 
 morgue self-update [--check]           Update the binary to the latest release
 morgue version                         Print version and commit
