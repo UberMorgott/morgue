@@ -17,6 +17,15 @@ func withTestTool(t *testing.T, def ToolDef) {
 	t.Cleanup(func() { Registry = orig })
 }
 
+// onlyTestTool makes def the whole registry, so registry-wide calls such as
+// CheckAllWithUpdates touch no real upstream.
+func onlyTestTool(t *testing.T, def ToolDef) {
+	t.Helper()
+	orig := Registry
+	Registry = []ToolDef{def}
+	t.Cleanup(func() { Registry = orig })
+}
+
 // TestReinstallFailedDownloadKeepsOldTool: a reinstall (force/update) whose
 // download fails must leave the working install untouched.
 func TestReinstallFailedDownloadKeepsOldTool(t *testing.T) {

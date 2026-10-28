@@ -288,6 +288,12 @@ func (m *Manager) installInto(ctx context.Context, tool ToolDef, destDir string,
 			return "", err
 		}
 		ver := tool.Version
+		if ver == "" && tool.URL != "" {
+			// Unversioned asset (e.g. Sysinternals strings): record the
+			// server's Last-Modified date, the same value update checks
+			// compare against.
+			ver = directURLDate(ctx, tool.URL)
+		}
 		if ver == "" {
 			ver = "latest"
 		}
@@ -338,14 +344,96 @@ func cleanVersionTag(tag string) string {
 // pinnedVersion reports the version a pinned tool will always install, and
 // whether the tool is pinned at all. Install resolves a non-empty tool.Version
 // verbatim (a fixed release tag for GitHub tools, a fixed asset URL for direct
-// downloads), so for those tools there is no upstream question to ask: the
+// downloads) and a non-empty DotnetVersion as the exact NuGet / dotnet-tool
+// version, so for those tools there is no upstream question to ask: the
 // answer would only ever advertise an update the installer cannot perform.
 // Unpinned tools keep their real upstream lookup below.
 func pinnedVersion(t ToolDef) (string, bool) {
-	if t.Version == "" {
-		return "", false
+	if t.Version != "" {
+		return cleanVersionTag(t.Version), true
 	}
-	return cleanVersionTag(t.Version), true
+	if t.DotnetVersion != "" && (t.Method == MethodNuGet || t.Method == MethodDotnetTool) {
+		return cleanVersionTag(t.DotnetVersion), true
+	}
+	return "", false
+}
+
+// normalizeVersion canonicalizes a version for equality checks: display
+// cleanup (cleanVersionTag), lower case, build metadata ("+sha") dropped and
+// trailing ".0" components of the numeric core trimmed, so "v1.3.14",
+// "1.3.14.0" and "1.3.14+abc" all compare equal.
+func normalizeVersion(v string) string {
+	v = strings.ToLower(cleanVersionTag(strings.TrimSpace(v)))
+	if i := strings.IndexByte(v, '+'); i >= 0 {
+		v = v[:i]
+	}
+	core, pre, hasPre := strings.Cut(v, "-")
+	parts := strings.Split(core, ".")
+	for len(parts) > 1 && parts[len(parts)-1] == "0" {
+		parts = parts[:len(parts)-1]
+	}
+	core = strings.Join(parts, ".")
+	if hasPre {
+		return core + "-" + pre
+	}
+	return core
+}
+
+// isUpdate reports whether a tool installed at `installed` should be offered
+// `latest`. Unknown values on either side ("", "latest", "–") never count.
+func isUpdate(installed, latest string) bool {
+	a, b := normalizeVersion(installed), normalizeVersion(latest)
+	if a == "" || b == "" || a == "–" || b == "–" {
+		return false
+	}
+	return a != b
+}
+
+// directURLDate returns the Last-Modified date (2006.01.02) of a direct
+// download, or "" when the server does not report one.
+func directURLDate(ctx context.Context, url string) string {
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := httpDo(ctx, client, http.MethodHead, rewriteMirror(url, currentAssetMirror()))
+	if err != nil {
+		return ""
+	}
+	_ = resp.Body.Close()
+	if lm := resp.Header.Get("Last-Modified"); lm != "" {
+		if parsed, err := http.ParseTime(lm); err == nil {
+			return parsed.UTC().Format("2006.01.02")
+		}
+	}
+	return ""
+}
+
+// latestVersion asks upstream for a tool's newest version ("" on failure,
+// "–" for a direct download that reports no date). Pinned tools answer with
+// their pin.
+func latestVersion(ctx context.Context, t ToolDef) string {
+	if pin, ok := pinnedVersion(t); ok {
+		return pin
+	}
+	switch {
+	case t.Method == MethodGitHubRelease && t.Repo != "":
+		if tag, err := fetchLatestVersion(ctx, t.Repo); err == nil {
+			return cleanVersionTag(tag)
+		}
+	case t.Method == MethodDotnetTool && t.DotnetID != "",
+		t.Method == MethodNuGet && t.DotnetID != "":
+		if ver, err := fetchNuGetLatestVersion(ctx, t.DotnetID); err == nil {
+			return ver
+		}
+	case t.Method == MethodGitBuild && t.Repo != "":
+		if commit, err := fetchLatestCommit(ctx, t.Repo); err == nil {
+			return commit
+		}
+	case t.Method == MethodDirectURL && t.URL != "":
+		if d := directURLDate(ctx, t.URL); d != "" {
+			return d
+		}
+		return "–"
+	}
+	return ""
 }
 
 // CheckAllWithUpdates returns status of all tools including latest GitHub versions.
@@ -357,59 +445,10 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 	statuses := make([]ToolStatus, 0, len(Registry))
 	for _, t := range Registry {
 		st := m.Check(t.Name)
-
 		// Clean up stored version for display
 		st.Version = cleanVersionTag(st.Version)
-
-		if pin, ok := pinnedVersion(t); ok {
-			st.LatestVersion = pin
-			statuses = append(statuses, st)
-			continue
-		}
-
-		switch {
-		case t.Method == MethodGitHubRelease && t.Repo != "":
-			tagName, err := fetchLatestVersion(ctx, t.Repo)
-			if err == nil {
-				tagName = cleanVersionTag(tagName)
-				st.LatestVersion = tagName
-				if st.Installed && st.Version != "" && st.Version != tagName {
-					st.UpdateAvailable = true
-				}
-			}
-			// On error: LatestVersion stays empty, frontend shows "–"
-		case t.Method == MethodDotnetTool && t.DotnetID != "",
-			t.Method == MethodNuGet && t.DotnetID != "":
-			ver, err := fetchNuGetLatestVersion(ctx, t.DotnetID)
-			if err == nil {
-				st.LatestVersion = ver
-				if st.Installed && st.Version != "" && st.Version != ver {
-					st.UpdateAvailable = true
-				}
-			}
-		case t.Method == MethodGitBuild && t.Repo != "":
-			commit, err := fetchLatestCommit(ctx, t.Repo)
-			if err == nil && commit != "" {
-				st.LatestVersion = commit
-				if st.Installed && st.Version != "" && st.Version != commit {
-					st.UpdateAvailable = true
-				}
-			}
-		case t.Method == MethodDirectURL && t.URL != "":
-			client := &http.Client{Timeout: 15 * time.Second}
-			resp, err := httpDo(ctx, client, http.MethodHead, t.URL)
-			if err == nil {
-				_ = resp.Body.Close()
-				if lm := resp.Header.Get("Last-Modified"); lm != "" {
-					if parsed, err := time.Parse(time.RFC1123, lm); err == nil {
-						st.LatestVersion = parsed.Format("2006.01.02")
-					}
-				}
-			}
-			if st.LatestVersion == "" {
-				st.LatestVersion = "–"
-			}
-		}
+		st.LatestVersion = latestVersion(ctx, t)
+		st.UpdateAvailable = st.Installed && isUpdate(st.Version, st.LatestVersion)
 		statuses = append(statuses, st)
 	}
 	return statuses
@@ -417,57 +456,15 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 
 // CheckLatestVersionSingle checks latest version for one tool by name.
 // Returns the latest version string and whether an update is available.
-func (m *Manager) CheckLatestVersionSingle(name string) (latestVersion string, updateAvailable bool) {
+func (m *Manager) CheckLatestVersionSingle(name string) (latest string, updateAvailable bool) {
 	tool, ok := FindByName(name)
 	if !ok {
 		return "", false
 	}
-
 	ctx := context.Background() // no caller context; probes are Timeout-bounded
 	st := m.Check(name)
-	installedVersion := cleanVersionTag(st.Version)
-
-	if pin, ok := pinnedVersion(tool); ok {
-		return pin, false
-	}
-
-	switch {
-	case tool.Method == MethodGitHubRelease && tool.Repo != "":
-		ver, err := fetchLatestVersion(ctx, tool.Repo)
-		if err == nil {
-			latestVersion = cleanVersionTag(ver)
-		}
-	case tool.Method == MethodGitBuild && tool.Repo != "":
-		commit, err := fetchLatestCommit(ctx, tool.Repo)
-		if err == nil {
-			latestVersion = commit
-		}
-	case tool.Method == MethodDotnetTool && tool.DotnetID != "",
-		tool.Method == MethodNuGet && tool.DotnetID != "":
-		ver, err := fetchNuGetLatestVersion(ctx, tool.DotnetID)
-		if err == nil {
-			latestVersion = ver
-		}
-	case tool.Method == MethodDirectURL && tool.URL != "":
-		client := &http.Client{Timeout: 15 * time.Second}
-		resp, err := httpDo(ctx, client, http.MethodHead, tool.URL)
-		if err == nil {
-			_ = resp.Body.Close()
-			if lm := resp.Header.Get("Last-Modified"); lm != "" {
-				if parsed, err := time.Parse(time.RFC1123, lm); err == nil {
-					latestVersion = parsed.Format("2006.01.02")
-				}
-			}
-		}
-		if latestVersion == "" {
-			latestVersion = "–"
-		}
-	}
-
-	if st.Installed && installedVersion != "" && latestVersion != "" && installedVersion != latestVersion {
-		updateAvailable = true
-	}
-	return
+	latest = latestVersion(ctx, tool)
+	return latest, st.Installed && isUpdate(st.Version, latest)
 }
 
 // RuntimeEnv returns environment variables for local runtimes (PATH prepend, JAVA_HOME).
