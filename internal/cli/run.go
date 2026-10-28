@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -24,6 +25,12 @@ import (
 var stderrIsTerminal = func() bool {
 	fd := os.Stderr.Fd()
 	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
+}
+
+// hasRunSummary excludes early scan/cancellation/write failures, which may have
+// left an older summary in a reused output directory.
+func hasRunSummary(err error) bool {
+	return err == nil || errors.Is(err, engine.ErrTargetsFailed) || errors.Is(err, engine.ErrNoSuccessfulTargets)
 }
 
 // RunOptions holds CLI run command options.
@@ -133,8 +140,9 @@ func Run(opts RunOptions) error {
 		GameDataOut:  opts.GameDataOut,
 	}
 
-	if err := eng.Run(ctx, pipeOpts, events); err != nil {
-		return err
+	runErr := eng.Run(ctx, pipeOpts, events)
+	if !hasRunSummary(runErr) {
+		return runErr
 	}
 
 	// Output summary JSON to stdout
@@ -158,11 +166,14 @@ func Run(opts RunOptions) error {
 					summary.Stats.Total, summary.Stats.Success, summary.Stats.Failed, summary.Stats.Skipped, summary.Stats.Duration)
 			}
 			if summary.Stats.Success == 0 {
+				if runErr != nil {
+					return runErr
+				}
 				return fmt.Errorf("nothing was decompiled in %s: %d failed, %d skipped (unsupported or unrecognised input?)",
 					opts.Target, summary.Stats.Failed, summary.Stats.Skipped)
 			}
 		}
 	}
 
-	return nil
+	return runErr
 }

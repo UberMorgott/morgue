@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -104,5 +105,32 @@ func TestMaybeRecurseUnpack_SkipsNonNSIS(t *testing.T) {
 
 	if len(evs) != 0 {
 		t.Errorf("non-NSIS result must not emit unpack events, got %d", len(evs))
+	}
+}
+
+func TestMaybeRecurseUnpackPropagatesChildOutcome(t *testing.T) {
+	e := New(config.Default(), t.TempDir())
+	tr := makeExtractedTarget(t)
+	child := filepath.Join(tr.Output, "extracted", "mscorlib.dll")
+	if err := os.WriteFile(child, []byte("inert fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ch := make(chan PipelineEvent, 100)
+	err := e.maybeRecurseUnpack(context.Background(), &Options{}, tr, emitter{ch: ch})
+	if !errors.Is(err, ErrNoSuccessfulTargets) {
+		t.Fatalf("nested error = %v, want no successful targets", err)
+	}
+	close(ch)
+	childTerminals := 0
+	for event := range ch {
+		if event.Done || event.RunOutcome != "" {
+			t.Fatal("nested run terminated parent")
+		}
+		if event.Target == child && event.TargetOutcome == OutcomeSkipped {
+			childTerminals++
+		}
+	}
+	if childTerminals != 1 {
+		t.Fatalf("child terminals = %d, want 1", childTerminals)
 	}
 }

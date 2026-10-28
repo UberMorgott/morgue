@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -23,7 +24,7 @@ func runAndDrain(t *testing.T, e *Engine, opts Options) {
 	err := e.Run(context.Background(), opts, ch)
 	close(ch)
 	<-done
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrNoSuccessfulTargets) {
 		t.Fatalf("Run() error: %v", err)
 	}
 }

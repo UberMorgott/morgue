@@ -1,10 +1,15 @@
 package cli
 
 import (
+	"encoding/json"
+	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/UberMorgott/morgue/internal/engine"
 )
 
 // captureStderr swaps os.Stderr for a pipe, runs fn, and returns everything
@@ -28,6 +33,73 @@ func captureStderr(t *testing.T, fn func()) string {
 	fn()
 	_ = w.Close()
 	return <-done
+}
+
+func TestHasRunSummary(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"success", nil, true},
+		{"target failures", engine.ErrTargetsFailed, true},
+		{"no successful targets", engine.ErrNoSuccessfulTargets, true},
+		{"scan or write error", errors.New("scan failed"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := hasRunSummary(tc.err); got != tc.want {
+				t.Fatalf("hasRunSummary() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func captureStdout(t *testing.T, fn func() error) (string, error) {
+	t.Helper()
+	original := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	defer func() { os.Stdout = original }()
+	done := make(chan string, 1)
+	go func() { data, _ := io.ReadAll(r); _ = r.Close(); done <- string(data) }()
+	runErr := fn()
+	_ = w.Close()
+	return <-done, runErr
+}
+
+func TestRunQuietUnsuccessfulRunKeepsJSONSummary(t *testing.T) {
+	out, err := captureStdout(t, func() error {
+		return Run(RunOptions{Target: t.TempDir(), Output: t.TempDir(), Quiet: true})
+	})
+	if !errors.Is(err, engine.ErrNoSuccessfulTargets) {
+		t.Fatalf("Run() = %v, want no successful targets", err)
+	}
+	var summary engine.PipelineSummary
+	if err := json.Unmarshal([]byte(out), &summary); err != nil {
+		t.Fatalf("stdout is not summary JSON: %q: %v", out, err)
+	}
+	if summary.Stats.Total != 0 {
+		t.Fatalf("total = %d, want 0", summary.Stats.Total)
+	}
+}
+
+func TestRunScanFailureDoesNotPrintStaleSummary(t *testing.T) {
+	output := t.TempDir()
+	if err := os.WriteFile(filepath.Join(output, "summary.json"), []byte(`{"stats":{"total":99,"success":99}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := captureStdout(t, func() error {
+		return Run(RunOptions{Target: filepath.Join(t.TempDir(), "missing"), Output: output, Quiet: true})
+	})
+	if err == nil {
+		t.Fatal("missing input succeeded")
+	}
+	if strings.TrimSpace(out) != "" {
+		t.Fatalf("stale summary printed after scan failure: %s", out)
+	}
 }
 
 // TestRunWatchNonTTYNote verifies Issue 3: when --watch is requested but stderr

@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -28,22 +29,22 @@ const maxUnpackDepth = 3
 // the depth cap, it runs the full pipeline again over the extracted files,
 // writing results to <targetOutput>/decompiled. The nested run shares the same
 // event channel (Depth>0 suppresses its terminal "done").
-func (e *Engine) maybeRecurseUnpack(ctx context.Context, opts *Options, tr TargetResult, em emitter) {
+func (e *Engine) maybeRecurseUnpack(ctx context.Context, opts *Options, tr TargetResult, em emitter) error {
 	if tr.Error != nil || tr.Recon.Kind != recon.NSIS || tr.Output == "" {
-		return
+		return nil
 	}
 	extracted := filepath.Join(tr.Output, "extracted")
 	info, err := os.Stat(extracted)
 	if err != nil || !info.IsDir() {
-		return
+		return nil
 	}
 	if entries, _ := os.ReadDir(extracted); len(entries) == 0 {
-		return // nothing unpacked — don't recurse
+		return nil // nothing unpacked — don't recurse
 	}
 	if opts.Depth >= maxUnpackDepth {
 		em.emitWarn("unpack", tr.Output, fmt.Sprintf(
 			"max unpack depth (%d) reached — not recursing into extracted tree", maxUnpackDepth))
-		return
+		return nil
 	}
 
 	nested := *opts
@@ -53,7 +54,7 @@ func (e *Engine) maybeRecurseUnpack(ctx context.Context, opts *Options, tr Targe
 	nested.Recipe = "" // auto-match each extracted file
 	if err := os.MkdirAll(nested.Output, 0755); err != nil {
 		em.emitErr("unpack", extracted, fmt.Errorf("create nested output dir: %w", err))
-		return
+		return err
 	}
 
 	em.send(PipelineEvent{
@@ -65,7 +66,9 @@ func (e *Engine) maybeRecurseUnpack(ctx context.Context, opts *Options, tr Targe
 
 	if err := e.Run(ctx, nested, em.ch); err != nil {
 		em.emitErr("unpack", extracted, err)
+		return err
 	}
+	return nil
 }
 
 // outputHeadroom is how many characters a run needs below MaxPath for the
@@ -114,16 +117,31 @@ type fileTask struct {
 }
 
 // Run executes the full pipeline: scan → analyse all → emit tools → execute all → save.
-func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEvent) error {
+func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEvent) (runErr error) {
 	startTime := time.Now()
 	em := emitter{ch: events}
 	defer func() {
+		if ctx.Err() != nil && !errors.Is(runErr, ctx.Err()) {
+			runErr = errors.Join(runErr, ctx.Err())
+		}
 		// Only the top-level run signals terminal completion; a nested unpack run
 		// (Depth > 0) must not emit "done" or the UI would finish early.
 		if opts.Depth == 0 {
-			em.send(PipelineEvent{Phase: "done", Done: true, OutputPath: opts.Output})
+			outcome := errorOutcome(runErr)
+			phase, message := "done", "Pipeline complete"
+			if outcome != OutcomeSuccess {
+				phase, message = outcome, runErr.Error()
+			}
+			em.send(PipelineEvent{Phase: phase, Target: opts.Input, Message: message, Done: true, RunOutcome: outcome, Error: runErr, OutputPath: opts.Output})
 		}
 	}()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if _, err := os.Stat(opts.Input); err != nil {
+		em.emitErr("scan", opts.Input, err)
+		return fmt.Errorf("scan: %w", err)
+	}
 
 	warnDeepOutput(opts.Output, em)
 
@@ -149,6 +167,13 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 	})
 
 	var results []TargetResult
+	recordResult := func(result TargetResult) {
+		if ctx.Err() != nil && result.Error != nil {
+			result.Error = errors.Join(result.Error, ctx.Err())
+		}
+		results = append(results, result)
+		em.targetResult(result)
+	}
 	var tasks []fileTask
 
 	// Pass 1 (analysis): recon + match for every file, collect required tools.
@@ -169,7 +194,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			// Skip-list check
 			if !opts.NoSkip {
 				if skip, reason := e.ShouldSkip(filepath.Base(filePath)); skip {
-					results = append(results, TargetResult{
+					recordResult(TargetResult{
 						Group: group, Recon: recon.Result{Path: filePath},
 						Skipped: true, SkipReason: reason,
 					})
@@ -180,7 +205,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 
 			// Exclude patterns
 			if matchesExclude(filepath.Base(filePath), opts.Exclude) {
-				results = append(results, TargetResult{
+				recordResult(TargetResult{
 					Group: group, Recon: recon.Result{Path: filePath},
 					Skipped: true, SkipReason: "excluded",
 				})
@@ -191,7 +216,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			// Recon + kind override
 			reconResult, err := e.classifyTarget(ctx, group, filePath, em)
 			if err != nil {
-				results = append(results, TargetResult{
+				recordResult(TargetResult{
 					Group: group, Recon: recon.Result{Path: filePath}, Error: err,
 				})
 				continue
@@ -201,7 +226,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			rec := e.MatchRecipe(&reconResult, opts.Recipe)
 			if rec == nil {
 				em.emit("match", filePath, "No matching recipe found")
-				results = append(results, TargetResult{
+				recordResult(TargetResult{
 					Group: group, Recon: reconResult,
 					Skipped: true, SkipReason: "no matching recipe",
 				})
@@ -282,7 +307,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 		// a local `dotnet --list-runtimes` probe that already bounds itself to 10s. Threading a
 		// ctx would change RuntimePath's signature across engine/recipe/services for no gain.
 		if err := e.ensureRuntimeDeps(t.filePath, t.recipe, em, skipAssets); err != nil {
-			results = append(results, TargetResult{
+			recordResult(TargetResult{
 				Group: t.group, Recon: t.recon, Recipe: t.recipe,
 				Error: fmt.Errorf("failed to install required runtime"),
 			})
@@ -291,7 +316,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 
 		// Check required tools
 		if err := e.ensureTools(ctx, t.filePath, t.recipe, em, skipAssets); err != nil {
-			results = append(results, TargetResult{
+			recordResult(TargetResult{
 				Group: t.group, Recon: t.recon, Recipe: t.recipe, Error: err,
 			})
 			continue
@@ -312,11 +337,13 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 
 		// Execute non-native recipes immediately
 		tr := e.executeRecipe(ctx, t.filePath, t.outName, &opts, t.recipe, t.recon, t.group, em)
-		results = append(results, tr)
 
 		// Installer recipes (NSIS) unpack a nested file tree; recurse into it so
 		// the extracted binaries are themselves classified and decompiled.
-		e.maybeRecurseUnpack(ctx, &opts, tr, em)
+		if err := e.maybeRecurseUnpack(ctx, &opts, tr, em); err != nil {
+			tr.Error = fmt.Errorf("nested targets: %w", err)
+		}
+		recordResult(tr)
 	}
 
 	// Execute native tasks in two phases: strings first, then ghidra.
@@ -354,25 +381,25 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				}
 			}
 			tr := e.executeRecipeWithFilter(ctx, t.filePath, t.outName, &opts, t.recipe, t.recon, t.group, em, "ghidra")
-			results = append(results, tr)
+			recordResult(tr)
 		}
 	} else if len(nativeTasks) == 1 {
 		// Single native file — no batching needed, run all steps
 		t := nativeTasks[0]
 		tr := e.executeRecipe(ctx, t.filePath, t.outName, &opts, t.recipe, t.recon, t.group, em)
-		results = append(results, tr)
+		recordResult(tr)
 	}
 
 	// Write summary.json
 	summary := buildSummary(results, time.Since(startTime))
 	summaryJSON, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {
-		em.emitWarn("done", opts.Output, fmt.Sprintf("could not encode summary.json: %v", err))
+		return fmt.Errorf("encode summary.json: %w", err)
 	} else if err := os.WriteFile(filepath.Join(opts.Output, "summary.json"), summaryJSON, 0644); err != nil {
-		em.emitWarn("done", opts.Output, fmt.Sprintf("could not write summary.json: %v", err))
+		return fmt.Errorf("write summary.json: %w", err)
 	}
 
-	return nil
+	return resultsError(results)
 }
 
 // classifyTarget runs recon, applies scanner group kind override, and emits events.

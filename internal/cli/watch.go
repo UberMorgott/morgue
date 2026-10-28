@@ -142,7 +142,7 @@ func RunWatch(opts RunOptions) error {
 	// Output summary JSON to stdout
 	summaryPath := filepath.Join(opts.Output, "summary.json")
 	data, err := os.ReadFile(filepath.Clean(summaryPath))
-	if err == nil {
+	if err == nil && hasRunSummary(pipeErr) {
 		var pretty any
 		if json.Unmarshal(data, &pretty) == nil {
 			enc := json.NewEncoder(os.Stdout)
