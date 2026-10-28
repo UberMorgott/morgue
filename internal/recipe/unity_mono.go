@@ -134,10 +134,7 @@ func (u *UnityMono) Execute(ctx *Context) error {
 	}
 	srcDir := filepath.Join(ctx.Output, "src")
 	_ = os.MkdirAll(srcDir, 0755)
-	ilspyArgs := []string{"-p", "-o", srcDir, ctx.Target}
-	if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
-		ilspyArgs = append(ilspyArgs, "--languageversion", ctx.Config.CSharpLanguageVersion)
-	}
+	ilspyArgs := ilspyCommandArgs(ctx, ctx.Target, []string{"-p", "-o", srcDir})
 	ilspyBin, ilspyRun := dotnetExec(ctx.Ctx, ilspyPath, ilspyArgs)
 	result, err := util.RunCmd(ctx.Ctx, ilspyBin, ilspyRun, "")
 	exitCode := -1
@@ -153,10 +150,7 @@ func (u *UnityMono) Execute(ctx *Context) error {
 		logTool("ilspycmd", msg)
 		_ = os.RemoveAll(srcDir)
 		_ = os.MkdirAll(srcDir, 0755)
-		retryArgs := []string{"-o", srcDir, ctx.Target}
-		if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
-			retryArgs = append(retryArgs, "--languageversion", ctx.Config.CSharpLanguageVersion)
-		}
+		retryArgs := ilspyCommandArgs(ctx, ctx.Target, []string{"-o", srcDir})
 		urb, ura := dotnetExec(ctx.Ctx, ilspyPath, retryArgs)
 		result, err = util.RunCmd(ctx.Ctx, urb, ura, "")
 		exitCode = -1
@@ -172,7 +166,7 @@ func (u *UnityMono) Execute(ctx *Context) error {
 
 			// Fallback: per-type decompilation
 			logTool("ilspycmd", "ilspycmd whole-assembly failed, trying per-type fallback...")
-			fallbackOK := perTypeFallback(ctx.Ctx, ilspyPath, ctx.Target, srcDir, func(msg string) { logTool("ilspycmd", msg) })
+			fallbackOK := perTypeFallback(ctx, ilspyPath, ctx.Target, srcDir, func(msg string) { logTool("ilspycmd", msg) })
 			if !fallbackOK {
 				report(2, Failed, time.Since(start), originalErr, "ilspycmd")
 				return originalErr

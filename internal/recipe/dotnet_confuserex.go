@@ -326,10 +326,7 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 		report(7, Failed, time.Since(start), err, "ilspycmd")
 		return fmt.Errorf("create src dir: %w", err)
 	}
-	ilspyArgs := []string{"-p", "-o", srcDir, current}
-	if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
-		ilspyArgs = append(ilspyArgs, "--languageversion", ctx.Config.CSharpLanguageVersion)
-	}
+	ilspyArgs := ilspyCommandArgs(ctx, current, []string{"-p", "-o", srcDir}, extractedDLLs...)
 	ilspyBin, ilspyRun := dotnetExec(ctx.Ctx, ilspyPath, ilspyArgs)
 	result, runErr := util.RunCmd(ctx.Ctx, ilspyBin, ilspyRun, "")
 	exitCode := -1
@@ -931,10 +928,7 @@ func (d *DotnetConfuserEx) decompileExtracted(
 			logTool("ilspycmd", fmt.Sprintf("%s: create src dir: %v — skipping", name, err))
 			continue
 		}
-		ilspyArgs := []string{"-p", "-o", childSrc, stage}
-		if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
-			ilspyArgs = append(ilspyArgs, "--languageversion", ctx.Config.CSharpLanguageVersion)
-		}
+		ilspyArgs := ilspyCommandArgs(ctx, stage, []string{"-p", "-o", childSrc}, dlls...)
 		ilspyBin, ilspyRun := dotnetExec(ctx.Ctx, ilspyPath, ilspyArgs)
 		r, runErr := util.RunCmd(ctx.Ctx, ilspyBin, ilspyRun, "")
 		if runErr != nil || r == nil || r.ExitCode != 0 {

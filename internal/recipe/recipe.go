@@ -80,6 +80,8 @@ type Context struct {
 	Ctx      context.Context
 	Config   *config.Config
 	Pause    PauseChecker
+	// ReferencePaths adds dependency search directories for managed decompilers.
+	ReferencePaths []string
 	// Obfuscator is the recon-detected obfuscator name (e.g. "ConfuserEx" or
 	// the generic "Obfuscated"). Recipes that handle multiple obfuscators use
 	// it to pick tool flags — e.g. de4dot forced `-p crx` for ConfuserEx vs

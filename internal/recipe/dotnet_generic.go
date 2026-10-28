@@ -2,7 +2,6 @@ package recipe
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -131,10 +130,7 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 	}
 	srcDir := filepath.Join(ctx.Output, "src")
 	_ = os.MkdirAll(srcDir, 0755)
-	ilspyArgs := []string{"-p", "-o", srcDir, ctx.Target}
-	if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
-		ilspyArgs = append(ilspyArgs, "--languageversion", ctx.Config.CSharpLanguageVersion)
-	}
+	ilspyArgs := ilspyCommandArgs(ctx, ctx.Target, []string{"-p", "-o", srcDir})
 	ilspyBin, ilspyRun := dotnetExec(ctx.Ctx, ilspyPath, ilspyArgs)
 	result, err := util.RunCmd(ctx.Ctx, ilspyBin, ilspyRun, "")
 	exitCode := -1
@@ -150,10 +146,7 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 		logTool("ilspycmd", msg)
 		_ = os.RemoveAll(srcDir)
 		_ = os.MkdirAll(srcDir, 0755)
-		retryArgs := []string{"-o", srcDir, ctx.Target}
-		if ctx.Config.CSharpLanguageVersion != "Auto" && ctx.Config.CSharpLanguageVersion != "" {
-			retryArgs = append(retryArgs, "--languageversion", ctx.Config.CSharpLanguageVersion)
-		}
+		retryArgs := ilspyCommandArgs(ctx, ctx.Target, []string{"-o", srcDir})
 		rb, ra := dotnetExec(ctx.Ctx, ilspyPath, retryArgs)
 		result, err = util.RunCmd(ctx.Ctx, rb, ra, "")
 		exitCode = -1
@@ -169,7 +162,7 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 
 			// Fallback: per-type decompilation
 			logTool("ilspycmd", "ilspycmd whole-assembly failed, trying per-type fallback...")
-			fallbackOK := perTypeFallback(ctx.Ctx, ilspyPath, ctx.Target, srcDir, func(msg string) { logTool("ilspycmd", msg) })
+			fallbackOK := perTypeFallback(ctx, ilspyPath, ctx.Target, srcDir, func(msg string) { logTool("ilspycmd", msg) })
 			if !fallbackOK {
 				report(2, Failed, time.Since(start), originalErr, "ilspycmd")
 				return originalErr
@@ -203,9 +196,9 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 
 // perTypeFallback enumerates all types in an assembly and decompiles them
 // one by one. Returns true if at least one type was decompiled successfully.
-func perTypeFallback(ctx context.Context, ilspyPath, target, srcDir string, log func(string)) bool {
-	lb, la := dotnetExec(ctx, ilspyPath, []string{"-l", "cisde", "--disable-updatecheck", target})
-	listResult, listErr := util.RunCmd(ctx, lb, la, "")
+func perTypeFallback(ctx *Context, ilspyPath, target, srcDir string, log func(string)) bool {
+	lb, la := dotnetExec(ctx.Ctx, ilspyPath, ilspyCommandArgs(ctx, target, []string{"-l", "cisde", "--disable-updatecheck"}))
+	listResult, listErr := util.RunCmd(ctx.Ctx, lb, la, "")
 	if listErr != nil || listResult == nil || listResult.ExitCode != 0 {
 		msg := "per-type fallback: failed to list types"
 		if listResult != nil && listResult.Stderr != "" {
@@ -228,8 +221,8 @@ func perTypeFallback(ctx context.Context, ilspyPath, target, srcDir string, log 
 	succeeded := 0
 	failed := 0
 	for _, typeName := range types {
-		tb, ta := dotnetExec(ctx, ilspyPath, []string{"-t", typeName, "-o", srcDir, "--disable-updatecheck", target})
-		typeResult, _ := util.RunCmd(ctx, tb, ta, "")
+		tb, ta := dotnetExec(ctx.Ctx, ilspyPath, ilspyCommandArgs(ctx, target, []string{"-t", typeName, "-o", srcDir, "--disable-updatecheck"}))
+		typeResult, _ := util.RunCmd(ctx.Ctx, tb, ta, "")
 		if typeResult != nil && typeResult.ExitCode == 0 {
 			succeeded++
 		} else {
