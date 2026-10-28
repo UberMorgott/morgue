@@ -143,6 +143,9 @@ func countBucketFiles(t *testing.T, funcsDir string) int {
 // reproduces the blowup deterministically: the old code peaks ~816 MiB (FAIL),
 // while a streaming fix stays roughly constant in function count.
 func TestSplitManyRecordsBoundedMemory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("2M-record heap-bound stress test: skipped under -short (the -race lane), where the detector's own overhead swamps the bound")
+	}
 	const (
 		n          = 2_000_000
 		bodyLines  = 3
@@ -215,6 +218,9 @@ const recordTruncationMarker = "[record body truncated by Morgue"
 //     fired and recBuilder stopped growing, rather than the record just
 //     happening to stream through under the limit.
 func TestSplitPathologicalHugeRecord(t *testing.T) {
+	if testing.Short() {
+		t.Skip("4M-line heap-bound stress test: skipped under -short (the -race lane), where the detector's own overhead swamps the bound")
+	}
 	const (
 		// Each body line is ~28 bytes; >2.4M lines guarantees the accumulated
 		// record body crosses maxRecordBytes (64MiB) so the cap MUST fire.

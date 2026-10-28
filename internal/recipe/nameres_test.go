@@ -136,6 +136,9 @@ FUN_140001000,0x140001000,Other::Method
 // Peak HeapAlloc is sampled by a goroutine (see sampleHeap); a flat peak proves
 // the pass does not scale memory with the function count.
 func TestResolveNamesBoundedMemory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("1M-function heap-bound stress test: skipped under -short (the -race lane), where the detector's own overhead swamps the bound")
+	}
 	const (
 		n       = 1_000_000
 		heapCap = 256 << 20
