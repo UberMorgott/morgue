@@ -42,6 +42,28 @@ type Run struct {
 	order       []string
 	result      runmodel.RunResult
 	eventErr    error
+	// overflow holds must-keep lifecycle/outcome events that could not be sent
+	// because the consumer's buffer was momentarily full. They are re-delivered,
+	// in order, on the next emit and in a bounded final flush, so a slow (but
+	// draining) consumer never loses a terminal state. Guarded by mu.
+	overflow []runmodel.Event
+}
+
+// maxFinalFlush bounds the busy-wait that drains pending must-keep events at the
+// end of a run. The budget resets on every successful delivery, so a draining
+// consumer (however slow) always completes, while a consumer that reads nothing
+// gives up quickly instead of deadlocking the engine (plan C2).
+const maxFinalFlush = 50000
+
+// mustKeep reports whether an event is a lifecycle/outcome record that must not
+// be dropped under buffer pressure (as opposed to progress/log notifications).
+func mustKeep(t runmodel.EventType) bool {
+	switch t {
+	case runmodel.EventRunStarted, runmodel.EventTargetDiscovered, runmodel.EventTargetFinished, runmodel.EventRunFinished:
+		return true
+	default:
+		return false
+	}
 }
 
 type runTarget struct {
@@ -222,6 +244,10 @@ func (r *Run) Execute(ctx context.Context, pause *PauseGate, events chan<- runmo
 	r.mu.Unlock()
 	err := r.engine.runPipeline(ctx, r.options(pause), nil)
 	r.mu.Lock()
+	// Best-effort delivery of any must-keep events (e.g. run.finished) still
+	// queued behind a momentarily full buffer, bounded so a dead consumer cannot
+	// hang the engine.
+	r.finalFlushLocked()
 	result := r.result
 	err = errors.Join(err, r.eventErr)
 	r.state = 2
@@ -295,10 +321,59 @@ func (r *Run) emitLocked(id, parent string, ts time.Time, p runmodel.Payload) {
 		return
 	}
 	r.seq++
-	if r.events != nil {
+	if r.events == nil {
+		return
+	}
+	// Deliver any backed-up must-keep events first, in order, so this event never
+	// jumps ahead of an older one still waiting for buffer space.
+	r.flushOverflowLocked()
+	if len(r.overflow) > 0 {
+		// Still backed up: preserve ordering. A must-keep event joins the queue;
+		// a progress/log notification is dropped (RunResult stays authoritative).
+		if mustKeep(ev.Type) {
+			r.overflow = append(r.overflow, ev)
+		}
+		return
+	}
+	select {
+	case r.events <- ev:
+	default:
+		// Buffer full: never stall the engine. A progress/log event is dropped;
+		// a must-keep lifecycle/outcome event is staged for later delivery.
+		if mustKeep(ev.Type) {
+			r.overflow = append(r.overflow, ev)
+		}
+	}
+}
+
+// flushOverflowLocked re-delivers staged must-keep events in order, stopping at
+// the first that still cannot be sent without blocking. Caller holds mu.
+func (r *Run) flushOverflowLocked() {
+	for len(r.overflow) > 0 {
 		select {
-		case r.events <- ev:
+		case r.events <- r.overflow[0]:
+			r.overflow = r.overflow[1:]
 		default:
+			return
+		}
+	}
+}
+
+// finalFlushLocked makes a bounded best effort to deliver the remaining staged
+// must-keep events (notably run.finished) once the run is over. The attempt
+// budget resets on every delivery, so a draining consumer always drains while a
+// dead consumer cannot hang the engine. Caller holds mu.
+func (r *Run) finalFlushLocked() {
+	if r.events == nil {
+		return
+	}
+	for attempts := 0; len(r.overflow) > 0 && attempts < maxFinalFlush; attempts++ {
+		select {
+		case r.events <- r.overflow[0]:
+			r.overflow = r.overflow[1:]
+			attempts = 0
+		default:
+			runtime.Gosched()
 		}
 	}
 }
