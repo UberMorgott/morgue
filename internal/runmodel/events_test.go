@@ -3,6 +3,7 @@ package runmodel
 import (
 	"encoding/json"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -69,5 +70,49 @@ func TestIdentityIncludesParentAndRelativePath(t *testing.T) {
 	}
 	if a != TargetID("", `a\game.dll`) {
 		t.Fatal("path separators must normalize")
+	}
+}
+
+// The published schema must not silently drift from fields adapters consume.
+func TestPublishedSchemaPayloadFields(t *testing.T) {
+	data, err := os.ReadFile("../../docs/schemas/events-v2.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema struct {
+		Defs map[string]struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+			Required   []string                   `json:"required"`
+		} `json:"$defs"`
+		OneOf []json.RawMessage `json:"oneOf"`
+	}
+	if err := json.Unmarshal(data, &schema); err != nil {
+		t.Fatal(err)
+	}
+	payloads := []Payload{RunStarted{}, ScanCompleted{}, TargetDiscovered{}, TargetFinished{}, StepProgress{}, ToolProgress{}, ArtifactWritten{}, QualityUpdated{}, LogRecord{}, RunFinished{}}
+	if len(schema.OneOf) != len(payloads) {
+		t.Fatalf("schema event variants=%d, want %d", len(schema.OneOf), len(payloads))
+	}
+	for _, payload := range payloads {
+		typ := reflect.TypeOf(payload)
+		def, ok := schema.Defs[typ.Name()]
+		if !ok {
+			t.Fatalf("missing schema for %s", typ.Name())
+		}
+		required := map[string]bool{}
+		for _, name := range def.Required {
+			required[name] = true
+		}
+		for i := 0; i < typ.NumField(); i++ {
+			field := typ.Field(i)
+			tag := field.Tag.Get("json")
+			name := strings.Split(tag, ",")[0]
+			if _, ok := def.Properties[name]; !ok {
+				t.Errorf("schema missing %s.%s", typ.Name(), name)
+			}
+			if !strings.Contains(tag, ",omitempty") && !required[name] {
+				t.Errorf("schema does not require %s.%s", typ.Name(), name)
+			}
+		}
 	}
 }

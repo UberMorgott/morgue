@@ -2,20 +2,16 @@ package engine
 
 // emitter wraps the events channel with convenience methods.
 type emitter struct {
-	ch chan<- PipelineEvent
+	ch   chan<- PipelineEvent
+	run  *Run
+	opts Options
 }
 
 func (em emitter) emit(phase, target, msg string) {
-	if em.ch == nil {
-		return
-	}
-	em.ch <- PipelineEvent{Phase: phase, Target: target, Message: msg}
+	em.send(PipelineEvent{Phase: phase, Target: target, Message: msg})
 }
 
 func (em emitter) emitErr(phase, target string, err error) {
-	if em.ch == nil {
-		return
-	}
 	em.send(PipelineEvent{Phase: phase, Target: target, Error: err})
 }
 
@@ -25,18 +21,17 @@ func (em emitter) emitErr(phase, target string, err error) {
 // non-fatal noise — a missing OPTIONAL tool, or benign Windows cert-store output
 // — that must be visible but must not read as a pipeline error.
 func (em emitter) emitWarn(phase, target, msg string) {
-	if em.ch == nil {
-		return
-	}
-	em.ch <- PipelineEvent{Phase: phase, Target: target, Message: msg, Severity: "warn"}
+	em.send(PipelineEvent{Phase: phase, Target: target, Message: msg, Severity: "warn"})
 }
 
 func (em emitter) send(ev PipelineEvent) {
-	if em.ch == nil {
-		return
-	}
 	if ev.Error != nil {
 		ev.ErrorMsg = ev.Error.Error()
 	}
-	em.ch <- ev
+	if em.run != nil {
+		em.run.consume(em.opts, ev)
+	}
+	if em.ch != nil {
+		em.ch <- ev
+	}
 }

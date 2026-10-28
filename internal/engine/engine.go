@@ -13,17 +13,20 @@ import (
 
 // Engine orchestrates the decompilation pipeline.
 type Engine struct {
-	cfg      config.Config
-	tools    *tools.Manager
-	skipList *skiplist.SkipList
+	toolBaseDir string
+	cfg         config.Config
+	tools       *tools.Manager
+	skipList    *skiplist.SkipList
 }
 
 // New creates a new Engine with the given config and tool base directory.
 func New(cfg config.Config, toolBaseDir string) *Engine {
+	cfg = cloneConfig(cfg)
 	return &Engine{
-		cfg:      cfg,
-		tools:    tools.NewManager(toolBaseDir, cfg),
-		skipList: skiplist.New(cfg),
+		toolBaseDir: toolBaseDir,
+		cfg:         cfg,
+		tools:       tools.NewManager(toolBaseDir, cfg),
+		skipList:    skiplist.New(cfg),
 	}
 }
 

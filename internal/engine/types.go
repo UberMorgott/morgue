@@ -14,13 +14,15 @@ var _ recipe.PauseChecker = (*PauseGate)(nil)
 
 // TargetResult holds the outcome for a single target.
 type TargetResult struct {
-	Group      scanner.TargetGroup
-	Recon      recon.Result
-	Recipe     recipe.Recipe
-	Output     string
-	Error      error
-	Skipped    bool
-	SkipReason string
+	ID             string
+	ParentTargetID string
+	Group          scanner.TargetGroup
+	Recon          recon.Result
+	Recipe         recipe.Recipe
+	Output         string
+	Error          error
+	Skipped        bool
+	SkipReason     string
 }
 
 // Outcome values are shared by target and run terminal events.
@@ -33,12 +35,18 @@ const (
 
 // PipelineEvent is emitted via Wails events. Errors cross the wire as text.
 type PipelineEvent struct {
-	Phase    string               `json:"Phase"`
-	Target   string               `json:"Target"`
-	Message  string               `json:"Message"`
-	Tool     string               `json:"Tool,omitempty"`
-	Progress *recipe.StepProgress `json:"Progress,omitempty"`
-	Done     bool                 `json:"Done"`
+	ScanDone    bool                 `json:"-"`
+	GroupsTotal int                  `json:"GroupsTotal,omitempty"`
+	Bytes       int64                `json:"Bytes,omitempty"`
+	BytesTotal  int64                `json:"BytesTotal,omitempty"`
+	ToolStage   string               `json:"ToolStage,omitempty"`
+	ToolVersion string               `json:"ToolVersion,omitempty"`
+	Phase       string               `json:"Phase"`
+	Target      string               `json:"Target"`
+	Message     string               `json:"Message"`
+	Tool        string               `json:"Tool,omitempty"`
+	Progress    *recipe.StepProgress `json:"Progress,omitempty"`
+	Done        bool                 `json:"Done"`
 	// Done marks the top-level run's terminal event, not necessarily success.
 	// TargetOutcome terminates one target without setting Done.
 	RunOutcome    string `json:"RunOutcome,omitempty"`
@@ -162,11 +170,13 @@ type SummaryStats struct {
 
 // Options configures a pipeline run.
 type Options struct {
-	Input   string
-	Output  string
-	Recipe  string   // force a specific recipe name
-	NoSkip  bool     // disable skip-list
-	Exclude []string // additional exclude patterns
+	run            *Run
+	parentTargetID string
+	Input          string
+	Output         string
+	Recipe         string   // force a specific recipe name
+	NoSkip         bool     // disable skip-list
+	Exclude        []string // additional exclude patterns
 	// ReferencePaths adds dependency search directories for managed decompilers.
 	ReferencePaths []string
 	Pause          *PauseGate

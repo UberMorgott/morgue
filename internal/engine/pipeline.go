@@ -51,6 +51,9 @@ func (e *Engine) maybeRecurseUnpack(ctx context.Context, opts *Options, tr Targe
 	nested.Input = extracted
 	nested.Output = filepath.Join(tr.Output, "decompiled")
 	nested.Depth = opts.Depth + 1
+	if opts.run != nil {
+		nested.parentTargetID = opts.run.targetID(*opts, tr.Recon.Path)
+	}
 	nested.Recipe = "" // auto-match each extracted file
 	if err := os.MkdirAll(nested.Output, 0755); err != nil {
 		em.emitErr("unpack", extracted, fmt.Errorf("create nested output dir: %w", err))
@@ -117,9 +120,9 @@ type fileTask struct {
 }
 
 // Run executes the full pipeline: scan → analyse all → emit tools → execute all → save.
-func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEvent) (runErr error) {
+func (e *Engine) runPipeline(ctx context.Context, opts Options, events chan<- PipelineEvent) (runErr error) {
 	startTime := time.Now()
-	em := emitter{ch: events}
+	em := emitter{ch: events, run: opts.run, opts: opts}
 	defer func() {
 		if ctx.Err() != nil && !errors.Is(runErr, ctx.Err()) {
 			runErr = errors.Join(runErr, ctx.Err())
@@ -160,10 +163,12 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 		targetFiles += len(g.Files)
 	}
 	em.send(PipelineEvent{
-		Phase:      "scan",
-		Target:     opts.Input,
-		Message:    fmt.Sprintf("Found %d files in %d groups", targetFiles, len(scanResult.Groups)),
-		FilesTotal: targetFiles,
+		Phase:       "scan",
+		ScanDone:    true,
+		GroupsTotal: len(scanResult.Groups),
+		Target:      opts.Input,
+		Message:     fmt.Sprintf("Found %d files in %d groups", targetFiles, len(scanResult.Groups)),
+		FilesTotal:  targetFiles,
 	})
 
 	var results []TargetResult
@@ -172,9 +177,19 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 			result.Error = errors.Join(result.Error, ctx.Err())
 		}
 		results = append(results, result)
+		if opts.run != nil {
+			opts.run.record(opts, result)
+		}
 		em.targetResult(result)
 	}
 	var tasks []fileTask
+	if opts.run != nil {
+		for _, group := range scanResult.Groups {
+			for _, filePath := range group.Files {
+				opts.run.register(opts, TargetResult{Group: group, Recon: recon.Result{Path: filePath}})
+			}
+		}
+	}
 
 	// Pass 1 (analysis): recon + match for every file, collect required tools.
 	for _, group := range scanResult.Groups {
@@ -246,10 +261,18 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 				recon:    reconResult,
 				recipe:   rec,
 			})
+			if opts.run != nil {
+				opts.run.register(opts, TargetResult{Group: group, Recon: reconResult, Recipe: rec})
+			}
 		}
 	}
 
 	assignOutputNames(tasks, opts.Input)
+	if opts.run != nil {
+		for _, t := range tasks {
+			opts.run.discover(opts, TargetResult{Group: t.group, Recon: t.recon, Recipe: t.recipe, Output: filepath.Join(opts.Output, t.outName)})
+		}
+	}
 
 	// Emit ONE aggregated tools event with all unique tools in execution order.
 	// A recipe may expose DisplayTools() to list tools it runs that are not
@@ -391,7 +414,11 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 	}
 
 	// Write summary.json
-	summary := buildSummary(results, time.Since(startTime))
+	summaryResults := results
+	if opts.Depth == 0 && opts.run != nil {
+		summaryResults = opts.run.legacyResults()
+	}
+	summary := buildSummary(summaryResults, time.Since(startTime))
 	summaryJSON, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode summary.json: %w", err)
@@ -486,7 +513,7 @@ func (e *Engine) ensureRuntimeDeps(filePath string, rec recipe.Recipe, em emitte
 			lastEmit := time.Now()
 			rtCb := &tools.InstallCallbacks{
 				OnProgress: func(name string, bytesDown, bytesTotal int64) {
-					if em.ch != nil {
+					if em.ch != nil || em.run != nil {
 						pct := 0
 						if bytesTotal > 0 {
 							pct = int(bytesDown * 100 / bytesTotal)
@@ -497,7 +524,8 @@ func (e *Engine) ensureRuntimeDeps(filePath string, rec recipe.Recipe, em emitte
 							lastPct = pct
 							lastEmit = time.Now()
 							em.send(PipelineEvent{
-								Phase:   "download",
+								Phase: "download",
+								Tool:  name, ToolStage: "download", Bytes: max(bytesDown, 0), BytesTotal: max(bytesTotal, 0),
 								Target:  filePath,
 								Message: fmt.Sprintf("Downloading runtime %s... %d%%", name, pct),
 							})
@@ -505,9 +533,10 @@ func (e *Engine) ensureRuntimeDeps(filePath string, rec recipe.Recipe, em emitte
 					}
 				},
 				OnExtract: func(name string) {
-					if em.ch != nil {
+					if em.ch != nil || em.run != nil {
 						em.send(PipelineEvent{
-							Phase:   "extract",
+							Phase: "extract",
+							Tool:  name, ToolStage: "extract",
 							Target:  filePath,
 							Message: fmt.Sprintf("Extracting runtime %s...", name),
 						})
@@ -528,6 +557,10 @@ func (e *Engine) ensureRuntimeDeps(filePath string, rec recipe.Recipe, em emitte
 func (e *Engine) ensureTools(ctx context.Context, filePath string, rec recipe.Recipe, em emitter, skipAssets bool) error {
 	needed := e.tools.ToolsNeeded(recipeTools(rec, skipAssets))
 	if len(needed) == 0 {
+		for _, name := range recipeTools(rec, skipAssets) {
+			status := e.tools.Check(name)
+			em.send(PipelineEvent{Phase: "tools", Target: filePath, Tool: name, ToolStage: "ready", ToolVersion: status.Version})
+		}
 		return nil
 	}
 
@@ -536,7 +569,7 @@ func (e *Engine) ensureTools(ctx context.Context, filePath string, rec recipe.Re
 	lastEmit := time.Now()
 	installCb := &tools.InstallCallbacks{
 		OnProgress: func(tool string, bytesDown, bytesTotal int64) {
-			if em.ch != nil {
+			if em.ch != nil || em.run != nil {
 				pct := 0
 				if bytesTotal > 0 {
 					pct = int(bytesDown * 100 / bytesTotal)
@@ -547,7 +580,8 @@ func (e *Engine) ensureTools(ctx context.Context, filePath string, rec recipe.Re
 					lastPct = pct
 					lastEmit = time.Now()
 					em.send(PipelineEvent{
-						Phase:   "download",
+						Phase: "download",
+						Tool:  tool, ToolStage: "download", Bytes: max(bytesDown, 0), BytesTotal: max(bytesTotal, 0),
 						Target:  filePath,
 						Message: fmt.Sprintf("Downloading %s... %d%%", tool, pct),
 					})
@@ -555,9 +589,10 @@ func (e *Engine) ensureTools(ctx context.Context, filePath string, rec recipe.Re
 			}
 		},
 		OnExtract: func(tool string) {
-			if em.ch != nil {
+			if em.ch != nil || em.run != nil {
 				em.send(PipelineEvent{
-					Phase:   "extract",
+					Phase: "extract",
+					Tool:  tool, ToolStage: "extract",
 					Target:  filePath,
 					Message: fmt.Sprintf("Extracting %s...", tool),
 				})
@@ -587,9 +622,12 @@ func (e *Engine) ensureTools(ctx context.Context, filePath string, rec recipe.Re
 				continue
 			}
 			lastErr = nil
+			status := e.tools.Check(name)
+			em.send(PipelineEvent{Phase: "tools", Target: filePath, Tool: name, ToolStage: "ready", ToolVersion: status.Version})
 			break
 		}
 		if lastErr != nil {
+			em.send(PipelineEvent{Phase: "tools", Target: filePath, Tool: name, ToolStage: "failed", ErrorMsg: lastErr.Error()})
 			// Continue with the remaining tools; the re-check below fails the run
 			// only if a still-missing tool is actually required.
 			def, known := tools.FindByName(name)
@@ -751,6 +789,7 @@ func (e *Engine) executeRecipe(
 	}()
 
 	rctx := &recipe.Context{
+		Children:       opts.run.children(*opts, filePath),
 		Target:         filePath,
 		Output:         targetOutput,
 		Progress:       progressCh,
@@ -774,6 +813,9 @@ func (e *Engine) executeRecipe(
 	close(progressCh)
 	close(logCh)
 	<-done
+	if opts.run != nil {
+		execErr = errors.Join(execErr, opts.run.descendantError(opts.run.targetID(*opts, filePath)))
+	}
 
 	// Save recon.json per target
 	if err := writeReconJSON(targetOutput, reconResult); err != nil {
@@ -897,6 +939,7 @@ func (e *Engine) executeRecipeWithFilter(
 	}()
 
 	rctx := &recipe.Context{
+		Children:       opts.run.children(*opts, filePath),
 		Target:         filePath,
 		Output:         targetOutput,
 		Progress:       progressCh,
@@ -921,6 +964,9 @@ func (e *Engine) executeRecipeWithFilter(
 	close(progressCh)
 	close(logCh)
 	<-done
+	if opts.run != nil {
+		execErr = errors.Join(execErr, opts.run.descendantError(opts.run.targetID(*opts, filePath)))
+	}
 
 	tr := TargetResult{
 		Group:  group,
@@ -959,13 +1005,15 @@ func (e *Engine) executeRecipeWithFilter(
 }
 
 type summaryEntry struct {
-	Path       string `json:"path"`
-	Kind       string `json:"kind"`
-	Recipe     string `json:"recipe,omitempty"`
-	Output     string `json:"output,omitempty"`
-	Skipped    bool   `json:"skipped,omitempty"`
-	SkipReason string `json:"skip_reason,omitempty"`
-	Error      string `json:"error,omitempty"`
+	ID             string `json:"id,omitempty"`
+	ParentTargetID string `json:"parent_target_id,omitempty"`
+	Path           string `json:"path"`
+	Kind           string `json:"kind"`
+	Recipe         string `json:"recipe,omitempty"`
+	Output         string `json:"output,omitempty"`
+	Skipped        bool   `json:"skipped,omitempty"`
+	SkipReason     string `json:"skip_reason,omitempty"`
+	Error          string `json:"error,omitempty"`
 }
 
 func buildSummary(results []TargetResult, elapsed time.Duration) PipelineSummary {
@@ -977,11 +1025,13 @@ func buildSummary(results []TargetResult, elapsed time.Duration) PipelineSummary
 
 	for _, r := range results {
 		e := summaryEntry{
-			Path:       r.Recon.Path,
-			Output:     r.Output,
-			Kind:       r.Recon.Kind.String(),
-			Skipped:    r.Skipped,
-			SkipReason: r.SkipReason,
+			ID:             r.ID,
+			ParentTargetID: r.ParentTargetID,
+			Path:           r.Recon.Path,
+			Output:         r.Output,
+			Kind:           r.Recon.Kind.String(),
+			Skipped:        r.Skipped,
+			SkipReason:     r.SkipReason,
 		}
 		if r.Recipe != nil {
 			e.Recipe = r.Recipe.Name()

@@ -3,6 +3,7 @@ package recipe
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -273,7 +274,11 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 	if len(extractedDLLs) == 0 {
 		report(5, Skipped, time.Since(start), nil, "cfxstrings")
 	} else {
-		done := d.decompileExtracted(ctx, extractedDLLs, report, logTool)
+		done, childErr := d.decompileExtracted(ctx, extractedDLLs, report, logTool)
+		if childErr != nil {
+			report(5, Failed, time.Since(start), childErr, "cfxstrings")
+			return childErr
+		}
 		reportCount(5, time.Since(start), "cfxstrings", done, "assemblies")
 	}
 
@@ -783,11 +788,37 @@ func (d *DotnetConfuserEx) decompileExtracted(
 	ctx *Context, dlls []string,
 	report func(int, StepStatus, time.Duration, error, string),
 	logTool func(string, string),
-) int {
+) (done int, observerErr error) {
+	// Register before resolving tools: even a missing decompiler must leave a
+	// terminal outcome for every extracted child in the enclosing run.
+	children := make(map[string]string, len(dlls))
+	if ctx.Children != nil {
+		defer func() {
+			for _, dll := range dlls {
+				id, pending := children[dll]
+				if !pending {
+					continue
+				}
+				outcome, message := "error", "child decompilation did not complete"
+				if err := ctx.Ctx.Err(); err != nil {
+					outcome, message = "cancelled", err.Error()
+				}
+				observerErr = errors.Join(observerErr, ctx.Children.Finish(id, outcome, message))
+			}
+		}()
+		for _, dll := range dlls {
+			name := strings.TrimSuffix(filepath.Base(dll), filepath.Ext(dll))
+			id, err := ctx.Children.Discover(dll, filepath.Join(ctx.Output, "extracted", name), d.Name())
+			if err != nil {
+				return 0, err
+			}
+			children[dll] = id
+		}
+	}
 	ilspyPath, err := ctx.Tools.Resolve("ilspycmd")
 	if err != nil {
 		logTool("cfxstrings", fmt.Sprintf("ilspycmd not available, cannot decompile extracted assemblies: %v", err))
-		return 0
+		return 0, nil
 	}
 
 	// Build (cached) the cfxstrings pass once. If it can't build (no SDK), we
@@ -817,7 +848,7 @@ func (d *DotnetConfuserEx) decompileExtracted(
 
 	de4dotPath, de4dotErr := ctx.Tools.Resolve("de4dot-cex")
 
-	done := 0
+	done = 0
 	for _, dll := range dlls {
 		name := strings.TrimSuffix(filepath.Base(dll), filepath.Ext(dll))
 		childDir := filepath.Join(ctx.Output, "extracted", name)
@@ -941,6 +972,10 @@ func (d *DotnetConfuserEx) decompileExtracted(
 		}
 
 		// 4. Per-child strings.json + index.json (reuse existing helpers).
+		if countFilesWithExt(childSrc, ".cs") == 0 {
+			logTool("ilspycmd", fmt.Sprintf("%s: decompiler produced no source", name))
+			continue
+		}
 		analyzeChildStrings(childSrc, filepath.Join(childDir, "strings.json"))
 		if _, ierr := buildIndex(childSrc); ierr != nil {
 			logTool("ilspycmd", fmt.Sprintf("%s: index build failed: %v", name, ierr))
@@ -963,8 +998,12 @@ func (d *DotnetConfuserEx) decompileExtracted(
 			logTool("ilspycmd", fmt.Sprintf("%s: no residual PUA markers", name))
 		}
 		done++
+		if ctx.Children != nil {
+			observerErr = errors.Join(observerErr, ctx.Children.Finish(children[dll], "success", ""))
+			delete(children, dll)
+		}
 	}
-	return done
+	return done, observerErr
 }
 
 // analyzeChildStrings extracts string literals from a decompiled child's .cs
