@@ -249,6 +249,7 @@ func runCmd() *cobra.Command {
 			recipe, _ := cmd.Flags().GetString("recipe")
 			noSkip, _ := cmd.Flags().GetBool("no-skip")
 			exclude, _ := cmd.Flags().GetStringSlice("exclude")
+			referencePaths, _ := cmd.Flags().GetStringArray("ref")
 			allowDynamic, _ := cmd.Flags().GetBool("allow-dynamic")
 			cflow, _ := cmd.Flags().GetBool("cflow")
 			codeOnly, _ := cmd.Flags().GetBool("code-only")
@@ -256,19 +257,20 @@ func runCmd() *cobra.Command {
 			toolsMirror, _ := cmd.Flags().GetString("tools-mirror")
 
 			return cli.Run(cli.RunOptions{
-				Target:       target,
-				Output:       output,
-				Recipe:       recipe,
-				NoSkip:       noSkip,
-				Exclude:      exclude,
-				Watch:        watch || forceWatch,
-				ForceWatch:   forceWatch,
-				Quiet:        quiet,
-				AllowDynamic: allowDynamic,
-				Cflow:        cflow,
-				CodeOnly:     codeOnly,
-				GameDataOut:  gameDataOut,
-				ToolsMirror:  toolsMirror,
+				Target:         target,
+				Output:         output,
+				Recipe:         recipe,
+				NoSkip:         noSkip,
+				Exclude:        exclude,
+				ReferencePaths: referencePaths,
+				Watch:          watch || forceWatch,
+				ForceWatch:     forceWatch,
+				Quiet:          quiet,
+				AllowDynamic:   allowDynamic,
+				Cflow:          cflow,
+				CodeOnly:       codeOnly,
+				GameDataOut:    gameDataOut,
+				ToolsMirror:    toolsMirror,
 			})
 		},
 	}
@@ -280,6 +282,7 @@ func runCmd() *cobra.Command {
 	cmd.Flags().String("recipe", "", "Force specific recipe")
 	cmd.Flags().Bool("no-skip", false, "Disable auto skip-list")
 	cmd.Flags().StringSlice("exclude", nil, "Additional exclude patterns")
+	cmd.Flags().StringArray("ref", nil, "Dependency search directory for .NET assemblies (repeatable)")
 	cmd.Flags().Bool("allow-dynamic", false, "Allow recipe steps that EXECUTE target code (e.g. ConfuserEx embedded-assembly extraction)")
 	cmd.Flags().Bool("cflow", false, "Enable control-flow deobfuscation pass (experimental, off by default)")
 	cmd.Flags().Bool("code-only", false, "Skip Unity asset extraction (AssetRipper) — decompiled code only")
@@ -344,7 +347,7 @@ func toolsCmd() *cobra.Command {
 			return cli.ToolsInstall(cmd.Context(), force)
 		},
 	}
-	installCmd.Flags().BoolP("force", "f", false, "Remove and reinstall even if already installed (update)")
+	installCmd.Flags().BoolP("force", "f", false, "Reinstall/update through a staged replacement with rollback on failure")
 	cmd.AddCommand(installCmd)
 
 	return cmd

@@ -724,14 +724,15 @@ func (e *Engine) executeRecipe(
 	}()
 
 	rctx := &recipe.Context{
-		Target:   filePath,
-		Output:   targetOutput,
-		Progress: progressCh,
-		Log:      logCh,
-		Tools:    e.tools,
-		Ctx:      ctx,
-		Config:   &e.cfg,
-		Pause:    pauseChecker(opts.Pause),
+		Target:         filePath,
+		Output:         targetOutput,
+		Progress:       progressCh,
+		Log:            logCh,
+		Tools:          e.tools,
+		Ctx:            ctx,
+		Config:         &e.cfg,
+		Pause:          pauseChecker(opts.Pause),
+		ReferencePaths: opts.ReferencePaths,
 
 		Obfuscator:   reconResult.Obfuscator,
 		Compiler:     reconResult.Compiler,
@@ -869,15 +870,16 @@ func (e *Engine) executeRecipeWithFilter(
 	}()
 
 	rctx := &recipe.Context{
-		Target:     filePath,
-		Output:     targetOutput,
-		Progress:   progressCh,
-		Log:        logCh,
-		Tools:      e.tools,
-		Ctx:        ctx,
-		Config:     &e.cfg,
-		Pause:      pauseChecker(opts.Pause),
-		StepFilter: stepFilter,
+		Target:         filePath,
+		Output:         targetOutput,
+		Progress:       progressCh,
+		Log:            logCh,
+		Tools:          e.tools,
+		Ctx:            ctx,
+		Config:         &e.cfg,
+		Pause:          pauseChecker(opts.Pause),
+		ReferencePaths: opts.ReferencePaths,
+		StepFilter:     stepFilter,
 
 		Obfuscator:   reconResult.Obfuscator,
 		Compiler:     reconResult.Compiler,

@@ -33,8 +33,10 @@ type RunOptions struct {
 	Recipe  string
 	NoSkip  bool
 	Exclude []string
-	Watch   bool
-	Quiet   bool
+	// ReferencePaths adds dependency search directories for managed decompilers.
+	ReferencePaths []string
+	Watch          bool
+	Quiet          bool
 	// AllowDynamic opts into recipe steps that execute target code.
 	AllowDynamic bool
 	// Cflow opts into the experimental control-flow deobfuscation pass (default off).
@@ -118,11 +120,12 @@ func Run(opts RunOptions) error {
 	}()
 
 	pipeOpts := engine.Options{
-		Input:   opts.Target,
-		Output:  opts.Output,
-		Recipe:  opts.Recipe,
-		NoSkip:  opts.NoSkip,
-		Exclude: opts.Exclude,
+		Input:          opts.Target,
+		Output:         opts.Output,
+		Recipe:         opts.Recipe,
+		NoSkip:         opts.NoSkip,
+		Exclude:        opts.Exclude,
+		ReferencePaths: opts.ReferencePaths,
 
 		AllowDynamic: opts.AllowDynamic,
 		Cflow:        opts.Cflow,

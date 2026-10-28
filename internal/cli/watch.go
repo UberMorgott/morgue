@@ -121,11 +121,12 @@ func RunWatch(opts RunOptions) error {
 	var pipeErr error
 	go func() {
 		pipeOpts := engine.Options{
-			Input:   opts.Target,
-			Output:  opts.Output,
-			Recipe:  opts.Recipe,
-			NoSkip:  opts.NoSkip,
-			Exclude: opts.Exclude,
+			Input:          opts.Target,
+			Output:         opts.Output,
+			Recipe:         opts.Recipe,
+			NoSkip:         opts.NoSkip,
+			Exclude:        opts.Exclude,
+			ReferencePaths: opts.ReferencePaths,
 
 			CodeOnly: opts.CodeOnly,
 		}

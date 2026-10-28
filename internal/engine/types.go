@@ -143,7 +143,9 @@ type Options struct {
 	Recipe  string   // force a specific recipe name
 	NoSkip  bool     // disable skip-list
 	Exclude []string // additional exclude patterns
-	Pause   *PauseGate
+	// ReferencePaths adds dependency search directories for managed decompilers.
+	ReferencePaths []string
+	Pause          *PauseGate
 	// AllowDynamic opts into recipe steps that execute target code.
 	AllowDynamic bool
 	// Cflow opts into the experimental control-flow deobfuscation pass (cfxcflow).
