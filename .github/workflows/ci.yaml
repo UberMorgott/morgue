@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    # Windows runner for the same reason as release.yaml: cmd/morgue and
+    # internal/webview2 only compile on Windows.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          check-latest: true
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Frontend first: the Go binary embeds frontend/dist (gitignored).
+      - name: Frontend install
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend check
+        working-directory: frontend
+        run: npm run check
+
+      - name: Frontend build
+        working-directory: frontend
+        run: npm run build
+
+      - name: gofmt
+        shell: pwsh
+        run: |
+          $files = gofmt -l cmd internal
+          if ($files) { Write-Output $files; exit 1 }
+
+      - name: go build
+        run: go build ./...
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
