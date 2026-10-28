@@ -53,16 +53,31 @@ type StepInfo struct {
 
 // StepProgress reports the progress of a single step.
 type StepProgress struct {
-	Step       int
-	Total      int
-	Name       string
-	Tool       string
-	Count      int
-	CountTotal int // total items expected (e.g. total DLLs to decompile); 0 = indeterminate
-	Unit       string
-	Status     StepStatus
-	Duration   time.Duration
-	Error      error
+	Step       int           `json:"Step"`
+	Total      int           `json:"Total"`
+	Name       string        `json:"Name"`
+	Tool       string        `json:"Tool"`
+	Count      int           `json:"Count"`
+	CountTotal int           `json:"CountTotal"` // total items expected (e.g. total DLLs to decompile); 0 = indeterminate
+	Unit       string        `json:"Unit"`
+	Status     StepStatus    `json:"Status"`
+	Duration   time.Duration `json:"Duration"`
+	// Error crosses the wire as its message (see MarshalJSON): a bare error
+	// interface would marshal as "{}".
+	Error error `json:"-"`
+}
+
+// MarshalJSON serializes Error as its message text.
+func (p StepProgress) MarshalJSON() ([]byte, error) {
+	type progressDTO StepProgress
+	out := struct {
+		progressDTO
+		Error string `json:"Error,omitempty"`
+	}{progressDTO: progressDTO(p)}
+	if p.Error != nil {
+		out.Error = p.Error.Error()
+	}
+	return json.Marshal(out)
 }
 
 // PauseChecker allows recipes to check for pause between steps.
