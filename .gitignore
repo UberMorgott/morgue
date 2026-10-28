@@ -55,8 +55,6 @@ scratch/
 tmp/
 /BUGREPORT-*.md
 /TASKS.md
-# Tests that write to a relative "out" dir
-internal/**/out/
 
 # Sensitive config
 morgue.yaml

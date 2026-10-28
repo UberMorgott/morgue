@@ -3,9 +3,12 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/UberMorgott/morgue/internal/services"
 )
@@ -68,10 +71,14 @@ func TestHandleGetSettings(t *testing.T) {
 
 func TestHandleRunDecompilation(t *testing.T) {
 	s := newTestServer()
+	// The run executes in the background; wait for it to finish before the
+	// test returns so it never writes into a TempDir that is being removed.
+	finished := make(chan struct{})
+	services.SetRunFinishedHook(s.pipeline, func(error) { close(finished) })
 
 	body, _ := json.Marshal(map[string]string{
-		"path":   "test.exe",
-		"output": "out",
+		"path":   filepath.Join(t.TempDir(), "test.exe"),
+		"output": filepath.Join(t.TempDir(), "out"),
 	})
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/run", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -81,6 +88,14 @@ func TestHandleRunDecompilation(t *testing.T) {
 
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("expected 202, got %d", rec.Code)
+	}
+	if err := s.pipeline.StopActive(); err != nil && !errors.Is(err, services.ErrNotRunning) {
+		t.Fatalf("stop: %v", err)
+	}
+	select {
+	case <-finished:
+	case <-time.After(30 * time.Second):
+		t.Fatal("background run did not finish after stop")
 	}
 
 	var resp map[string]string
