@@ -49,6 +49,11 @@ func NewServer(pipeline *services.PipelineService, tools *services.ToolsService,
 	}
 	// crypto/rand never fails on supported platforms (Go 1.24+ crashes instead).
 	s.token, _ = apitoken.Generate()
+	services.SetRunFinishedHook(pipeline, func(runErr error) {
+		if runErr != nil {
+			s.events.Broadcast("pipeline:error", marshalJSON(map[string]string{"error": runErr.Error()}))
+		}
+	})
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/status", s.handleStatus)

@@ -37,6 +37,8 @@ type PipelineService struct {
 	status PipelineStatus
 	pause  *engine.PauseGate
 	runner RunFunc
+	// onFinish receives the terminal error of runs started via Start.
+	onFinish func(error)
 }
 
 // NewPipelineService creates a PipelineService.
@@ -78,13 +80,16 @@ func (s *PipelineService) reserve() (context.Context, *engine.PauseGate, error) 
 
 // Start reserves the run slot synchronously and executes the run in a
 // background goroutine. It returns ErrBusy if a run is already active, so
-// concurrent callers get exactly one admission. done (may be nil) receives
-// the run's terminal error once it finishes.
-func (s *PipelineService) Start(input, output string, done func(error)) error {
+// concurrent callers get exactly one admission. The hook registered with
+// SetRunFinishedHook (if any) receives the run's terminal error.
+func (s *PipelineService) Start(input, output string) error {
 	ctx, pause, err := s.reserve()
 	if err != nil {
 		return err
 	}
+	s.mu.Lock()
+	done := s.onFinish
+	s.mu.Unlock()
 	go func() {
 		runErr := s.execute(ctx, pause, input, output)
 		if done != nil {
@@ -92,6 +97,15 @@ func (s *PipelineService) Start(input, output string, done func(error)) error {
 		}
 	}()
 	return nil
+}
+
+// SetRunFinishedHook registers fn to receive the terminal error of runs
+// started with Start. It is a package function rather than a method so the
+// Wails binding generator does not try to expose a func-typed parameter.
+func SetRunFinishedHook(s *PipelineService, fn func(error)) {
+	s.mu.Lock()
+	s.onFinish = fn
+	s.mu.Unlock()
 }
 
 // Run starts the decompilation pipeline on input, writing results to output.

@@ -38,13 +38,8 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	// events emitted from it reach the webview (Emit marshals to the main
 	// thread), so the GUI follows along live; CLI clients poll GET
 	// /api/run/status or SSE /api/events.
-	err := s.pipeline.Start(req.Path, req.Output, func(runErr error) {
-		if runErr != nil {
-			s.events.Broadcast("pipeline:error", marshalJSON(map[string]string{
-				"error": runErr.Error(),
-			}))
-		}
-	})
+	// Run errors are broadcast as pipeline:error via the hook set in NewServer.
+	err := s.pipeline.Start(req.Path, req.Output)
 	if errors.Is(err, services.ErrBusy) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "busy"})
 		return

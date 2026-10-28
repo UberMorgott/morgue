@@ -15,10 +15,11 @@ func TestPipelineStartBusy(t *testing.T) {
 		return nil
 	})
 	done := make(chan error, 1)
-	if err := s.Start("a", "", func(err error) { done <- err }); err != nil {
+	SetRunFinishedHook(s, func(err error) { done <- err })
+	if err := s.Start("a", ""); err != nil {
 		t.Fatalf("first start: %v", err)
 	}
-	if err := s.Start("b", "", nil); !errors.Is(err, ErrBusy) {
+	if err := s.Start("b", ""); !errors.Is(err, ErrBusy) {
 		t.Fatalf("second start: %v, want ErrBusy", err)
 	}
 	close(release)
