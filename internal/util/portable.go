@@ -27,9 +27,6 @@ func DataDir() string { return filepath.Join(BaseDir(), "data") }
 // TempRoot returns BaseDir()/data/tmp, the parent of the per-process temp dirs.
 func TempRoot() string { return filepath.Join(DataDir(), "tmp") }
 
-// ToolHomeDir returns BaseDir()/data/home, the HOME-like dir handed to tools.
-func ToolHomeDir() string { return filepath.Join(DataDir(), "home") }
-
 // APITokenPath returns BaseDir()/data/api-token.
 func APITokenPath() string { return filepath.Join(DataDir(), "api-token") }
 

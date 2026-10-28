@@ -10,6 +10,10 @@ import (
 )
 
 func TestFetchLatestVersion(t *testing.T) {
+	// Live GitHub probe: opt-in only so normal runs never depend on network.
+	if testing.Short() || os.Getenv("MORGUE_NET_TESTS") != "1" {
+		t.Skip("network test: set MORGUE_NET_TESTS=1 (and drop -short) to run")
+	}
 	// Test redirect-based version detection (no API)
 	repos := []string{
 		"horsicq/DIE-engine",
