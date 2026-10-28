@@ -93,7 +93,7 @@ func detectConfuserExStringDecrypter(f *peparser.File) (matched bool) {
 	}
 	isByteArray := func(token uint32) bool {
 		index := token & 0x00ffffff
-		return token>>24 == 4 && index > 0 && index <= uint32(len(fields)) &&
+		return token>>24 == 4 && index > 0 && int(index) <= len(fields) &&
 			blobSigStartsWith(blob, fields[index-1].Signature, []byte{0x06, 0x1d, 0x05})
 	}
 	loadedArrays := make(map[uint32]bool)
@@ -115,9 +115,10 @@ func detectConfuserExStringDecrypter(f *peparser.File) (matched bool) {
 		}
 		ldsfld, callvirt := 0, 0
 		for _, ins := range instructions {
-			if ins.op == 0x7e {
+			switch ins.op {
+			case 0x7e:
 				ldsfld++
-			} else if ins.op == 0x6f {
+			case 0x6f:
 				callvirt++
 			}
 		}
@@ -135,7 +136,7 @@ func detectConfuserExStringDecrypter(f *peparser.File) (matched bool) {
 	}
 	dataFields := make(map[uint32]bool)
 	for _, data := range dataRows {
-		if data.RVA != 0 && data.Field > 0 && data.Field <= uint32(len(fields)) {
+		if data.RVA != 0 && data.Field > 0 && int(data.Field) <= len(fields) {
 			dataFields[0x04000000|data.Field] = true
 		}
 	}
@@ -174,7 +175,7 @@ func isInitializeArray(f *peparser.File, token uint32) bool {
 		return false
 	}
 	memberRows, ok := members.Content.([]peparser.MemberRefTableRow)
-	if !ok || index > uint32(len(memberRows)) {
+	if !ok || int(index) > len(memberRows) {
 		return false
 	}
 	member := memberRows[index-1]
@@ -184,7 +185,7 @@ func isInitializeArray(f *peparser.File, token uint32) bool {
 		return false
 	}
 	typeRows, ok := types.Content.([]peparser.TypeRefTableRow)
-	if !ok || typeIndex > uint32(len(typeRows)) {
+	if !ok || int(typeIndex) > len(typeRows) {
 		return false
 	}
 	typ := typeRows[typeIndex-1]
@@ -246,10 +247,11 @@ func methodIL(f *peparser.File, rva uint32, maxSize uint32) ([]byte, bool) {
 	}
 	var codeSize uint32
 	var codeStart uint32
-	if hdr[0]&0x03 == 0x02 { // tiny header: size in high 6 bits
+	switch hdr[0] & 0x03 {
+	case 0x02: // tiny header: size in high 6 bits
 		codeSize = uint32(hdr[0] >> 2)
 		codeStart = rva + 1
-	} else if hdr[0]&0x03 == 0x03 { // fat header: size in high nibble of byte 1
+	case 0x03: // fat header: size in high nibble of byte 1
 		if len(hdr) < 12 {
 			return nil, false
 		}
@@ -259,7 +261,7 @@ func methodIL(f *peparser.File, rva uint32, maxSize uint32) ([]byte, bool) {
 		}
 		codeSize = binary.LittleEndian.Uint32(hdr[4:8])
 		codeStart = rva + headerSize
-	} else {
+	default:
 		return nil, false
 	}
 	if codeSize == 0 || codeSize > maxSize || codeStart > ^uint32(0)-codeSize {
@@ -298,7 +300,7 @@ func decodeIL(code []byte) ([]ilInstruction, bool) {
 				return nil, false
 			}
 			count := binary.LittleEndian.Uint32(code[p:])
-			if uint64(count) > uint64((len(code)-p-4)/4) {
+			if int64(count) > int64((len(code)-p-4)/4) {
 				return nil, false
 			}
 			size = 4 + int(count)*4

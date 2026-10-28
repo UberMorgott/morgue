@@ -31,12 +31,12 @@ const maxUnpackDepth = 3
 // event channel (Depth>0 suppresses its terminal "done").
 func (e *Engine) maybeRecurseUnpack(ctx context.Context, opts *Options, tr TargetResult, em emitter) error {
 	if tr.Error != nil || tr.Recon.Kind != recon.NSIS || tr.Output == "" {
-		return nil
+		return nil //nolint:nilerr // a failed target was already reported; there is nothing to recurse into
 	}
 	extracted := filepath.Join(tr.Output, "extracted")
 	info, err := os.Stat(extracted)
 	if err != nil || !info.IsDir() {
-		return nil
+		return nil //nolint:nilerr // no extracted tree means the installer unpacked nothing to recurse into
 	}
 	if entries, _ := os.ReadDir(extracted); len(entries) == 0 {
 		return nil // nothing unpacked — don't recurse

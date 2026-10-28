@@ -126,10 +126,11 @@ linters:
       # the finding is fatal with the directive and without it. Reported upstream;
       # until it is fixed, G703 is excluded for the two writers whose "tainted"
       # path is the run's own output destination (the -o flag / the API's output
-      # field), which this tool exists to write into.
+      # field), which this tool exists to write into -- plus ilspy.go, whose
+      # flagged call only os.Stat-probes the run's own reference dirs.
       - linters: [gosec]
         text: 'G703'
-        path: 'internal/recipe/(strings_analyze|dotnet_confuserex)\.go'
+        path: 'internal/recipe/(strings_analyze|dotnet_confuserex|ilspy)\.go'
       # ---------------------------------------------------------------------
       # ADOPTING THIS ON AN EXISTING CODEBASE
       #

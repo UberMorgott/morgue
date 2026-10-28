@@ -63,10 +63,10 @@ func validateGhidraHome(home string) string {
 	}
 	run := filepath.Clean(filepath.Join(home, "ghidraRun"+ext))
 	analyze := filepath.Clean(filepath.Join(home, "support", "analyzeHeadless"+ext))
-	if _, err := os.Stat(run); err == nil {
+	if _, err := os.Stat(run); err == nil { //nolint:gosec // home is the user's configured Ghidra dir; only probed for existence
 		return run
 	}
-	if _, err := os.Stat(analyze); err == nil {
+	if _, err := os.Stat(analyze); err == nil { //nolint:gosec // home is the user's configured Ghidra dir; only probed for existence
 		return run
 	}
 	return ""
@@ -288,7 +288,7 @@ func swapDir(staged, dest string) error {
 	if err := os.Rename(staged, dest); err != nil {
 		if hadOld {
 			if rerr := os.Rename(backup, dest); rerr != nil {
-				return fmt.Errorf("install new version: %w; restore old: %v (old copy kept at %s)", err, rerr, backup)
+				return fmt.Errorf("install new version: %w; restore old: %w (old copy kept at %s)", err, rerr, backup)
 			}
 		}
 		return fmt.Errorf("install new version: %w", err)

@@ -54,7 +54,7 @@ func newGuardedServer(t *testing.T, runner services.RunFunc) (*Server, *httptest
 	return s, ts
 }
 
-func doReq(t *testing.T, method, url, token, contentType, origin string, body []byte) (*http.Response, string) {
+func doReq(t *testing.T, method, url, token, contentType, origin string, body []byte) (int, string) {
 	t.Helper()
 	req, err := http.NewRequestWithContext(t.Context(), method, url, bytes.NewReader(body))
 	if err != nil {
@@ -75,7 +75,7 @@ func doReq(t *testing.T, method, url, token, contentType, origin string, body []
 	}
 	b, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	return resp, string(b)
+	return resp.StatusCode, string(b)
 }
 
 func TestRunAdmissionConcurrent(t *testing.T) {
@@ -92,8 +92,8 @@ func TestRunAdmissionConcurrent(t *testing.T) {
 	for i := range n {
 		wg.Go(func() {
 			<-gate
-			resp, _ := doReq(t, http.MethodPost, ts.URL+"/api/run", s.Token(), "application/json", "", body)
-			codes[i] = resp.StatusCode
+			code, _ := doReq(t, http.MethodPost, ts.URL+"/api/run", s.Token(), "application/json", "", body)
+			codes[i] = code
 		})
 	}
 	close(gate)
@@ -131,17 +131,17 @@ func TestStopEndpoint(t *testing.T) {
 	defer close(release)
 	s, ts := newGuardedServer(t, blockingRunner(&started, release))
 
-	resp, _ := doReq(t, http.MethodPost, ts.URL+"/api/stop", s.Token(), "application/json", "", []byte("{}"))
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("stop while idle: got %d, want 409", resp.StatusCode)
+	code, _ := doReq(t, http.MethodPost, ts.URL+"/api/stop", s.Token(), "application/json", "", []byte("{}"))
+	if code != http.StatusConflict {
+		t.Fatalf("stop while idle: got %d, want 409", code)
 	}
 
 	body, _ := json.Marshal(map[string]string{"path": "x.exe"})
-	if resp, b := doReq(t, http.MethodPost, ts.URL+"/api/run", s.Token(), "application/json", "", body); resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("run: got %d %s", resp.StatusCode, b)
+	if code, b := doReq(t, http.MethodPost, ts.URL+"/api/run", s.Token(), "application/json", "", body); code != http.StatusAccepted {
+		t.Fatalf("run: got %d %s", code, b)
 	}
-	if resp, b := doReq(t, http.MethodPost, ts.URL+"/api/stop", s.Token(), "application/json", "", []byte("{}")); resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("stop: got %d %s", resp.StatusCode, b)
+	if code, b := doReq(t, http.MethodPost, ts.URL+"/api/stop", s.Token(), "application/json", "", []byte("{}")); code != http.StatusAccepted {
+		t.Fatalf("stop: got %d %s", code, b)
 	}
 
 	deadline := time.Now().Add(2 * time.Second)
@@ -154,8 +154,8 @@ func TestStopEndpoint(t *testing.T) {
 	}
 
 	// The slot is free again: a new run is admitted.
-	if resp, b := doReq(t, http.MethodPost, ts.URL+"/api/run", s.Token(), "application/json", "", body); resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("rerun: got %d %s", resp.StatusCode, b)
+	if code, b := doReq(t, http.MethodPost, ts.URL+"/api/run", s.Token(), "application/json", "", body); code != http.StatusAccepted {
+		t.Fatalf("rerun: got %d %s", code, b)
 	}
 }
 
@@ -163,8 +163,8 @@ func TestRunFailureStatus(t *testing.T) {
 	boom := errors.New("boom")
 	s, ts := newGuardedServer(t, func(context.Context, *engine.PauseGate, string, string) error { return boom })
 	body, _ := json.Marshal(map[string]string{"path": "x.exe"})
-	if resp, b := doReq(t, http.MethodPost, ts.URL+"/api/run", s.Token(), "application/json", "", body); resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("run: got %d %s", resp.StatusCode, b)
+	if code, b := doReq(t, http.MethodPost, ts.URL+"/api/run", s.Token(), "application/json", "", body); code != http.StatusAccepted {
+		t.Fatalf("run: got %d %s", code, b)
 	}
 	deadline := time.Now().Add(2 * time.Second)
 	for s.pipeline.GetStatus().Running && time.Now().Before(deadline) {
@@ -199,9 +199,9 @@ func TestSecurityMiddleware(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			resp, b := doReq(t, tc.method, tc.url, tc.token, tc.ct, tc.origin, []byte("{}"))
-			if resp.StatusCode != tc.want {
-				t.Fatalf("got %d (%s), want %d", resp.StatusCode, b, tc.want)
+			code, b := doReq(t, tc.method, tc.url, tc.token, tc.ct, tc.origin, []byte("{}"))
+			if code != tc.want {
+				t.Fatalf("got %d (%s), want %d", code, b, tc.want)
 			}
 		})
 	}

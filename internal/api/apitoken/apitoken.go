@@ -68,7 +68,7 @@ func Read() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	b, err := os.ReadFile(p)
+	b, err := os.ReadFile(p) //nolint:gosec // p is the fixed token path from Path(), not caller input
 	if err != nil {
 		return "", fmt.Errorf("apitoken: read %s: %w", p, err)
 	}

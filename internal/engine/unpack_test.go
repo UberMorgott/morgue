@@ -53,7 +53,9 @@ func TestMaybeRecurseUnpack_DepthGuard(t *testing.T) {
 	tr := makeExtractedTarget(t)
 
 	ch := make(chan PipelineEvent, 100)
-	e.maybeRecurseUnpack(context.Background(), &Options{Depth: maxUnpackDepth}, tr, emitter{ch: ch})
+	if err := e.maybeRecurseUnpack(context.Background(), &Options{Depth: maxUnpackDepth}, tr, emitter{ch: ch}); err != nil {
+		t.Fatalf("maybeRecurseUnpack: %v", err)
+	}
 	close(ch)
 	evs := drain(ch)
 
@@ -72,7 +74,11 @@ func TestMaybeRecurseUnpack_RecursesBelowCap(t *testing.T) {
 	tr := makeExtractedTarget(t)
 
 	ch := make(chan PipelineEvent, 200)
-	e.maybeRecurseUnpack(context.Background(), &Options{Depth: 0}, tr, emitter{ch: ch})
+	// The fixture tree holds only a skipped text file, so the nested run
+	// decompiles nothing and reports that as its terminal error.
+	if err := e.maybeRecurseUnpack(context.Background(), &Options{Depth: 0}, tr, emitter{ch: ch}); !errors.Is(err, ErrNoSuccessfulTargets) {
+		t.Fatalf("maybeRecurseUnpack = %v, want ErrNoSuccessfulTargets from the nested run", err)
+	}
 	close(ch)
 	evs := drain(ch)
 
@@ -99,7 +105,9 @@ func TestMaybeRecurseUnpack_SkipsNonNSIS(t *testing.T) {
 	tr.Recon.Kind = recon.Native // not an installer
 
 	ch := make(chan PipelineEvent, 100)
-	e.maybeRecurseUnpack(context.Background(), &Options{Depth: 0}, tr, emitter{ch: ch})
+	if err := e.maybeRecurseUnpack(context.Background(), &Options{Depth: 0}, tr, emitter{ch: ch}); err != nil {
+		t.Fatalf("maybeRecurseUnpack: %v", err)
+	}
 	close(ch)
 	evs := drain(ch)
 

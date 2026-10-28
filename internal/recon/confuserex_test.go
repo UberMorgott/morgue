@@ -15,10 +15,10 @@ func TestConfuserExDecrypterRequiresRelatedData(t *testing.T) {
 		initField uint32
 		want      bool
 	}{
-		{"Cosmoteer-like dictionary getter with unrelated RVA", appendIL(nil, 0x7e, 0x04000003, 0x7e, 0x04000003, 0x6f, 0x0a000001), 2, false},
-		{"byte-array getter with unrelated initializer", appendIL(nil, 0x7e, 0x04000002, 0x7e, 0x04000003, 0x6f, 0x0a000001), 4, false},
-		{"decrypter reads initialized RVA byte array", appendIL(nil, 0x7e, 0x04000002, 0x7e, 0x04000003, 0x6f, 0x0a000001), 2, true},
-		{"opcode-looking constants are not field loads", appendIL(nil, 0x20, 0x6f7e7e00), 2, false},
+		{"Cosmoteer-like dictionary getter with unrelated RVA", appendIL(nil, il{0x7e, 0x04000003}, il{0x7e, 0x04000003}, il{0x6f, 0x0a000001}), 2, false},
+		{"byte-array getter with unrelated initializer", appendIL(nil, il{0x7e, 0x04000002}, il{0x7e, 0x04000003}, il{0x6f, 0x0a000001}), 4, false},
+		{"decrypter reads initialized RVA byte array", appendIL(nil, il{0x7e, 0x04000002}, il{0x7e, 0x04000003}, il{0x6f, 0x0a000001}), 2, true},
+		{"opcode-looking constants are not field loads", appendIL(nil, il{0x20, 0x6f7e7e00}), 2, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := decrypterFixture(tc.code, tc.initField)
@@ -30,13 +30,13 @@ func TestConfuserExDecrypterRequiresRelatedData(t *testing.T) {
 }
 
 func TestConfuserExDecrypterRequiresInitializerFlow(t *testing.T) {
-	code := appendIL(nil, 0x7e, 0x04000002, 0x7e, 0x04000003, 0x6f, 0x0a000001)
+	code := appendIL(nil, il{0x7e, 0x04000002}, il{0x7e, 0x04000003}, il{0x6f, 0x0a000001})
 	f := decrypterFixture(code, 2)
 	// Merely mentioning an RVA token somewhere in a method which also writes
 	// the candidate's array does not establish that the RVA supplies that array.
-	init := appendIL(nil, 0xd0, 0x04000001)
+	init := appendIL(nil, il{0xd0, 0x04000001})
 	init = append(init, 0x26, 0x14)
-	init = appendIL(init, 0x80, 0x04000002)
+	init = appendIL(init, il{0x80, 0x04000002})
 	writeFixtureMethod(f.Header, 256, append(init, 0x2a))
 	if detectConfuserExStringDecrypter(f) {
 		t.Fatal("accepted unrelated RVA token and array assignment in same method")
@@ -57,7 +57,7 @@ func TestConfuserExDecrypterRejectsCosmoteerGetName(t *testing.T) {
 }
 
 func TestConfuserExDecrypterMalformedIL(t *testing.T) {
-	valid := appendIL(nil, 0x7e, 0x04000002, 0x7e, 0x04000003, 0x6f, 0x0a000001)
+	valid := appendIL(nil, il{0x7e, 0x04000002}, il{0x7e, 0x04000003}, il{0x6f, 0x0a000001})
 	for _, tail := range [][]byte{{0x7e}, {0xfe}, {0xfe, 0xff}, {0x45, 0xff, 0xff, 0xff, 0xff}} {
 		code := append(make([]byte, 40), valid...)
 		code = append(code, tail...)
@@ -67,7 +67,11 @@ func TestConfuserExDecrypterMalformedIL(t *testing.T) {
 		}
 	}
 	f := decrypterFixture(valid, 2)
-	f.CLR.MetadataTables[peparser.MethodDef].Content.([]peparser.MethodDefTableRow)[0].RVA = ^uint32(0)
+	methods, ok := f.CLR.MetadataTables[peparser.MethodDef].Content.([]peparser.MethodDefTableRow)
+	if !ok {
+		t.Fatal("fixture MethodDef table has unexpected row type")
+	}
+	methods[0].RVA = ^uint32(0)
 	if detectConfuserExStringDecrypter(f) {
 		t.Error("accepted out-of-range method RVA")
 	}
@@ -95,9 +99,9 @@ func decrypterFixture(code []byte, initializedField uint32) *peparser.File {
 	}
 	writeFixtureMethod(f.Header, 64, code)
 	init := []byte{0x1a}
-	init = appendIL(init, 0x8d, 0x01000002)
+	init = appendIL(init, il{0x8d, 0x01000002})
 	init = append(init, 0x25)
-	init = appendIL(init, 0xd0, 0x04000001, 0x28, 0x0a000002, 0x80, 0x04000000|initializedField)
+	init = appendIL(init, il{0xd0, 0x04000001}, il{0x28, 0x0a000002}, il{0x80, 0x04000000 | initializedField})
 	writeFixtureMethod(f.Header, 256, append(init, 0x2a))
 	return f
 }
@@ -105,14 +109,20 @@ func decrypterFixture(code []byte, initializedField uint32) *peparser.File {
 func writeFixtureMethod(data []byte, rva int, code []byte) {
 	data[rva] = 3
 	data[rva+1] = 0x30
-	binary.LittleEndian.PutUint32(data[rva+4:], uint32(len(code)))
+	binary.LittleEndian.PutUint32(data[rva+4:], uint32(len(code))) //nolint:gosec // fixture bodies are a few dozen bytes
 	copy(data[rva+12:], code)
 }
 
-func appendIL(code []byte, pairs ...uint32) []byte {
-	for i := 0; i < len(pairs); i += 2 {
-		code = append(code, byte(pairs[i]))
-		code = binary.LittleEndian.AppendUint32(code, pairs[i+1])
+// il is one fixture instruction: a one-byte opcode with a 4-byte operand.
+type il struct {
+	op  byte
+	arg uint32
+}
+
+func appendIL(code []byte, ins ...il) []byte {
+	for _, in := range ins {
+		code = append(code, in.op)
+		code = binary.LittleEndian.AppendUint32(code, in.arg)
 	}
 	return code
 }

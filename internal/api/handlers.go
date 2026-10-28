@@ -39,6 +39,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	// thread), so the GUI follows along live; CLI clients poll GET
 	// /api/run/status or SSE /api/events.
 	// Run errors are broadcast as pipeline:error via the hook set in NewServer.
+	//nolint:contextcheck // the run must outlive this request; Start gives it its own cancellable ctx (POST /api/stop)
 	err := s.pipeline.Start(req.Path, req.Output)
 	if errors.Is(err, services.ErrBusy) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "busy"})
@@ -97,6 +98,7 @@ func (s *Server) handleInstallTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	//nolint:contextcheck // the install job must outlive this request, so it runs detached from r.Context()
 	if err := s.tools.StartInstall(req.Name); errors.Is(err, services.ErrBusy) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "busy"})
 		return
@@ -251,7 +253,7 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 
 	path = filepath.Clean(path)
 
-	if _, err := os.Stat(path); err != nil {
+	if _, err := os.Stat(path); err != nil { //nolint:gosec // the caller names the file to inspect; the API is token-guarded and loopback-only
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
 		return
 	}

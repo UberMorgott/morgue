@@ -16,7 +16,7 @@ import (
 
 const terminalRecipeName = "__engine_terminal_contract_test"
 
-var terminalRecipeError = errors.New("terminal fixture recipe failed")
+var errTerminalRecipe = errors.New("terminal fixture recipe failed")
 
 type terminalRecipe struct{}
 
@@ -30,7 +30,7 @@ func (terminalRecipe) Execute(ctx *recipe.Context) error {
 		return context.Canceled
 	}
 	if strings.HasPrefix(filepath.Base(ctx.Target), "fail") {
-		return terminalRecipeError
+		return errTerminalRecipe
 	}
 	return os.WriteFile(filepath.Join(ctx.Output, "fixture.txt"), []byte("completed"), 0644)
 }
@@ -118,7 +118,7 @@ func TestRunTerminalTargetAggregation(t *testing.T) {
 			}
 			assertTerminalContract(t, events, tc.outcome, wantTargets)
 			for _, event := range events {
-				if event.TargetOutcome == "error" && !errors.Is(event.Error, terminalRecipeError) {
+				if event.TargetOutcome == "error" && !errors.Is(event.Error, errTerminalRecipe) {
 					t.Errorf("target error cause lost: %v", event.Error)
 				}
 			}

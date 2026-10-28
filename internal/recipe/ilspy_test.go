@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/UberMorgott/morgue/internal/config"
@@ -74,7 +75,7 @@ func TestIlspyExplicitReferencesAndOptions(t *testing.T) {
 	if !reflect.DeepEqual(args, want) {
 		t.Fatalf("args = %q, want %q", args, want)
 	}
-	if options[:cap(options)][2] != "" {
+	if spare := options[len(options):cap(options)]; slices.ContainsFunc(spare, func(s string) bool { return s != "" }) {
 		t.Fatal("options backing array was modified")
 	}
 }

@@ -184,7 +184,7 @@ func RunAssetRipperExport(ctx context.Context, exePath, gameDataDir, outDir, tmp
 	// Stop the server regardless of export result.
 	cancel()
 	select {
-	case <-errCh:
+	case <-errCh: //nolint:errcheck // we killed the server ourselves; its exit error is expected noise
 	case <-time.After(5 * time.Second):
 	}
 	return err
