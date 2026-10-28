@@ -104,8 +104,10 @@ func Run(opts RunOptions) error {
 	defer cancel()
 
 	events := make(chan engine.PipelineEvent, 100)
+	printed := make(chan struct{})
 
 	go func() {
+		defer close(printed)
 		for ev := range events {
 			if opts.Quiet {
 				continue
@@ -141,6 +143,10 @@ func Run(opts RunOptions) error {
 	}
 
 	runErr := eng.Run(ctx, pipeOpts, events)
+	// Run is synchronous and never closes events itself: close it and let the
+	// printer drain, so no progress line is lost or interleaved with the summary.
+	close(events)
+	<-printed
 	if !hasRunSummary(runErr) {
 		return runErr
 	}
