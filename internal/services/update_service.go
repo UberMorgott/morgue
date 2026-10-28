@@ -9,6 +9,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/UberMorgott/morgue/internal/selfupdate"
+	"github.com/UberMorgott/morgue/internal/util"
 )
 
 // UpdateStatus holds version check results for the frontend.
@@ -117,7 +118,7 @@ func relaunch(app *application.App) {
 	//nolint:gosec // G204: `exe` is os.Executable() — this process's own binary, not
 	// user input; relaunching ourselves is the whole point of this function.
 	cmd := exec.CommandContext(context.Background(), exe, os.Args[1:]...)
-	cmd.Env = append(os.Environ(), "MORGUE_RELAUNCHED=1")
+	util.ApplyChildEnv(cmd, "MORGUE_RELAUNCHED=1")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {

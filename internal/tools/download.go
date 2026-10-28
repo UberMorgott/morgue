@@ -405,6 +405,7 @@ func installFromGitBuild(ctx context.Context, tool ToolDef, destDir string, onPr
 	cmd := exec.CommandContext(buildCtx, dotnetBin, "build", "-c", "Release", "-o", destDir)
 	cmd.Dir = projectDir
 	util.HideCmdWindow(cmd)
+	util.ApplyChildEnv(cmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		_ = os.RemoveAll(srcDir)

@@ -34,6 +34,21 @@ func main() {
 	// froze the user's machine). Applied once, here, for every code path.
 	applyMemoryCap()
 
+	// Portable app: all runtime state (temp, tool homes, caches, API token)
+	// lives in <exe dir>/data. Refuse to run rather than fall back to system
+	// dirs when that folder is not writable.
+	cleanup, err := util.InitPortable()
+	if err != nil {
+		if len(os.Args) > 1 {
+			attachParentConsole()
+			fmt.Fprintln(os.Stderr, "morgue:", err)
+		} else {
+			webview2.ShowError(err.Error())
+		}
+		os.Exit(1)
+	}
+	exitCleanup = cleanup
+
 	// Drop the binary displaced by a previous self-update, if any. Windows
 	// cannot delete a running .exe, so the swap leaves <exe>.old behind for the
 	// next start to clean up.
@@ -41,12 +56,22 @@ func main() {
 
 	// If CLI args provided → cobra
 	if len(os.Args) > 1 {
-		runCLI()
-		return
+		exit(runCLI())
 	}
 
 	// No args → Wails GUI
 	runGUI()
+	exit(0)
+}
+
+// exitCleanup removes this process's temp dir (set from util.InitPortable).
+var exitCleanup = func() {}
+
+// exit runs exitCleanup and terminates with code. Use it instead of os.Exit
+// so the per-process temp dir under <exe dir>/data/tmp does not linger.
+func exit(code int) {
+	exitCleanup()
+	os.Exit(code)
 }
 
 // applyMemoryCap installs a Windows Job Object memory limit on the morgue
@@ -90,18 +115,18 @@ func runGUI() {
 	if version == "" {
 		switch webview2.ShowInstallDialog() {
 		case webview2.ResultClose:
-			os.Exit(0)
+			exit(0)
 		case webview2.ResultSystem:
 			if err := webview2.InstallSystem(); err != nil {
 				webview2.ShowError(fmt.Sprintf("System install failed:\n%v", err))
-				os.Exit(1)
+				exit(1)
 			}
 			// Re-check after installation
 			// Note: MORGUE_TEST_NO_WEBVIEW2=1 will cause this to always fail — unset it for real testing
 			version, isLocal = webview2.CheckAvailable()
 			if version == "" {
 				webview2.ShowError("WebView2 still not available after installation. Try restarting the application.")
-				os.Exit(1)
+				exit(1)
 			}
 			if isLocal {
 				browserPath = webview2.LocalRuntimePath()
@@ -109,7 +134,7 @@ func runGUI() {
 		case webview2.ResultPortable:
 			if err := webview2.InstallPortable(); err != nil {
 				webview2.ShowError(fmt.Sprintf("Portable install failed:\n%v", err))
-				os.Exit(1)
+				exit(1)
 			}
 			browserPath = webview2.LocalRuntimePath()
 		}
@@ -197,11 +222,12 @@ func runGUI() {
 	tray.SetMenu(trayMenu)
 
 	if err := app.Run(); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		exit(1)
 	}
 }
 
-func runCLI() {
+func runCLI() int {
 	// The release binary is linked with -H=windowsgui (no console), so a CLI
 	// invocation from a terminal would print nothing. Reattach to the parent
 	// console first. No-op/harmless in console-subsystem dev builds and when
@@ -238,8 +264,9 @@ The user sees all changes in the application window in real-time.`,
 	root.AddCommand(apiCmd())
 
 	if err := root.Execute(); err != nil {
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 func runCmd() *cobra.Command {

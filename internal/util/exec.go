@@ -29,8 +29,8 @@ func RunCmd(ctx context.Context, name string, args []string, dir string) (*CmdRe
 }
 
 // RunCmdWithEnv executes a command with custom environment variables.
-// env is a list of "KEY=VALUE" strings that are appended to the current environment.
-// If env is nil, the default environment is used.
+// env is a list of "KEY=VALUE" strings layered over ChildEnv (the current
+// environment plus the portable overrides); env entries win.
 func RunCmdWithEnv(ctx context.Context, name string, args []string, dir string, env []string) (*CmdResult, error) {
 	return runCmd(ctx, name, args, dir, env, nil)
 }
@@ -81,9 +81,9 @@ func runCmdStreaming(ctx context.Context, name string, args []string, dir string
 	if dir != "" {
 		cmd.Dir = dir
 	}
-	if len(env) > 0 {
-		cmd.Env = append(os.Environ(), env...)
-	}
+	// Every spawn gets the portable environment (temp, tool homes, caches
+	// under BaseDir()/data) plus the caller's overrides.
+	ApplyChildEnv(cmd, env...)
 	if stdin != nil {
 		cmd.Stdin = stdin
 	}
@@ -100,6 +100,7 @@ func runCmdStreaming(ctx context.Context, name string, args []string, dir string
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
+	defer trackEula(name, args)()
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start %s: %w", name, err)
 	}
@@ -168,9 +169,9 @@ func runCmd(ctx context.Context, name string, args []string, dir string, env []s
 	if dir != "" {
 		cmd.Dir = dir
 	}
-	if len(env) > 0 {
-		cmd.Env = append(os.Environ(), env...)
-	}
+	// Every spawn gets the portable environment (temp, tool homes, caches
+	// under BaseDir()/data) plus the caller's overrides.
+	ApplyChildEnv(cmd, env...)
 
 	if stdin != nil {
 		cmd.Stdin = stdin
@@ -182,7 +183,9 @@ func runCmd(ctx context.Context, name string, args []string, dir string, env []s
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	untrack := trackEula(name, args)
 	err := cmd.Run()
+	untrack()
 	duration := time.Since(start)
 
 	result := &CmdResult{

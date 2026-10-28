@@ -160,6 +160,7 @@ func detectRuntimeVersion(kind RuntimeKind, binPath string) string {
 	}
 
 	util.HideCmdWindow(cmd)
+	util.ApplyChildEnv(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return ""
@@ -213,6 +214,7 @@ func systemDotNetHasAspNet10(dotnetPath string) bool {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, dotnetPath, "--list-runtimes")
 	util.HideCmdWindow(cmd)
+	util.ApplyChildEnv(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return false

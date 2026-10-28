@@ -237,6 +237,7 @@ func InstallPortable() error {
 	//nolint:gosec // G204: the binary is a hardcoded absolute system path and both
 	// arguments are paths this function derived from util.BaseDir(), not user input.
 	cmd := exec.CommandContext(context.Background(), `C:\Windows\System32\expand.exe`, tmpPath, "-F:*", destDir)
+	util.ApplyChildEnv(cmd)
 	if err := cmd.Run(); err != nil {
 		pw.Close()
 		return fmt.Errorf("extract cab failed: %w\n\nManual download: %s", err, manualDownloadURL)
