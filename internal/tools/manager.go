@@ -192,19 +192,62 @@ func (m *Manager) Install(ctx context.Context, name string, cb *InstallCallbacks
 		return "", fmt.Errorf("unknown tool: %s", name)
 	}
 
+	// Install into a fresh staging dir next to the live one, validate it, then
+	// swap it in. A failed or cancelled (re)install therefore never destroys a
+	// working tool. Staging lives in baseDir so findDotnetBin / release cache
+	// resolve exactly as for the final dir.
 	destDir := filepath.Join(m.baseDir, name)
+	stageDir := filepath.Join(m.baseDir, "."+name+".staging")
+	_ = os.RemoveAll(stageDir)
+	if err := os.MkdirAll(stageDir, 0755); err != nil {
+		return "", fmt.Errorf("create staging dir: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(stageDir) }()
 
-	// Clean dirty state: directory exists but binary is missing (e.g. partial Delete)
-	if _, err := os.Stat(destDir); err == nil {
-		if _, err := os.Stat(filepath.Join(destDir, tool.Binary)); os.IsNotExist(err) {
-			_ = os.RemoveAll(destDir)
+	version, err := m.installInto(ctx, tool, stageDir, cb)
+	if err == nil {
+		err = validateBinaryInstalled(tool, stageDir)
+	}
+	if err != nil {
+		return "", err
+	}
+	if err := swapDir(stageDir, destDir); err != nil {
+		return "", fmt.Errorf("activate %s: %w", name, err)
+	}
+	_ = m.RecordInstall(name, version)
+	return version, nil
+}
+
+// swapDir replaces dest with staged. The previous dest is moved aside first and
+// restored if the final rename fails, so dest is never left missing.
+func swapDir(staged, dest string) error {
+	backup := filepath.Join(filepath.Dir(dest), "."+filepath.Base(dest)+".old")
+	_ = os.RemoveAll(backup)
+	hadOld := false
+	if _, err := os.Stat(dest); err == nil {
+		if err := os.Rename(dest, backup); err != nil {
+			return fmt.Errorf("move old install aside (in use?): %w", err)
 		}
+		hadOld = true
 	}
-
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return "", fmt.Errorf("create tool dir: %w", err)
+	if err := os.Rename(staged, dest); err != nil {
+		if hadOld {
+			if rerr := os.Rename(backup, dest); rerr != nil {
+				return fmt.Errorf("install new version: %w; restore old: %v (old copy kept at %s)", err, rerr, backup)
+			}
+		}
+		return fmt.Errorf("install new version: %w", err)
 	}
+	if hadOld {
+		_ = os.RemoveAll(backup)
+	}
+	return nil
+}
 
+// installInto runs the tool's install method into destDir and returns the
+// version to record. It writes destDir/.version but does not touch the lock.
+func (m *Manager) installInto(ctx context.Context, tool ToolDef, destDir string, cb *InstallCallbacks) (string, error) {
+	name := tool.Name
 	var progressCb func(bytesDown, bytesTotal int64)
 	if cb != nil && cb.OnProgress != nil {
 		progressCb = func(bytesDown, bytesTotal int64) {
@@ -233,11 +276,7 @@ func (m *Manager) Install(ctx context.Context, name string, cb *InstallCallbacks
 
 	switch tool.Method {
 	case MethodGitHubRelease:
-		version, err := installFromGitHub(ctx, tool, destDir, m.cfg.GitHubToken, progressCb, extractCb)
-		if err == nil {
-			_ = m.RecordInstall(name, version)
-		}
-		return version, err
+		return installFromGitHub(ctx, tool, destDir, m.cfg.GitHubToken, progressCb, extractCb)
 	case MethodDirectURL:
 		var err error
 		if len(tool.DownloadURLs) > 0 {
@@ -254,7 +293,6 @@ func (m *Manager) Install(ctx context.Context, name string, cb *InstallCallbacks
 		}
 		versionFile := filepath.Join(destDir, ".version")
 		_ = os.WriteFile(versionFile, []byte(ver), 0644)
-		_ = m.RecordInstall(name, ver)
 		return ver, nil
 	case MethodDotnetTool:
 		err := installDotnetTool(ctx, tool, destDir)
@@ -267,7 +305,6 @@ func (m *Manager) Install(ctx context.Context, name string, cb *InstallCallbacks
 		}
 		versionFile := filepath.Join(destDir, ".version")
 		_ = os.WriteFile(versionFile, []byte(ver), 0644)
-		_ = m.RecordInstall(name, ver)
 		return ver, nil
 	case MethodNuGet:
 		ver, err := installFromNuGet(ctx, tool, destDir, progressCb, onExtractNuGet)
@@ -276,14 +313,9 @@ func (m *Manager) Install(ctx context.Context, name string, cb *InstallCallbacks
 		}
 		versionFile := filepath.Join(destDir, ".version")
 		_ = os.WriteFile(versionFile, []byte(ver), 0644)
-		_ = m.RecordInstall(name, ver)
 		return ver, nil
 	case MethodGitBuild:
-		version, err := installFromGitBuild(ctx, tool, destDir, onProgressGitBuild, extractCb)
-		if err == nil {
-			_ = m.RecordInstall(name, version)
-		}
-		return version, err
+		return installFromGitBuild(ctx, tool, destDir, onProgressGitBuild, extractCb)
 	default:
 		return "", fmt.Errorf("unsupported install method for %s", name)
 	}

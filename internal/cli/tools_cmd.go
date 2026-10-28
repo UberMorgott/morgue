@@ -91,7 +91,8 @@ func cliCallbacks() *tools.InstallCallbacks {
 }
 
 // ToolsInstall installs all missing tools. With force=true every tool is
-// removed and reinstalled.
+// reinstalled; Manager.Install stages the new copy and only replaces the old
+// one once it is validated, so a failed download keeps the working tool.
 func ToolsInstall(ctx context.Context, force bool) error {
 	cfg, _ := config.Load(util.ConfigPath())
 	mgr := tools.NewManager(util.ToolsBaseDir(), cfg)
@@ -111,12 +112,6 @@ func ToolsInstall(ctx context.Context, force bool) error {
 	cb := cliCallbacks()
 	fmt.Printf("Installing %d tools...\n", len(needed))
 	for _, name := range needed {
-		if force {
-			if err := mgr.Delete(name); err != nil {
-				fmt.Fprintf(os.Stderr, "Removing %s... FAILED: %v\n", name, err)
-				continue
-			}
-		}
 		version, err := mgr.Install(ctx, name, cb)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\rInstalling %s... FAILED: %v\n", name, err)
@@ -132,7 +127,8 @@ func ToolsInstall(ctx context.Context, force bool) error {
 }
 
 // ToolsInstallOne installs a single tool by name. With force=true an already
-// installed tool is removed and reinstalled (i.e. updated).
+// installed tool is reinstalled (i.e. updated); the old copy stays in place
+// until the new one is downloaded and validated.
 func ToolsInstallOne(ctx context.Context, name string, force bool) error {
 	cfg, _ := config.Load(util.ConfigPath())
 	mgr := tools.NewManager(util.ToolsBaseDir(), cfg)
@@ -142,14 +138,9 @@ func ToolsInstallOne(ctx context.Context, name string, force bool) error {
 		return fmt.Errorf("unknown tool: %s", name)
 	}
 
-	if mgr.IsInstalled(name) {
-		if !force {
-			fmt.Printf("Tool %s is already installed (use --force to reinstall/update).\n", name)
-			return nil
-		}
-		if err := mgr.Delete(name); err != nil {
-			return fmt.Errorf("remove %s: %w", name, err)
-		}
+	if mgr.IsInstalled(name) && !force {
+		fmt.Printf("Tool %s is already installed (use --force to reinstall/update).\n", name)
+		return nil
 	}
 
 	cb := cliCallbacks()
