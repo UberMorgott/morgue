@@ -1,8 +1,7 @@
 # Design: Unity Mono game-DATA extraction + organizer
 
 **Date:** 2026-06-26
-**Status:** Approved design → implementation
-**Branch:** `feat/unity-mono-gamedata`
+**Status:** Implemented (`internal/gamedata`, `internal/recipe/unity_mono.go`, `morgue gamedata`). Historical design record; code is the source of truth.
 
 ## Problem
 

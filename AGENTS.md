@@ -1,112 +1,65 @@
-# Morgue — Project Rules
+# Morgue — Agent Guide
 
-## Stack
-- **Backend:** Go 1.25, Wails v3, Cobra CLI
-- **Frontend:** Svelte 5 (runes: $props, $state, $derived, $effect), TypeScript, Vite 6, custom CSS utilities (no CSS framework)
-- **Desktop:** Wails 3 (Go backend + embedded SPA)
+Project rules, architecture and build/test workflow live in [CLAUDE.md](CLAUDE.md); read it first.
+Planned work: [docs/ROADMAP.md](docs/ROADMAP.md). This file covers the most common agent task:
+**adding or changing a recipe**.
 
-## Architecture
-- `cmd/morgue/main.go` — entry point (CLI args → Cobra, no args → Wails GUI + HTTP API)
-- `internal/` — core Go packages (api, app, cli, config, engine, recipe, recon, scanner, selfupdate, services, skiplist, tools, tui [legacy])
-- `internal/api/` — HTTP API server (localhost:19876) for hybrid mode. Handlers, SSE events, AI instructions.
-- `internal/engine/` — pipeline execution engine. Emits `PipelineEvent` with fields: Phase, Target, Message, Obfuscator, Deobfuscator, Tool, ReconKind, Compiler, FileSize, RecipeName, RecipeDesc, Progress, Done, Error, Output.
-- `internal/tools/` — tool download/install manager; tools stored in `BaseDir()/tools/<name>/`
-- `frontend/src/` — Svelte SPA (components, pages, lib, stores)
-- `BaseDir()` = directory of the running executable (`internal/util/paths.go`)
+## Recipe contract (`internal/recipe/recipe.go`)
 
-## Frontend Architecture
+```go
+type Recipe interface {
+    Name() string                 // CLI/API id, e.g. "java"; used by --recipe and summary.json
+    Description() string
+    Match(r *recon.Result) bool   // pure; decides on Kind/Compiler/Obfuscator/Runtime/SubType
+    Steps() []StepInfo            // ordered step list shown in GUI/CLI progress
+    RequiredTools() []string      // tool registry names; engine installs them before Execute
+    Execute(ctx *Context) error
+}
+```
 
-### Pages (frontend/src/pages/)
-- `HomePage.svelte` — pipeline UI: DropZone (idle) → pipeline progress (running)
-- `ToolsPage.svelte` — tool management
-- `SettingsPage.svelte` — app settings
-- `AboutPage.svelte` — version info
+- Registration: `func init() { Register(&X{}) }` in the recipe file. `recipe.Match` returns the **first**
+  match in registry order; `RegisterFirst` prepends (used by `dotnet-confuserex`, `nsis`). Init order is
+  filename order, so keep `Match` conditions disjoint instead of relying on order.
+- `RequiredTools` must list only tools the recipe cannot run without: the engine aborts the run if any
+  entry is still missing after install. Optional tools (e.g. `assetstudiomod` in `unity-mono`) are resolved
+  inside `Execute` and the step degrades gracefully.
+- `Context` (same file) carries `Target`, `Output` (per-target dir), `SharedOut` (run root, for per-game
+  products), `Tools` (`*tools.Manager`), `Config`, `ReferencePaths` (`--ref`), `AllowDynamic`, `Cflow`,
+  `CodeOnly` / `SkipAssets()`, `GameDataOut`, `StepFilter`, `Pause`, and the `Progress` / `Log` channels.
+- Report every step on `ctx.Progress` as `StepProgress{Step, Total, Name, Tool, Status, Duration, Error,
+  Count, CountTotal, Unit}` (`Running` → `Success|Failed|Skipped`). Prefix log lines with `[tool] `.
+- Steps that execute target code must be gated by `ctx.AllowDynamic`.
+- Resolve binaries with `ctx.Tools.Resolve("<tool>")` and runtimes with
+  `ctx.Tools.RuntimePath(tools.RuntimeJava|...)`. Run them via `internal/util` (`RunCmd*`,
+  `RunCmdStreaming*`) so the context, memory cap and logging behave the same everywhere.
+- Smallest complete example: `internal/recipe/java.go` (copy original → decompile → build indexes).
 
-### Pipeline Components (frontend/src/components/)
-- `PipelineProgress.svelte` — thin orchestrator, delegates to sub-panels
-- `PipelineStepper.svelte` — 4-step visual stepper (Analysis → Tools → Execution → Done)
-- `StatsStrip.svelte` — horizontal bar: platform, file count, size, obfuscation count
-- `CompositionPanel.svelte` — aggregated file types + obfuscation detection blocks
-- `ToolsPanel.svelte` — tool list with fill-based progress rings
-- `ExecutionPanel.svelte` — per-tool execution rows with progress + counters + mini log
-- `PipelineSummary.svelte` — completion stats, output path, full log
-- `ProgressRing.svelte` — reusable SVG circular progress (fill-based + indeterminate)
-- `DropZone.svelte` — drag-and-drop file/folder picker
-- `PipelineHistory.svelte` — recent runs (localStorage)
+## Adding a recipe — checklist
 
-### Pipeline State (frontend/src/lib/pipeline.ts)
-- Phases: `idle → analysis → tools → execute → done | error | cancelled`
-- `analysis` = merged scan + recon (backend still emits separate `scan`/`recon`/`match` events, frontend maps all → `analysis`)
-- State includes: reconResults, obfuscations [{name, deobfuscator, affectedFiles}], toolsNeeded/Installed, downloadBytes, execCounters [{count, unit}], logs
-- `updateFromEvent(data)` maps backend events to reactive store
+1. **Detection.** New target type → append a `Kind` at the **end** of the enum in
+   `internal/recon/result.go` and add its name to `kindNames` (integer values must stay stable). Classify it
+   in `recon.Classify` (`internal/recon/pe.go`); new file extensions also go into the scanner allow-list
+   (`internal/scanner/scanner.go`).
+2. **Tool.** Add a `ToolDef` to `internal/tools/registry.go` (`Name`, `Category`, `Method`
+   = `MethodGitHubRelease|MethodDirectURL|MethodNuGet`, `Repo`/`URL`, `AssetGlob`, `Binary`, optional
+   `Version` pin, `SHA256` for pinned assets, `RuntimeDeps`). Tools install on demand into
+   `BaseDir()/tools/<name>/`; never vendor binaries into the repo.
+3. **Recipe.** New file `internal/recipe/<name>.go` implementing the interface above; write output under
+   `ctx.Output` and keep the common layout (`original/`, `src/`, indexes) where it applies.
+4. **Skip-list.** Runtime/engine files that are not game code → `internal/skiplist/builtin.go`.
+5. **Tests.** Add a match test (pattern: `TestMatchDelphi` in `internal/recipe/recipe_test.go`) plus unit
+   tests for argument building / output layout (see `il2cpp_*_test.go`, `nsis_test.go`). No network or real
+   tool binaries in unit tests.
+6. **Docs.** Update the recipe table in `README.md`, the recipe list in
+   `internal/instructions/instructions.go` (served at `/api/instructions`), and the tools list in
+   `README.md` if a tool was added.
 
-### i18n (frontend/src/lib/i18n.ts)
-- Languages: en, ru
-- `t(lang, key)` function — no interpolation, components do `.replace()` themselves
-- Key prefixes: home.*, pipeline.*, dropzone.*, tools.*, runtimes.*, stats.*, composition.*, execution.*, stepper.*
+## Verify
 
-### CSS Architecture (frontend/src/app.css)
-Theme: "Molten Forge" — dark charcoal + amber glass + neon orange.
+```powershell
+go build ./... ; go vet ./... ; go test ./...
+cd frontend; npm run test     # only if frontend files changed
+```
 
-**Global utility classes (use these, don't duplicate):**
-- `.glass` — glass morphism panel (bg, blur, border, shadow, radius)
-- `.neon-border` — orange neon glow border
-- `.pipeline-panel` — standard pipeline section (flex-col, gap 14px, padding 18px 20px)
-- `.panel-title` — Orbitron uppercase heading with accent glow
-- `.font-accent` — Orbitron font family (numbers, counters, tool names)
-- `.font-mono` — Consolas monospace (logs, paths, code)
-- `.text-xs` / `.text-sm` / `.text-base` — font size scale
-- `.section-label` — small uppercase muted label
-- `.card-sm` — small card block (padding, radius, bg)
-- `.alert-block` + `.alert-warning` / `.alert-error` — alert containers
-- `.log-area` — monospace scrollable output with text selection
-- `.row-separator` — bottom border with :last-child removal
-- `.animate-in` — slide-up fade entrance animation
-
-**CSS variables:** `--accent`, `--accent-hot/warm/bright`, `--success`, `--error`, `--warning`, `--info`, `--text-primary/secondary/muted/heading`, `--bg-page/glass/card`, `--border`, `--glass-*`, `--radius-sm/md/lg/xl`
-
-**Rule:** New components MUST use global classes. No copy-pasting font-family, padding, border, or animation styles into scoped CSS.
-
-### Svelte Conventions
-- **Svelte 5 runes ONLY:** `$props()`, `$state()`, `$derived()`, `$effect()`. NO `export let`, NO `$:` reactive statements.
-- Props: destructured from `$props()` with types
-- Stores: `$storeName` subscription syntax
-
-## Hybrid Mode
-- GUI starts HTTP API on `localhost:19876` automatically
-- CLI: `morgue api status|run|tools|settings` — control running GUI
-- API handlers run work directly in a goroutine (`go s.pipeline.Run(...)`, `go s.tools.Install(...)`)
-- Wails events emitted from any goroutine DO reach the webview since v3 beta (`Emit` → `DispatchWailsEvent` → `ExecJS`/`InvokeSync` marshals to the main thread) — the old `PollAPICommand()` command queue is gone
-- SSE endpoint `/api/events` works for external clients (curl/CLI), NOT from Wails webview
-
-## Build & Test
-
-### Build (`build.bat`)
-Builds production binary into **`dist/`**:
-1. Frontend: `npm install` + `npm run build`
-2. Go binary: compiled directly into `dist/morgue.exe` with version/commit ldflags
-
-### Test (`test.bat`)
-Copies build from `dist/` into isolated **`testbed/`** and launches:
-- All downloaded tools, caches, decompilation artifacts stay in `testbed/`
-- Does NOT touch project root or `dist/`
-- Always run `build.bat` before `test.bat`
-
-### Dev mode (`task dev`)
-Uses Wails dev server with hot reload. Requires `wails3` in PATH.
-
-## Directories
-| Path | Purpose | Git |
-|------|---------|-----|
-| `dist/` | Clean distributable (exe + config only) | ignored |
-| `testbed/` | Isolated test sandbox (tools, artifacts, everything) | ignored |
-| `frontend/dist/` | Built SPA (embedded in Go binary) | ignored |
-| `docs/specs/` | Design specs (UX, decompiler, pipeline) | tracked |
-| `docs/superpowers/` | Implementation plans | gitignored |
-
-## Conventions
-- External tools download on-demand via `tools.Manager` — not pre-packaged
-- Config file: `morgue.yaml` next to executable
-- GitHub tokens in config — never commit `morgue.yaml`
-- Pipeline events: backend emits granular phases (scan, recon, match, tools, install, download, extract, execute, log) → frontend coalesces into 4 UI phases
-- Obfuscation: detected during recon, `Deobfuscator` field maps to tool (e.g. ConfuserEx → de4dot). If no deobfuscator → UI shows error + GitHub issue link
+Real end-to-end runs: `build.bat` then `test.bat` (sandboxed in `testbed/`), or
+`dist\morgue.exe run <target> -o <dir>` and inspect `<dir>\summary.json` + `<dir>\<target>\recon.json`.

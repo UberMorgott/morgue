@@ -85,7 +85,7 @@ automatically. The HTTP /api/run request does not currently accept --ref paths.
 
 GET /api/tools returns enriched status:
   {"tools":[{"Name":"diec","Installed":true,"Version":"3.09"},
-            {"Name":"nofuserex","Installed":false,"installing":true,
+            {"Name":"ilspycmd","Installed":false,"installing":true,
              "progress":45,"lastActivity":"..."}],
    "busy":true}
 
@@ -96,10 +96,12 @@ If installing=true but lastActivity > 2 min ago, the operation is likely hung.
   dotnet-generic      — .NET managed assemblies (ilspycmd)
   dotnet-confuserex   — ConfuserEx obfuscated .NET (de4dot + ilspycmd)
   unity-mono          — Unity Mono game DLLs (ilspycmd)
-  unity-il2cpp        — Unity IL2CPP builds (Il2CppDumper + ilspycmd)
+  unity-il2cpp        — Unity IL2CPP builds (Il2CppInspectorRedux or Il2CppDumper + ilspycmd)
   native              — native binaries (Ghidra headless)
   delphi              — Delphi binaries (IDR + Ghidra)
   ue5                 — Unreal Engine 5 (PAK extraction)
+  java                — .jar/.war/.class (Vineflower)
+  nsis                — NSIS installers (unpack, then each extracted file is processed)
 
 ## Recommended AI Workflow
   1. morgue api status              — verify GUI is running

@@ -1,7 +1,7 @@
 # Modern Unity IL2CPP Pipeline — Design Spec
 
 - **Date:** 2026-06-21
-- **Status:** Approved design → implementation plan
+- **Status:** Implemented (`internal/recipe/il2cpp*.go`, `internal/odin`, tools `il2cppinspector` / `assetripper`). Historical design record; code is the source of truth.
 - **Scope:** Make morgue decompile modern Unity IL2CPP games (metadata v39+, Unity 6) end-to-end with zero manual steps, including the data layer (ScriptableObject / Odin config). Add + fall back; do not remove existing behavior.
 
 ## 1. Problem & Context (verified)

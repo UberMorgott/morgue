@@ -7,9 +7,10 @@
 
 ## Architecture
 - `cmd/morgue/main.go` — entry point (CLI args → Cobra, no args → Wails GUI + HTTP API)
-- `internal/` — core Go packages (api, cli, config, engine, instructions, recipe, recon, scanner, selfupdate, services, skiplist, tools, util, webview2, tui [legacy])
-- `internal/api/` — HTTP API server (localhost:19876) for hybrid mode. Handlers, SSE events, AI instructions.
-- `internal/engine/` — pipeline execution engine. Emits `PipelineEvent` with fields: Phase, Target, Message, Obfuscator, Deobfuscator, Tool, ReconKind, Compiler, FileSize, RecipeName, RecipeDesc, Progress, Done, Error, Output.
+- `internal/` — core Go packages (api, cli, config, engine, gamedata, instructions, metadata, odin, recipe, recon, scanner, selfupdate, services, skiplist, tools, util, webview2, tui [legacy, only `run --watch`])
+- `internal/api/` — HTTP API server (`127.0.0.1:19876`) for hybrid mode. Handlers, SSE events, AI instructions; per-launch token (`internal/api/apitoken`).
+- `internal/engine/` — pipeline execution engine. Emits `PipelineEvent` (`internal/engine/types.go`): Phase, Target, Message, Tool, Progress, Done, RunOutcome, TargetOutcome, Severity, ReconKind, Compiler, Obfuscator, Deobfuscator, FileSize, RecipeName, RecipeDesc, ToolsNeeded, OutputPath, OutputStats, FilesTotal, FilesProcessed. Go `Error` is not serialized; the wire carries its text as `error`. Run outcome: success | error | cancelled; target outcome adds skipped.
+- `internal/recipe/` — one file per recipe (dotnet-generic, dotnet-confuserex, unity-mono, unity-il2cpp, native, delphi, ue5, java, nsis); see `AGENTS.md` for the recipe contract
 - `internal/tools/` — tool download/install manager; tools stored in `BaseDir()/tools/<name>/`
 - `frontend/src/` — Svelte SPA (components, pages, lib, stores)
 - `BaseDir()` = directory of the running executable (`internal/util/paths.go`)
@@ -34,6 +35,14 @@
 - `DropZone.svelte` — drag-and-drop file/folder picker
 - `PipelineHistory.svelte` — recent runs (localStorage)
 
+### Shell Components (frontend/src/components/)
+- `Sidebar.svelte` — page navigation
+- `Header.svelte` — top bar with app-update / tool-update badges
+- `ToolRow.svelte` — one row on the Tools page
+- `SettingsToggle.svelte` — settings switch
+- `CopyInstructions.svelte` — copies AI agent instructions
+- `UpdateOverlay.svelte` — self-update overlay
+
 ### Pipeline State (frontend/src/lib/pipeline.ts)
 - Phases: `idle → analysis → tools → execute → done | error | cancelled`
 - `analysis` = merged scan + recon (backend still emits separate `scan`/`recon`/`match` events, frontend maps all → `analysis`)
@@ -43,7 +52,7 @@
 ### i18n (frontend/src/lib/i18n.ts)
 - Languages: en, ru
 - `t(lang, key)` function — no interpolation, components do `.replace()` themselves
-- Key prefixes: home.*, pipeline.*, dropzone.*, tools.*, runtimes.*, stats.*, composition.*, execution.*, stepper.*
+- Key prefixes: about.*, composition.*, dropzone.*, execution.*, header.*, home.*, jobs.*, pipeline.*, runtimes.*, scan.*, settings.*, sidebar.*, stats.*, stepper.*, tool.*, tools.*, update.*
 
 ### CSS Architecture (frontend/src/app.css)
 Theme: "Molten Forge" — dark charcoal + amber glass + neon orange.
@@ -73,9 +82,10 @@ Theme: "Molten Forge" — dark charcoal + amber glass + neon orange.
 - Stores: `$storeName` subscription syntax
 
 ## Hybrid Mode
-- GUI starts HTTP API on `localhost:19876` automatically
-- CLI: `morgue api status|run|tools|settings` — control running GUI
-- API handlers run work directly in a goroutine (`go s.pipeline.Run(...)`, `go s.tools.Install(...)`)
+- GUI starts HTTP API on `127.0.0.1:19876` automatically
+- CLI: `morgue api status|stop|run|tools|settings` — control running GUI (CLI `morgue run` stays standalone and invisible to the GUI)
+- Auth: per-launch token written to `os.UserCacheDir()/morgue/api-token` (override `MORGUE_API_TOKEN_FILE`), sent as `X-Morgue-Token`; exempt: `GET /api/status`, `GET /api/instructions`
+- Admission is synchronous: `PipelineService.Start` / `ToolsService.StartInstall` reserve the slot, then run in a goroutine; busy → `409 {"error":"busy"}`. One run at a time; `POST /api/stop` cancels it
 - Wails events emitted from any goroutine DO reach the webview since v3 beta (`Emit` → `DispatchWailsEvent` → `ExecJS`/`InvokeSync` marshals to the main thread) — the old `PollAPICommand()` command queue is gone
 - SSE endpoint `/api/events` works for external clients (curl/CLI), NOT from Wails webview
 
@@ -101,12 +111,13 @@ Uses Wails dev server with hot reload. Requires `wails3` in PATH.
 | `dist/` | Clean distributable (exe + config only) | ignored |
 | `testbed/` | Isolated test sandbox (tools, artifacts, everything) | ignored |
 | `frontend/dist/` | Built SPA (embedded in Go binary) | ignored |
-| `docs/specs/` | Design specs (UX, decompiler, pipeline) | tracked |
-| `docs/superpowers/` | Implementation plans | gitignored |
+| `docs/ROADMAP.md` | Release roadmap + removal candidates | tracked |
+| `docs/specs/` | Design specs (IL2CPP, Unity gamedata, HashLink) | tracked |
+| `docs/superpowers/` | Local implementation plans | gitignored |
 
 ## Conventions
 - External tools download on-demand via `tools.Manager` — not pre-packaged
 - Config file: `morgue.yaml` next to executable
 - GitHub tokens in config — never commit `morgue.yaml`
-- Pipeline events: backend emits granular phases (scan, recon, match, tools, install, download, extract, execute, log) → frontend coalesces into 4 UI phases
+- Pipeline events: backend emits granular phases (scan, recon, match, target, tools, download, extract, unpack, execute, stats, log) → frontend coalesces into 4 UI phases
 - Obfuscation: detected during recon, `Deobfuscator` field maps to tool (e.g. ConfuserEx → de4dot). If no deobfuscator → UI shows error + GitHub issue link

@@ -61,13 +61,17 @@ Recipes are matched automatically from the recon result; you can also force one 
 
 | Recipe | Target | Toolchain |
 |--------|--------|-----------|
-| `dotnet-confuserex` | Obfuscated .NET assemblies (ConfuserEx) | de4dot + ilspycmd |
+| `dotnet-confuserex` | Obfuscated .NET assemblies (ConfuserEx) | de4dot-cex + ilspycmd |
 | `dotnet-generic` | Clean .NET managed assemblies | ilspycmd |
-| `unity-mono` | Unity Mono builds | ilspycmd |
-| `unity-il2cpp` | Unity IL2CPP builds | Il2CppDumper + ilspycmd |
-| `native` | Native PE binaries | Ghidra (headless) |
+| `unity-mono` | Unity Mono builds (code + game data) | ilspycmd + AssetRipper (AssetStudioMod optional) |
+| `unity-il2cpp` | Unity IL2CPP builds | Il2CppInspectorRedux (Il2CppDumper fallback) + ilspycmd + AssetRipper |
+| `native` | Native PE binaries | Ghidra (headless; NativeAOT extension when detected) |
 | `delphi` | Delphi binaries | IDR + Ghidra |
 | `ue5` | Unreal Engine 5 games | retoc (PAK/IoStore), `.usmap` SDK dump |
+| `java` | `.jar` / `.war` / `.class` | Vineflower (Java runtime auto-installed) |
+| `nsis` | Nullsoft (NSIS) installers | built-in unpacker; extracted files are processed recursively |
+
+HashLink/Haxe targets are not supported yet (see [docs/ROADMAP.md](docs/ROADMAP.md)).
 
 ## Managed tools
 
@@ -79,13 +83,17 @@ NuGet, or direct URLs). Inspect and manage them with `morgue tools check` /
 - **ilspycmd** — ILSpy command-line .NET decompiler (run via .NET)
 - **de4dot-cex** — de4dot fork for ConfuserEx
 - **ghidra** — NSA Ghidra (native decompilation, headless)
-- **il2cppdumper** — Unity IL2CPP metadata extractor
+- **ghidra-nativeaot** — Ghidra extension for .NET NativeAOT metadata recovery
+- **il2cppinspector** — Il2CppInspectorRedux (IL2CPP metadata v16–v106)
+- **il2cppdumper** — Unity IL2CPP metadata extractor (fallback)
+- **assetripper** — Unity asset / ScriptableObject extractor (headless)
+- **assetstudiomod** — Unity asset inventory (optional)
 - **idr** — Interactive Delphi Reconstructor
 - **retoc** — Unreal Engine PAK/IoStore extractor
-- **goresym** — Go symbol/type parser
+- **vineflower** — Java bytecode decompiler
 - **strings** — Sysinternals Strings
-- **nofuserex**, **confuserex-killer**, **proxycall-remover** — ConfuserEx
-  anti-tamper / unpacking helpers
+- **goresym**, **nofuserex**, **confuserex-killer**, **proxycall-remover** — installable
+  via `morgue tools install`, currently not used by any recipe
 
 ### Updating tools
 
@@ -135,9 +143,12 @@ morgue run <target>                    Decompile a file or directory
   -o, --output <dir>                   Output directory (default: <binary dir>/output)
   -q, --quiet                          Suppress stderr; emit only JSON to stdout
       --watch                          Show TUI progress on stderr (interactive only)
+      --force-watch                    Force the TUI even when stderr is not a terminal
       --recipe <name>                  Force a specific recipe
       --no-skip                        Disable the auto skip-list (process everything)
       --exclude <a,b>                  Additional exclude patterns
+      --ref <dir>                      Dependency search dir for .NET decompilation
+                                       (repeatable)
       --allow-dynamic                  Allow recipe steps that EXECUTE target code
                                        (e.g. ConfuserEx embedded-assembly extraction)
       --cflow                          Enable control-flow deobfuscation pass
@@ -146,6 +157,12 @@ morgue run <target>                    Decompile a file or directory
                                        decompiled code only. Persistent equivalent:
                                        unity_extract_assets: false in morgue.yaml
                                        (Settings -> Unity in the GUI)
+      --gamedata-out <dir>             Organized game-data tree destination
+                                       (unity-mono; default <output>/GameData)
+      --tools-mirror <host>            Rewrite tool download hosts to a mirror
+
+morgue gamedata <exportDir> -o <dir>   Organize an existing AssetRipper Unity export
+  [--inventory <csv>] [--full <dir>]   into a game-data tree
 
 morgue tools check [--updates]         List managed tools and their install status
 morgue tools install [name] [--force]  Install all missing tools, or a specific one
@@ -155,6 +172,7 @@ morgue version                         Print version and commit
 
 # Control a running GUI instance over its HTTP API:
 morgue api status                      Check whether the GUI is running
+morgue api stop                        Cancel the GUI's active run
 morgue api run <path> [-o <dir>] [--wait]   Queue a job (shown live in the GUI)
 morgue api tools [--wait]              List tools via the GUI
 morgue api tools install [name]        Install tool(s) via the GUI
@@ -185,7 +203,7 @@ decompiled C#).
 
 ## Build from source
 
-Requires Go 1.26.4 and Node 20+. The frontend is embedded into the Go binary at compile
+Requires Go 1.27.3 and Node 20.19+ / 22.12+. The frontend is embedded into the Go binary at compile
 time via `//go:embed`, so it must be built first.
 
 ```bat
@@ -212,7 +230,7 @@ Windows amd64 + arm64 zip archives and checksums. See
 
 ## Stack
 
-- **Backend:** Go 1.26.4, Wails v3 (alpha), Cobra CLI
+- **Backend:** Go 1.27.3, Wails v3.0.0, Cobra CLI
 - **Frontend:** Svelte 5 (runes), TypeScript 6, Vite 8, custom CSS (no framework)
 - **Desktop:** Wails 3 — Go backend + embedded Svelte SPA, WebView2, system tray
 - **Release:** GoReleaser (Windows-only, amd64 + arm64)
