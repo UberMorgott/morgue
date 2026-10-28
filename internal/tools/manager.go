@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -86,6 +87,10 @@ func (m *Manager) Resolve(name string) (string, error) {
 		}
 	}
 
+	if p := m.systemToolPath(tool); p != "" {
+		return p, nil
+	}
+
 	path := filepath.Join(m.baseDir, name, tool.Binary)
 	if _, err := os.Stat(path); err != nil {
 		if found := findBinaryRecursive(filepath.Join(m.baseDir, name), tool.Binary); found != "" {
@@ -94,6 +99,42 @@ func (m *Manager) Resolve(name string) (string, error) {
 		return "", fmt.Errorf("tool %s not installed (expected at %s)", name, path)
 	}
 	return path, nil
+}
+
+// systemVersion is the Version shown for a tool resolved from PATH because of
+// prefer_system_tools; its real version is unknown to Morgue.
+const systemVersion = "system"
+
+// systemToolPath returns the tool's executable found on PATH when the user set
+// prefer_system_tools, else "". Framework-dependent .NET tools (Binary *.dll,
+// e.g. ilspycmd.dll run via dotnet) are looked up by their global-tool shim
+// name (ilspycmd.exe), which recipes run directly. Non-executable binaries
+// (.jar extensions etc.) are never taken from PATH.
+func (m *Manager) systemToolPath(tool ToolDef) string {
+	if !m.cfg.PreferSystemTools || tool.Binary == "" {
+		return ""
+	}
+	if tool.Name == "ghidra" && preSeededGhidraHome(m.cfg) != "" {
+		return "" // an explicit GHIDRA_HOME / ghidra_home wins over PATH
+	}
+	ext := strings.ToLower(filepath.Ext(tool.Binary))
+	var cand string
+	switch ext {
+	case ".dll":
+		cand = strings.TrimSuffix(tool.Binary, filepath.Ext(tool.Binary))
+	case ".exe", ".bat", ".cmd", "":
+		cand = tool.Binary
+	default:
+		return ""
+	}
+	p, err := exec.LookPath(cand)
+	if err != nil {
+		return ""
+	}
+	if abs, aerr := filepath.Abs(p); aerr == nil {
+		return abs
+	}
+	return p
 }
 
 // findBinaryRecursive walks a directory tree looking for a file by name.
@@ -117,6 +158,20 @@ func (m *Manager) Check(name string) ToolStatus {
 	tool, ok := FindByName(name)
 	if !ok {
 		return ToolStatus{Name: name}
+	}
+
+	if p := m.systemToolPath(tool); p != "" {
+		return ToolStatus{
+			Name:        name,
+			Installed:   true,
+			Path:        p,
+			Version:     systemVersion,
+			Category:    tool.Category.String(),
+			Description: tool.Description,
+			Optional:    tool.Optional,
+			RuntimeDeps: tool.RuntimeDeps,
+			system:      true,
+		}
 	}
 
 	path := filepath.Join(m.baseDir, name, tool.Binary)
@@ -448,7 +503,7 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 		// Clean up stored version for display
 		st.Version = cleanVersionTag(st.Version)
 		st.LatestVersion = latestVersion(ctx, t)
-		st.UpdateAvailable = st.Installed && isUpdate(st.Version, st.LatestVersion)
+		st.UpdateAvailable = st.Installed && !st.system && isUpdate(st.Version, st.LatestVersion)
 		statuses = append(statuses, st)
 	}
 	return statuses
@@ -464,7 +519,7 @@ func (m *Manager) CheckLatestVersionSingle(name string) (latest string, updateAv
 	ctx := context.Background() // no caller context; probes are Timeout-bounded
 	st := m.Check(name)
 	latest = latestVersion(ctx, tool)
-	return latest, st.Installed && isUpdate(st.Version, latest)
+	return latest, st.Installed && !st.system && isUpdate(st.Version, latest)
 }
 
 // RuntimeEnv returns environment variables for local runtimes (PATH prepend, JAVA_HOME).

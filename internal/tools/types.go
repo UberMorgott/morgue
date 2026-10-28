@@ -85,4 +85,8 @@ type ToolStatus struct {
 	Description     string        `json:"Description"`
 	Optional        bool          `json:"Optional"`
 	RuntimeDeps     []RuntimeKind `json:"RuntimeDeps,omitempty"`
+
+	// system marks a tool resolved from PATH (prefer_system_tools); Morgue
+	// does not manage or update it.
+	system bool
 }
