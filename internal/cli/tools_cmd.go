@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/UberMorgott/morgue/internal/config"
@@ -96,7 +97,18 @@ func cliCallbacks() *tools.InstallCallbacks {
 func ToolsInstall(ctx context.Context, force bool) error {
 	cfg, _ := config.Load(util.ConfigPath())
 	mgr := tools.NewManager(util.ToolsBaseDir(), cfg)
+	return installMany(ctx, mgr, force, cliCallbacks())
+}
 
+// toolInstaller is the part of tools.Manager the bulk installer needs.
+type toolInstaller interface {
+	IsInstalled(name string) bool
+	Install(ctx context.Context, name string, cb *tools.InstallCallbacks) (string, error)
+}
+
+// installMany installs every needed registry tool, keeps going past failures
+// and returns an aggregate error naming each failed tool (non-zero exit).
+func installMany(ctx context.Context, mgr toolInstaller, force bool, cb *tools.InstallCallbacks) error {
 	var needed []string
 	for _, def := range tools.Registry {
 		if force || !mgr.IsInstalled(def.Name) {
@@ -109,8 +121,8 @@ func ToolsInstall(ctx context.Context, force bool) error {
 		return nil
 	}
 
-	cb := cliCallbacks()
 	fmt.Printf("Installing %d tools...\n", len(needed))
+	var failed []string
 	for _, name := range needed {
 		version, err := mgr.Install(ctx, name, cb)
 		if err != nil {
@@ -118,11 +130,16 @@ func ToolsInstall(ctx context.Context, force bool) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			failed = append(failed, name)
 			continue
 		}
 		fmt.Fprintf(os.Stderr, "\rInstalling %s... done (%s)\n", name, version)
 	}
 
+	if len(failed) > 0 {
+		return fmt.Errorf("%d of %d tools failed to install: %s",
+			len(failed), len(needed), strings.Join(failed, ", "))
+	}
 	return nil
 }
 
