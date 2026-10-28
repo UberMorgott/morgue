@@ -71,16 +71,29 @@ echo.
 :: --- Step 3: Generate Windows icon resource ---
 :: Icon + application manifest (winres\winres.json). The manifest sets
 :: longPathAware, without which every Win32 path over 260 chars fails.
+:: The source icons (winres\icon*.png) are not in the repository, so the
+:: committed rsrc_windows_*.syso files are the source of truth. Regenerate
+:: only when the icons are present locally; otherwise skip and reuse them.
 echo [3/4] Generating icon + manifest resource...
-pushd "%ROOT%cmd\morgue"
-go-winres make --arch amd64,386,arm64 --out rsrc >nul 2>&1
+if not exist "%ROOT%cmd\morgue\winres\icon.png" (
+    echo       SKIP: cmd\morgue\winres\icon*.png absent - using committed rsrc_windows_*.syso
+    goto :winres_done
+)
+where go-winres >nul 2>&1
 if errorlevel 1 (
-    echo WARNING: go-winres not found or failed. EXE will have no icon/manifest.
+    echo WARNING: go-winres not installed - using committed rsrc_windows_*.syso
     echo Install: go install github.com/tc-hib/go-winres@latest
+    goto :winres_done
+)
+pushd "%ROOT%cmd\morgue"
+go-winres make --arch amd64,386,arm64 --out rsrc
+if errorlevel 1 (
+    echo WARNING: go-winres failed - using committed rsrc_windows_*.syso
 ) else (
     echo       Icon + manifest resource OK
 )
 popd
+:winres_done
 echo.
 
 :: --- Step 4: Build Go binary ---
