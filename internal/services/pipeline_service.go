@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"sync"
@@ -25,6 +26,8 @@ type PipelineStatus struct {
 	StepName       string `json:"stepName"`
 	FilesProcessed int    `json:"filesProcessed"`
 	FilesTotal     int    `json:"filesTotal"`
+	// Error is the terminal run error (phase error/cancelled), as plain text.
+	Error string `json:"error,omitempty"`
 }
 
 // PipelineService wraps the engine for Wails RPC.
@@ -33,6 +36,7 @@ type PipelineService struct {
 	cancel context.CancelFunc
 	status PipelineStatus
 	pause  *engine.PauseGate
+	runner RunFunc
 }
 
 // NewPipelineService creates a PipelineService.
@@ -40,22 +44,97 @@ func NewPipelineService() *PipelineService {
 	return &PipelineService{}
 }
 
-// Run starts the decompilation pipeline on input, writing results to output.
-func (s *PipelineService) Run(input, output string) error {
+// ErrBusy is returned by Start when a run is already active.
+var ErrBusy = errors.New("busy")
+
+// ErrNotRunning is returned by StopActive when no run is active.
+var ErrNotRunning = errors.New("not running")
+
+// RunFunc executes one pipeline run. It is the seam tests use to replace the
+// real engine with a controllable stub.
+type RunFunc func(ctx context.Context, pause *engine.PauseGate, input, output string) error
+
+// NewPipelineServiceWithRunner creates a PipelineService whose runs execute fn
+// instead of the engine. Intended for tests of admission/stop behaviour.
+func NewPipelineServiceWithRunner(fn RunFunc) *PipelineService {
+	return &PipelineService{runner: fn}
+}
+
+// reserve atomically claims the single run slot. It returns ErrBusy if a run
+// is already active. On success the status is Running and the returned context
+// is cancelled by Stop.
+func (s *PipelineService) reserve() (context.Context, *engine.PauseGate, error) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.status.Running {
-		s.mu.Unlock()
-		return nil
+		return nil, nil, ErrBusy
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.pause = engine.NewPauseGate()
 	s.status = PipelineStatus{Running: true, Phase: "starting"}
-	s.mu.Unlock()
+	return ctx, s.pause, nil
+}
 
+// Start reserves the run slot synchronously and executes the run in a
+// background goroutine. It returns ErrBusy if a run is already active, so
+// concurrent callers get exactly one admission. done (may be nil) receives
+// the run's terminal error once it finishes.
+func (s *PipelineService) Start(input, output string, done func(error)) error {
+	ctx, pause, err := s.reserve()
+	if err != nil {
+		return err
+	}
+	go func() {
+		runErr := s.execute(ctx, pause, input, output)
+		if done != nil {
+			done(runErr)
+		}
+	}()
+	return nil
+}
+
+// Run starts the decompilation pipeline on input, writing results to output.
+// It blocks until the run finishes. If a run is already active it returns nil
+// without doing anything (Wails binding contract; HTTP callers use Start).
+func (s *PipelineService) Run(input, output string) error {
+	ctx, pause, err := s.reserve()
+	if err != nil {
+		return nil //nolint:nilerr // busy is a no-op for the GUI binding
+	}
+	return s.execute(ctx, pause, input, output)
+}
+
+// StopActive cancels the active run, returning ErrNotRunning if there is none.
+func (s *PipelineService) StopActive() error {
+	s.mu.Lock()
+	running := s.status.Running
+	s.mu.Unlock()
+	if !running {
+		return ErrNotRunning
+	}
+	return s.Stop()
+}
+
+// execute runs a reserved run to completion and records its terminal status.
+func (s *PipelineService) execute(ctx context.Context, pause *engine.PauseGate, input, output string) error {
+	run := s.runEngine
+	if s.runner != nil {
+		run = s.runner
+	}
+	err := run(ctx, pause, input, output)
+	// A cancelled run whose engine swallowed the cancellation still counts as
+	// cancelled, so API clients can tell it apart from a clean finish.
+	if err == nil && ctx.Err() != nil {
+		err = ctx.Err()
+	}
+	s.finishStatus(err)
+	return err
+}
+
+func (s *PipelineService) runEngine(ctx context.Context, pauseGate *engine.PauseGate, input, output string) error {
 	cfg, err := config.Load(util.ConfigPath())
 	if err != nil {
-		s.resetStatus()
 		return err
 	}
 
@@ -71,10 +150,6 @@ func (s *PipelineService) Run(input, output string) error {
 
 	eng := engine.New(cfg, util.ToolsBaseDir())
 	events := make(chan engine.PipelineEvent, 100)
-
-	s.mu.Lock()
-	pauseGate := s.pause
-	s.mu.Unlock()
 
 	// drained is closed once the drainer goroutine has fully consumed every
 	// event (including the engine's final "done" event). We must not reset the
@@ -127,7 +202,6 @@ func (s *PipelineService) Run(input, output string) error {
 	// for it to finish so no in-flight event can clobber the terminal status.
 	close(events)
 	<-drained
-	s.finishStatus(err)
 	return err
 }
 
@@ -183,14 +257,6 @@ func (s *PipelineService) GetStatus() PipelineStatus {
 	return s.status
 }
 
-func (s *PipelineService) resetStatus() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status = PipelineStatus{}
-	s.cancel = nil
-	s.pause = nil
-}
-
 // finishStatus records the terminal state of a completed run so external
 // consumers (HTTP /api/run/status, SSE clients, CLI) see a clear, non-running
 // terminal phase instead of a stale "done" left over from the last drained
@@ -200,8 +266,13 @@ func (s *PipelineService) finishStatus(runErr error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	phase := "done"
-	if runErr != nil {
+	switch {
+	case errors.Is(runErr, context.Canceled):
+		phase = "cancelled"
+		s.status.Error = runErr.Error()
+	case runErr != nil:
 		phase = "error"
+		s.status.Error = runErr.Error()
 	}
 	// Preserve Target/FilesProcessed/FilesTotal from the final drained event so
 	// the terminal status still describes what was processed; just flip the

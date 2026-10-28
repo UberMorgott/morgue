@@ -45,6 +45,50 @@ type ToolsService struct {
 	mu        sync.RWMutex
 	activeOps map[string]*OpState
 	changeCh  chan struct{}
+
+	// installing holds API-admitted install jobs (tool name, or allToolsKey).
+	installing map[string]struct{}
+}
+
+// allToolsKey is the admission key for an install-all job.
+const allToolsKey = "*"
+
+// StartInstall admits an install job synchronously and runs it in the
+// background. name == "" installs every missing tool. It returns ErrBusy if
+// the same tool, or an install-all job, is already admitted, so concurrent
+// callers cannot start duplicate installs of one tool.
+func (s *ToolsService) StartInstall(name string) error {
+	key := name
+	if key == "" {
+		key = allToolsKey
+	}
+	s.mu.Lock()
+	_, sameBusy := s.installing[key]
+	_, allBusy := s.installing[allToolsKey]
+	if sameBusy || allBusy || (key == allToolsKey && len(s.installing) > 0) {
+		s.mu.Unlock()
+		return ErrBusy
+	}
+	s.installing[key] = struct{}{}
+	s.mu.Unlock()
+
+	go func() {
+		defer func() {
+			s.mu.Lock()
+			delete(s.installing, key)
+			s.mu.Unlock()
+		}()
+		var err error
+		if key == allToolsKey {
+			err = s.InstallAll()
+		} else {
+			err = s.Install(context.Background(), name)
+		}
+		if err != nil {
+			log.Printf("api: install %s: %v", key, err)
+		}
+	}()
+	return nil
 }
 
 // NewToolsService creates a ToolsService.
@@ -56,6 +100,7 @@ func NewToolsService(appVersion string) *ToolsService {
 		appVersion: appVersion,
 		activeOps:  make(map[string]*OpState),
 		changeCh:   make(chan struct{}),
+		installing: make(map[string]struct{}),
 	}
 	return svc
 }

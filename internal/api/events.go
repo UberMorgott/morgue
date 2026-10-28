@@ -4,7 +4,12 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 )
+
+// sseKeepAlive is how often an idle SSE stream gets a comment ping, so proxies
+// and clients see a live connection and dead peers are detected promptly.
+var sseKeepAlive = 20 * time.Second
 
 // EventBroadcaster fans out server-sent events to connected clients.
 type EventBroadcaster struct {
@@ -34,6 +39,10 @@ func (eb *EventBroadcaster) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
+	// The server-wide WriteTimeout would kill the stream after 120 s; SSE is
+	// long-lived by design, so lift the deadline for this response only.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+
 	ch := make(chan string, 64)
 
 	eb.mu.Lock()
@@ -46,10 +55,27 @@ func (eb *EventBroadcaster) HandleSSE(w http.ResponseWriter, r *http.Request) {
 		eb.mu.Unlock()
 	}()
 
+	// Flush headers immediately so clients know the stream is open.
+	_, _ = fmt.Fprint(w, ": connected\n\n")
+	flusher.Flush()
+
+	ping := time.NewTicker(sseKeepAlive)
+	defer ping.Stop()
+
 	for {
 		select {
-		case msg := <-ch:
-			_, _ = fmt.Fprint(w, msg)
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			if _, err := fmt.Fprint(w, msg); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-ping.C:
+			if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
+				return
+			}
 			flusher.Flush()
 		case <-eb.shutdown:
 			return

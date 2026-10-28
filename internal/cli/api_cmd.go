@@ -10,9 +10,12 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/UberMorgott/morgue/internal/api/apitoken"
 )
 
-const apiBase = "http://127.0.0.1:19876/api"
+// apiBase is a var so tests can point the client at an httptest server.
+var apiBase = "http://127.0.0.1:19876/api"
 
 var errNotRunning = fmt.Errorf("GUI is not running. Launch morgue.exe first, or use 'morgue run' for headless mode")
 
@@ -38,6 +41,11 @@ func apiDo(method, path, contentType string, body io.Reader) (*http.Response, er
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
+	// The GUI publishes a per-launch token; without it every endpoint except
+	// /status answers 401. A missing file just means the GUI is not running.
+	if tok, err := apitoken.Read(); err == nil {
+		req.Header.Set(apitoken.Header, tok)
+	}
 	return http.DefaultClient.Do(req)
 }
 
@@ -47,7 +55,19 @@ func apiGet(path string) error {
 		return errNotRunning
 	}
 	defer func() { _ = resp.Body.Close() }()
-	return printJSON(resp.Body)
+	return printAndCheck(resp)
+}
+
+// printAndCheck pretty-prints the JSON body and turns an HTTP error status
+// into a non-nil error so the CLI exits non-zero.
+func printAndCheck(resp *http.Response) error {
+	if err := printJSON(resp.Body); err != nil {
+		return err
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		return fmt.Errorf("API request failed: %s", resp.Status)
+	}
+	return nil
 }
 
 func apiSend(method, path string, payload any) error {
@@ -60,7 +80,7 @@ func apiSend(method, path string, payload any) error {
 		return errNotRunning
 	}
 	defer func() { _ = resp.Body.Close() }()
-	return printJSON(resp.Body)
+	return printAndCheck(resp)
 }
 
 func apiPost(path string, payload any) error {
@@ -81,6 +101,11 @@ func APIRun(path, output string) error {
 	return apiPost("/run", map[string]string{"path": path, "output": output})
 }
 
+// APIStop cancels the GUI's active pipeline run.
+func APIStop() error {
+	return apiPost("/stop", map[string]string{})
+}
+
 // APIRunWait starts a decompilation run and polls /api/run/status until it completes.
 func APIRunWait(path, output string) error {
 	// Start the run with direct execution so we can poll status
@@ -92,6 +117,7 @@ func APIRunWait(path, output string) error {
 	type status struct {
 		Running        bool   `json:"running"`
 		Phase          string `json:"phase"`
+		Error          string `json:"error"`
 		StepName       string `json:"stepName"`
 		StepIndex      int    `json:"stepIndex"`
 		StepTotal      int    `json:"stepTotal"`
@@ -115,8 +141,18 @@ func APIRunWait(path, output string) error {
 		_ = resp.Body.Close()
 
 		if !st.Running {
-			fmt.Println("Pipeline complete.")
-			return nil
+			switch st.Phase {
+			case "done":
+				fmt.Println("Pipeline complete.")
+				return nil
+			case "cancelled":
+				return fmt.Errorf("pipeline cancelled")
+			default:
+				if st.Error != "" {
+					return fmt.Errorf("pipeline failed (%s): %s", st.Phase, st.Error)
+				}
+				return fmt.Errorf("pipeline failed (phase %q)", st.Phase)
+			}
 		}
 
 		// Print progress when phase or step changes

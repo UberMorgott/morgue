@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/UberMorgott/morgue/internal/api/apitoken"
 	"github.com/UberMorgott/morgue/internal/services"
 )
 
@@ -16,6 +18,7 @@ func TestIntegrationFullWorkflow(t *testing.T) {
 	cfg := &services.ConfigService{}
 	recon := &services.ReconService{}
 
+	t.Setenv(apitoken.EnvPath, filepath.Join(t.TempDir(), "api-token"))
 	srv := NewServer(pipeline, tools, cfg, recon)
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error: %v", err)

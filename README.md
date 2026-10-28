@@ -15,6 +15,23 @@ result as decompiled source, structured strings, and navigable indexes.
 - While the GUI is running it starts an HTTP API on `127.0.0.1:19876`. The
   `morgue api ...` subcommands drive that running instance, so an AI agent (or any
   HTTP client) can queue jobs and the user watches progress live in the window.
+- One run at a time: `POST /api/run` answers `202 {"status":"started"}` or
+  `409 {"error":"busy"}`; `POST /api/stop` cancels the active run (`409` if idle).
+  `morgue api run --wait` exits non-zero when the run fails or is cancelled.
+- API auth: on every launch the GUI writes a random token to
+  `%LOCALAPPDATA%\morgue\api-token` (`os.UserCacheDir()/morgue/api-token`; override
+  with `MORGUE_API_TOKEN_FILE`). Every endpoint except `GET /api/status` and
+  `GET /api/instructions` requires it in `X-Morgue-Token`; POST/PUT bodies must be
+  `application/json`; browser requests from non-localhost origins and non-loopback
+  `Host` headers are rejected. The `morgue api` commands read the token
+  automatically. With curl (PowerShell):
+
+  ```powershell
+  $tok = Get-Content "$env:LOCALAPPDATA\morgue\api-token"
+  curl.exe -H "X-Morgue-Token: $tok" -H "Content-Type: application/json" `
+    -d '{\"path\":\"C:\\Games\\App.exe\"}' http://127.0.0.1:19876/api/run
+  curl.exe -N -H "X-Morgue-Token: $tok" http://127.0.0.1:19876/api/events   # SSE, pings every 20 s
+  ```
 
 ## Features
 

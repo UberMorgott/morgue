@@ -1,8 +1,8 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/UberMorgott/morgue/internal/recipe"
 	"github.com/UberMorgott/morgue/internal/recon"
+	"github.com/UberMorgott/morgue/internal/services"
 )
 
 // --- Pipeline handlers ---
@@ -32,19 +33,35 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Run the pipeline in a background goroutine. Wails events emitted from it
-	// reach the webview (Emit marshals to the main thread), so the GUI follows
-	// along live; CLI clients poll GET /api/run/status or SSE /api/events.
-	//nolint:contextcheck // the run must outlive this HTTP request; PipelineService.Run
-	// owns its own cancellable context, cancelled by Stop(), not by the response returning.
-	go func() {
-		if err := s.pipeline.Run(req.Path, req.Output); err != nil {
+	// Reserve the single run slot synchronously so concurrent POSTs get exactly
+	// one admission; the run itself executes in a background goroutine. Wails
+	// events emitted from it reach the webview (Emit marshals to the main
+	// thread), so the GUI follows along live; CLI clients poll GET
+	// /api/run/status or SSE /api/events.
+	err := s.pipeline.Start(req.Path, req.Output, func(runErr error) {
+		if runErr != nil {
 			s.events.Broadcast("pipeline:error", marshalJSON(map[string]string{
-				"error": err.Error(),
+				"error": runErr.Error(),
 			}))
 		}
-	}()
-	writeJSON(w, http.StatusOK, map[string]string{"status": "started"})
+	})
+	if errors.Is(err, services.ErrBusy) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "busy"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
+}
+
+func (s *Server) handleStop(w http.ResponseWriter, _ *http.Request) {
+	if err := s.pipeline.StopActive(); errors.Is(err, services.ErrNotRunning) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "not running"})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "stopping"})
 }
 
 func (s *Server) handleGetPipelineStatus(w http.ResponseWriter, _ *http.Request) {
@@ -63,6 +80,8 @@ func (s *Server) handleGetTools(w http.ResponseWriter, r *http.Request) {
 		if waitSec > 120 {
 			waitSec = 120
 		}
+		// Lift the server WriteTimeout for this long-poll (120 s max wait).
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(time.Duration(waitSec)*time.Second + 30*time.Second))
 		changed := s.tools.WaitForChange(time.Duration(waitSec) * time.Second)
 		resp := s.tools.GetToolsEnriched()
 		resp.Changed = changed
@@ -83,28 +102,17 @@ func (s *Server) handleInstallTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Name == "" {
-		//nolint:contextcheck // the install must outlive this HTTP request.
-		go func() {
-			if err := s.tools.InstallAll(); err != nil {
-				log.Printf("api: install all: %v", err)
-			}
-		}()
-		s.events.Broadcast("tool:install:start", marshalJSON(map[string]string{"tool": "all"}))
-		writeJSON(w, http.StatusOK, map[string]string{"status": "installing all"})
+	if err := s.tools.StartInstall(req.Name); errors.Is(err, services.ErrBusy) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "busy"})
 		return
 	}
-
-	//nolint:contextcheck // Background on purpose: the install must outlive this HTTP request.
-	go func() {
-		if err := s.tools.Install(context.Background(), req.Name); err != nil {
-			log.Printf("api: install %s: %v", req.Name, err)
-		}
-	}()
-	s.events.Broadcast("tool:install:start", marshalJSON(map[string]string{"tool": req.Name}))
-	writeJSON(w, http.StatusOK, map[string]string{"status": "installing", "name": req.Name})
+	tool := req.Name
+	if tool == "" {
+		tool = "all"
+	}
+	s.events.Broadcast("tool:install:start", marshalJSON(map[string]string{"tool": tool}))
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "installing", "name": tool})
 }
-
 func (s *Server) handleDeleteTool(w http.ResponseWriter, r *http.Request) {
 	var req toolRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

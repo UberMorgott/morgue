@@ -3,9 +3,11 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/UberMorgott/morgue/internal/api/apitoken"
 	"github.com/UberMorgott/morgue/internal/services"
 )
 
@@ -16,6 +18,10 @@ func httpGetT(t *testing.T, url string) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Authenticate with the token the server under test published, if any.
+	if tok, err := apitoken.Read(); err == nil {
+		req.Header.Set(apitoken.Header, tok)
+	}
 	return http.DefaultClient.Do(req)
 }
 
@@ -25,6 +31,7 @@ func TestServerStartsAndStops(t *testing.T) {
 	cfg := &services.ConfigService{}
 	recon := &services.ReconService{}
 
+	t.Setenv(apitoken.EnvPath, filepath.Join(t.TempDir(), "api-token"))
 	srv := NewServer(pipeline, tools, cfg, recon)
 
 	if err := srv.Start(); err != nil {

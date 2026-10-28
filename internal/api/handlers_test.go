@@ -79,8 +79,8 @@ func TestHandleRunDecompilation(t *testing.T) {
 
 	s.handleRun(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", rec.Code)
 	}
 
 	var resp map[string]string

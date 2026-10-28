@@ -42,3 +42,27 @@ func TestSSEBroadcast(t *testing.T) {
 		t.Errorf("expected data line, got: %s", output)
 	}
 }
+
+func TestSSEKeepAlive(t *testing.T) {
+	old := sseKeepAlive
+	sseKeepAlive = 20 * time.Millisecond
+	defer func() { sseKeepAlive = old }()
+
+	eb := NewEventBroadcaster()
+	srv := httptest.NewServer(http.HandlerFunc(eb.HandleSSE))
+	defer srv.Close()
+
+	go func() {
+		time.Sleep(120 * time.Millisecond)
+		eb.Shutdown()
+	}()
+	resp, err := httpGetT(t, srv.URL)
+	if err != nil {
+		t.Fatalf("GET failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), ": ping") {
+		t.Fatalf("expected keepalive ping, got: %q", body)
+	}
+}
