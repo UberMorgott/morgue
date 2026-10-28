@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/url"
 	"os"
@@ -522,13 +523,24 @@ func parsePointerTarget(settingsXML []byte) (string, error) {
 // nugetPointerTarget inspects the DotnetToolSettings.xml files extracted into
 // destDir and returns the RID package to follow, or "" if none is a pointer.
 func nugetPointerTarget(destDir string) (string, error) {
+	// Walk through an os.Root so a symlink planted in the extracted package
+	// cannot redirect the reads outside destDir/tools.
+	root, err := os.OpenRoot(filepath.Join(destDir, "tools"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", nil // no tools/ dir: not a pointer package
+	}
+	if err != nil {
+		return "", fmt.Errorf("open extracted tools dir: %w", err)
+	}
+	defer func() { _ = root.Close() }()
+	fsys := root.FS()
 	var target string
 	var firstErr error
-	_ = filepath.WalkDir(filepath.Join(destDir, "tools"), func(path string, d os.DirEntry, err error) error {
+	_ = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.EqualFold(d.Name(), "DotnetToolSettings.xml") {
 			return nil //nolint:nilerr // unreadable entry: skip
 		}
-		data, rerr := os.ReadFile(filepath.Clean(path))
+		data, rerr := fs.ReadFile(fsys, path)
 		if rerr != nil {
 			return nil //nolint:nilerr // unreadable settings file: skip
 		}
