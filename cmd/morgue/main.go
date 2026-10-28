@@ -220,6 +220,13 @@ Modes:
 
 When GUI is running, AI agents can use 'morgue api' to control it.
 The user sees all changes in the application window in real-time.`,
+		// Cobra validates positional args and parses flags BEFORE persistent
+		// pre-run hooks, so usage is still printed for arg/flag mistakes. Once
+		// we reach here the invocation is well-formed: a RunE error is a
+		// runtime failure and dumping usage text after it is just noise.
+		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+			cmd.SilenceUsage = true
+		},
 	}
 
 	root.AddCommand(runCmd())
