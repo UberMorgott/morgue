@@ -424,16 +424,16 @@ func apiCmd() *cobra.Command {
 		Short: "Send a decompilation job to the GUI",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			target := strings.Join(args, " ")
-			output, _ := cmd.Flags().GetString("output")
+			req := cli.RequestFromFlags(cmd, strings.Join(args, " "))
 			wait, _ := cmd.Flags().GetBool("wait")
 			if wait {
-				return cli.APIRunWait(target, output)
+				return cli.APIRunWait(req)
 			}
-			return cli.APIRun(target, output)
+			return cli.APIRun(req)
 		},
 	}
-	apiRunCmd.Flags().StringP("output", "o", "", "Output directory")
+	// Same run-request flags as `morgue run`, so the GUI receives the full RunRequest.
+	cli.AddRunFlags(apiRunCmd)
 	apiRunCmd.Flags().Bool("wait", false, "Wait until the pipeline completes, showing progress")
 	cmd.AddCommand(apiRunCmd)
 

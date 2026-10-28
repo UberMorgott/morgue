@@ -8,10 +8,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
 	"github.com/UberMorgott/morgue/internal/api/apitoken"
+	"github.com/UberMorgott/morgue/internal/runmodel"
 )
 
 // apiBase is a var so tests can point the client at an httptest server.
@@ -97,8 +99,49 @@ func APIStatus() error {
 }
 
 // APIRun sends a decompilation run request to the GUI (direct execution).
-func APIRun(path, output string) error {
-	return apiPost("/run", map[string]string{"path": path, "output": output})
+// req carries every `morgue run` flag (see RequestFromFlags); local paths are
+// made absolute here because the GUI resolves relative paths against its own
+// working directory, not the caller's.
+func APIRun(req runmodel.RunRequest) error {
+	abs, err := absRequest(req)
+	if err != nil {
+		return err
+	}
+	return apiPost("/run", abs)
+}
+
+// absRequest returns req with its local filesystem paths made absolute.
+func absRequest(req runmodel.RunRequest) (runmodel.RunRequest, error) {
+	abs := func(p string) (string, error) {
+		if p == "" {
+			return "", nil
+		}
+		a, err := filepath.Abs(p)
+		if err != nil {
+			return "", fmt.Errorf("resolve %q: %w", p, err)
+		}
+		return a, nil
+	}
+	var err error
+	if req.Path, err = abs(req.Path); err != nil {
+		return req, err
+	}
+	if req.Output, err = abs(req.Output); err != nil {
+		return req, err
+	}
+	if req.GameDataOut, err = abs(req.GameDataOut); err != nil {
+		return req, err
+	}
+	if len(req.ReferencePaths) > 0 {
+		refs := make([]string, len(req.ReferencePaths))
+		for i, r := range req.ReferencePaths {
+			if refs[i], err = abs(r); err != nil {
+				return req, err
+			}
+		}
+		req.ReferencePaths = refs
+	}
+	return req, nil
 }
 
 // APIStop cancels the GUI's active pipeline run.
@@ -107,9 +150,9 @@ func APIStop() error {
 }
 
 // APIRunWait starts a decompilation run and polls /api/run/status until it completes.
-func APIRunWait(path, output string) error {
+func APIRunWait(req runmodel.RunRequest) error {
 	// Start the run with direct execution so we can poll status
-	if err := apiPost("/run", map[string]string{"path": path, "output": output}); err != nil {
+	if err := APIRun(req); err != nil {
 		return err
 	}
 

@@ -9,7 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/UberMorgott/morgue/internal/api/apitoken"
+	"github.com/UberMorgott/morgue/internal/runmodel"
 )
 
 // fakeGUI serves /api/run and /api/run/status, reporting the given terminal
@@ -57,7 +60,7 @@ func TestAPIRunWaitExitStatus(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			seen, done := fakeGUI(t, tc.runCode, tc.phase, tc.errMsg)
 			defer done()
-			err := APIRunWait("x.exe", "")
+			err := APIRunWait(runmodel.RunRequest{Path: "x.exe"})
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -69,5 +72,62 @@ func TestAPIRunWaitExitStatus(t *testing.T) {
 				t.Fatalf("token header = %q, want tok123", *seen)
 			}
 		})
+	}
+}
+
+// `morgue api run` must forward every run flag, not just path/output, and
+// resolve local paths against the caller's working directory.
+func TestAPIRunForwardsFullRequest(t *testing.T) {
+	var got runmodel.RunRequest
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dec := json.NewDecoder(r.Body)
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&got); err != nil {
+			t.Errorf("decode: %v", err)
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "started"})
+	}))
+	defer ts.Close()
+	old := apiBase
+	apiBase = ts.URL + "/api"
+	defer func() { apiBase = old }()
+	t.Setenv(apitoken.EnvPath, filepath.Join(t.TempDir(), "none"))
+
+	cmd := &cobra.Command{Use: "run"}
+	AddRunFlags(cmd)
+	if err := cmd.ParseFlags([]string{"-o", "out", "--recipe", "native", "--no-skip", "--exclude", "a,b",
+		"--ref", "refs", "--allow-dynamic=false", "--cflow", "--code-only", "--gamedata-out", "gd",
+		"--tools-mirror", "https://mirror.example"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := APIRun(RequestFromFlags(cmd, "game.exe")); err != nil {
+		t.Fatal(err)
+	}
+	cwd, _ := os.Getwd()
+	abs := func(p string) string { return filepath.Join(cwd, p) }
+	if got.Path != abs("game.exe") || got.Output != abs("out") || got.GameDataOut != abs("gd") ||
+		len(got.ReferencePaths) != 1 || got.ReferencePaths[0] != abs("refs") {
+		t.Fatalf("paths not absolutized: %+v", got)
+	}
+	if got.Recipe != "native" || got.ToolsMirror != "https://mirror.example" || strings.Join(got.Exclude, ",") != "a,b" {
+		t.Fatalf("string fields lost: %+v", got)
+	}
+	if got.NoSkip == nil || !*got.NoSkip || got.AllowDynamic == nil || *got.AllowDynamic ||
+		got.Cflow == nil || !*got.Cflow || got.CodeOnly == nil || !*got.CodeOnly {
+		t.Fatalf("bool flags lost: %+v", got)
+	}
+}
+
+// Omitted bool flags stay absent so the GUI applies its config defaults.
+func TestAPIRunOmitsUnsetBools(t *testing.T) {
+	cmd := &cobra.Command{Use: "run"}
+	AddRunFlags(cmd)
+	req := RequestFromFlags(cmd, "x.exe")
+	b, _ := json.Marshal(req)
+	for _, k := range []string{"noSkip", "allowDynamic", "cflow", "codeOnly"} {
+		if strings.Contains(string(b), k) {
+			t.Fatalf("%s present in %s", k, b)
+		}
 	}
 }
