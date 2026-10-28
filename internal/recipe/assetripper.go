@@ -52,11 +52,6 @@ func (c *AssetRipperClient) LoadFolder(ctx context.Context, gameDataDir string) 
 	return c.post(ctx, "/LoadFolder", url.Values{"Path": {gameDataDir}})
 }
 
-// UpdateSetting sets a single AssetRipper setting (key=value).
-func (c *AssetRipperClient) UpdateSetting(ctx context.Context, key, value string) error {
-	return c.post(ctx, "/Settings/Update", url.Values{key: {value}})
-}
-
 // Reset clears the loaded game from the AssetRipper instance.
 func (c *AssetRipperClient) Reset(ctx context.Context) error {
 	return c.post(ctx, "/Reset", nil)

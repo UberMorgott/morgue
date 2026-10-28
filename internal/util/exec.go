@@ -28,13 +28,6 @@ func RunCmd(ctx context.Context, name string, args []string, dir string) (*CmdRe
 	return RunCmdWithEnv(ctx, name, args, dir, nil)
 }
 
-// RunCmdWithStdin executes a command with custom stdin.
-// Useful for tools like Il2CppDumper that call Console.ReadKey() and crash
-// without a console — passing a newline lets them exit gracefully.
-func RunCmdWithStdin(ctx context.Context, name string, args []string, dir string, stdin io.Reader) (*CmdResult, error) {
-	return runCmd(ctx, name, args, dir, nil, stdin)
-}
-
 // RunCmdWithEnv executes a command with custom environment variables.
 // env is a list of "KEY=VALUE" strings that are appended to the current environment.
 // If env is nil, the default environment is used.
@@ -53,14 +46,8 @@ func RunCmdStreamingWithStdin(ctx context.Context, name string, args []string, d
 	return runCmdStreaming(ctx, name, args, dir, nil, stdin, false, onLine)
 }
 
-// RunCmdStreamingEnv is like RunCmdStreaming but with extra environment variables.
-// env is a list of "KEY=VALUE" strings appended to the current environment
-// (os.Environ()); later entries override earlier ones for the same key.
-func RunCmdStreamingEnv(ctx context.Context, env []string, name string, args []string, dir string, onLine func(line string)) (*CmdResult, error) {
-	return runCmdStreaming(ctx, name, args, dir, env, nil, false, onLine)
-}
-
-// RunCmdStreamingEnvBreakaway is like RunCmdStreamingEnv but launches the process
+// RunCmdStreamingEnvBreakaway is like RunCmdStreaming with extra environment
+// variables ("KEY=VALUE", appended to os.Environ()), but launches the process
 // with CREATE_BREAKAWAY_FROM_JOB (Windows only) so it and its descendants escape
 // morgue's Job Object memory cap. Use this ONLY for tools that legitimately need
 // more than the per-process cap — currently just Ghidra's JVM, which sizes its
