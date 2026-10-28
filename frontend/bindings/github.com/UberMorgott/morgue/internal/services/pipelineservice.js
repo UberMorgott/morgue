@@ -43,6 +43,8 @@ export function Resume() {
 
 /**
  * Run starts the decompilation pipeline on input, writing results to output.
+ * It blocks until the run finishes. If a run is already active it returns nil
+ * without doing anything (Wails binding contract; HTTP callers use Start).
  * @param {string} input
  * @param {string} output
  * @returns {$CancellablePromise<void>}
@@ -52,11 +54,32 @@ export function Run(input, output) {
 }
 
 /**
+ * Start reserves the run slot synchronously and executes the run in a
+ * background goroutine. It returns ErrBusy if a run is already active, so
+ * concurrent callers get exactly one admission. The hook registered with
+ * SetRunFinishedHook (if any) receives the run's terminal error.
+ * @param {string} input
+ * @param {string} output
+ * @returns {$CancellablePromise<void>}
+ */
+export function Start(input, output) {
+    return $Call.ByID(1656597106, input, output);
+}
+
+/**
  * Stop cancels the running pipeline.
  * @returns {$CancellablePromise<void>}
  */
 export function Stop() {
     return $Call.ByID(2742843826);
+}
+
+/**
+ * StopActive cancels the active run, returning ErrNotRunning if there is none.
+ * @returns {$CancellablePromise<void>}
+ */
+export function StopActive() {
+    return $Call.ByID(545881140);
 }
 
 // Private type creation functions

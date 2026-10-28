@@ -127,6 +127,18 @@ export function ShouldCheckUpdates() {
 }
 
 /**
+ * StartInstall admits an install job synchronously and runs it in the
+ * background. name == "" installs every missing tool. It returns ErrBusy if
+ * the same tool, or an install-all job, is already admitted, so concurrent
+ * callers cannot start duplicate installs of one tool.
+ * @param {string} name
+ * @returns {$CancellablePromise<void>}
+ */
+export function StartInstall(name) {
+    return $Call.ByID(322445274, name);
+}
+
+/**
  * StartupAutoUpdate runs background update checks and auto-applies if configured.
  * @returns {$CancellablePromise<{ [_ in string]?: any }>}
  */

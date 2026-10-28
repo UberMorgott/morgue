@@ -250,6 +250,14 @@ export class PipelineStatus {
              */
             this["filesTotal"] = 0;
         }
+        if (/** @type {any} */(false)) {
+            /**
+             * Error is the terminal run error (phase error/cancelled), as plain text.
+             * @member
+             * @type {string | undefined}
+             */
+            this["error"] = undefined;
+        }
 
         Object.assign(this, $$source);
     }
