@@ -1,0 +1,9 @@
+{
+  "vulnerabilities": [
+    {
+      "id": "GHSA-gcqx-w48m-w2h4",
+      "until": "2027-01-31",
+      "reason": "deepmerge 4.3.1 (latest, no fixed release) is a dev-only transitive dep of @sveltejs/vite-plugin-svelte 7.3.1 (latest); used at build time on our own Vite config only, never shipped in the embedded SPA. Re-check when a fixed deepmerge or plugin release appears."
+    }
+  ]
+}
