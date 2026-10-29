@@ -85,7 +85,6 @@
           <div class="card-rows">
             <SettingsToggle label={t(lang, 'settings.autoUpdateCheck')} hint={t(lang, 'settings.autoUpdateCheckHint')} active={config.AutoUpdateCheck} onToggle={() => toggleField('AutoUpdateCheck')} />
             <SettingsToggle label={t(lang, 'settings.autoUpdateApp')} hint={t(lang, 'settings.autoUpdateAppHint')} active={config.AutoUpdateApp} onToggle={() => toggleField('AutoUpdateApp')} />
-            <SettingsToggle label={t(lang, 'settings.autoUpdateTools')} hint={t(lang, 'settings.autoUpdateToolsHint')} active={config.AutoUpdateTools} onToggle={() => toggleField('AutoUpdateTools')} />
           </div>
         </section>
 
@@ -187,6 +186,20 @@
           <h3 class="card-title">{t(lang, 'settings.native')}</h3>
           <div class="card-rows">
             <SettingsToggle label={t(lang, 'settings.native.ghidraDecompile')} hint={t(lang, 'settings.native.ghidraDecompileHint')} active={config.NativeGhidraDecompile} onToggle={() => toggleField('NativeGhidraDecompile')} />
+            <div class="setting-row-block">
+              <div class="setting-row">
+                <span class="setting-label">{t(lang, 'settings.native.ghidraMaxMem')}</span>
+                <input class="setting-input setting-input-num" type="number" bind:value={config.GhidraMaxMemGB} oninput={onConfigChange} min="0" />
+              </div>
+              <span class="setting-hint">{t(lang, 'settings.native.ghidraMaxMemHint')}</span>
+            </div>
+            <div class="setting-row-block">
+              <div class="setting-row">
+                <span class="setting-label">{t(lang, 'settings.native.ghidraMaxCpu')}</span>
+                <input class="setting-input setting-input-num" type="number" bind:value={config.GhidraMaxCPU} oninput={onConfigChange} min="0" />
+              </div>
+              <span class="setting-hint">{t(lang, 'settings.native.ghidraMaxCpuHint')}</span>
+            </div>
           </div>
         </section>
 

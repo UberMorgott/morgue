@@ -562,6 +562,75 @@ export class Metric {
     }
 }
 
+/**
+ * NameQuality measures how many recovered symbol names are tool-generated
+ * defaults (e.g. Ghidra FUN_<addr>) rather than original, metadata or
+ * inferred names. AutoRatio is the default-name share of Total; it is null
+ * unless both counts are measured over the same identity universe and
+ * Total > 0. Inferred counts default names replaced by Morgue's inference
+ * (still inference, not recovered originals).
+ */
+export class NameQuality {
+    /**
+     * Creates a new NameQuality instance.
+     * @param {Partial<NameQuality>} [$$source = {}] - The source object to create the NameQuality.
+     */
+    constructor($$source = {}) {
+        if (!("total" in $$source)) {
+            /**
+             * @member
+             * @type {Metric}
+             */
+            this["total"] = (new Metric());
+        }
+        if (!("autoNamed" in $$source)) {
+            /**
+             * @member
+             * @type {Metric}
+             */
+            this["autoNamed"] = (new Metric());
+        }
+        if (!("autoRatio" in $$source)) {
+            /**
+             * @member
+             * @type {number | null}
+             */
+            this["autoRatio"] = null;
+        }
+        if (!("inferred" in $$source)) {
+            /**
+             * @member
+             * @type {Metric}
+             */
+            this["inferred"] = (new Metric());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new NameQuality instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {NameQuality}
+     */
+    static createFrom($$source = {}) {
+        const $$createField0_0 = $$createType1;
+        const $$createField1_0 = $$createType1;
+        const $$createField3_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("total" in $$parsedSource) {
+            $$parsedSource["total"] = $$createField0_0($$parsedSource["total"]);
+        }
+        if ("autoNamed" in $$parsedSource) {
+            $$parsedSource["autoNamed"] = $$createField1_0($$parsedSource["autoNamed"]);
+        }
+        if ("inferred" in $$parsedSource) {
+            $$parsedSource["inferred"] = $$createField3_0($$parsedSource["inferred"]);
+        }
+        return new NameQuality(/** @type {Partial<NameQuality>} */($$parsedSource));
+    }
+}
+
 export class Producer {
     /**
      * Creates a new Producer instance.
@@ -705,6 +774,13 @@ export class QualityReport {
              */
             this["types"] = (new Coverage());
         }
+        if (!("names" in $$source)) {
+            /**
+             * @member
+             * @type {NameQuality}
+             */
+            this["names"] = (new NameQuality());
+        }
         if (!("decompilerErrors" in $$source)) {
             /**
              * @member
@@ -766,13 +842,14 @@ export class QualityReport {
     static createFrom($$source = {}) {
         const $$createField3_0 = $$createType4;
         const $$createField4_0 = $$createType4;
-        const $$createField5_0 = $$createType1;
+        const $$createField5_0 = $$createType5;
         const $$createField6_0 = $$createType1;
         const $$createField7_0 = $$createType1;
         const $$createField8_0 = $$createType1;
-        const $$createField9_0 = $$createType4;
-        const $$createField10_0 = $$createType5;
-        const $$createField11_0 = $$createType7;
+        const $$createField9_0 = $$createType1;
+        const $$createField10_0 = $$createType4;
+        const $$createField11_0 = $$createType6;
+        const $$createField12_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("functions" in $$parsedSource) {
             $$parsedSource["functions"] = $$createField3_0($$parsedSource["functions"]);
@@ -780,26 +857,29 @@ export class QualityReport {
         if ("types" in $$parsedSource) {
             $$parsedSource["types"] = $$createField4_0($$parsedSource["types"]);
         }
+        if ("names" in $$parsedSource) {
+            $$parsedSource["names"] = $$createField5_0($$parsedSource["names"]);
+        }
         if ("decompilerErrors" in $$parsedSource) {
-            $$parsedSource["decompilerErrors"] = $$createField5_0($$parsedSource["decompilerErrors"]);
+            $$parsedSource["decompilerErrors"] = $$createField6_0($$parsedSource["decompilerErrors"]);
         }
         if ("unknownResultTypes" in $$parsedSource) {
-            $$parsedSource["unknownResultTypes"] = $$createField6_0($$parsedSource["unknownResultTypes"]);
+            $$parsedSource["unknownResultTypes"] = $$createField7_0($$parsedSource["unknownResultTypes"]);
         }
         if ("unresolvedReferences" in $$parsedSource) {
-            $$parsedSource["unresolvedReferences"] = $$createField7_0($$parsedSource["unresolvedReferences"]);
+            $$parsedSource["unresolvedReferences"] = $$createField8_0($$parsedSource["unresolvedReferences"]);
         }
         if ("residualObfuscation" in $$parsedSource) {
-            $$parsedSource["residualObfuscation"] = $$createField8_0($$parsedSource["residualObfuscation"]);
+            $$parsedSource["residualObfuscation"] = $$createField9_0($$parsedSource["residualObfuscation"]);
         }
         if ("stringDecryption" in $$parsedSource) {
-            $$parsedSource["stringDecryption"] = $$createField9_0($$parsedSource["stringDecryption"]);
+            $$parsedSource["stringDecryption"] = $$createField10_0($$parsedSource["stringDecryption"]);
         }
         if ("warnings" in $$parsedSource) {
-            $$parsedSource["warnings"] = $$createField10_0($$parsedSource["warnings"]);
+            $$parsedSource["warnings"] = $$createField11_0($$parsedSource["warnings"]);
         }
         if ("checks" in $$parsedSource) {
-            $$parsedSource["checks"] = $$createField11_0($$parsedSource["checks"]);
+            $$parsedSource["checks"] = $$createField12_0($$parsedSource["checks"]);
         }
         return new QualityReport(/** @type {Partial<QualityReport>} */($$parsedSource));
     }
@@ -926,8 +1006,8 @@ export class RunRecord {
      * @returns {RunRecord}
      */
     static createFrom($$source = {}) {
-        const $$createField7_0 = $$createType8;
-        const $$createField8_0 = $$createType8;
+        const $$createField7_0 = $$createType9;
+        const $$createField8_0 = $$createType9;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("targets" in $$parsedSource) {
             $$parsedSource["targets"] = $$createField7_0($$parsedSource["targets"]);
@@ -1035,8 +1115,8 @@ export class RunRequest {
      * @returns {RunRequest}
      */
     static createFrom($$source = {}) {
-        const $$createField4_0 = $$createType5;
-        const $$createField5_0 = $$createType5;
+        const $$createField4_0 = $$createType6;
+        const $$createField5_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("exclude" in $$parsedSource) {
             $$parsedSource["exclude"] = $$createField4_0($$parsedSource["exclude"]);
@@ -1158,8 +1238,8 @@ export class RunSpec {
      * @returns {RunSpec}
      */
     static createFrom($$source = {}) {
-        const $$createField5_0 = $$createType5;
-        const $$createField6_0 = $$createType5;
+        const $$createField5_0 = $$createType6;
+        const $$createField6_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("exclude" in $$parsedSource) {
             $$parsedSource["exclude"] = $$createField5_0($$parsedSource["exclude"]);
@@ -1320,9 +1400,9 @@ export class TargetRecord {
      * @returns {TargetRecord}
      */
     static createFrom($$source = {}) {
-        const $$createField5_0 = $$createType10;
-        const $$createField16_0 = $$createType11;
-        const $$createField17_0 = $$createType13;
+        const $$createField5_0 = $$createType11;
+        const $$createField16_0 = $$createType12;
+        const $$createField17_0 = $$createType14;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("inputSet" in $$parsedSource) {
             $$parsedSource["inputSet"] = $$createField5_0($$parsedSource["inputSet"]);
@@ -1437,12 +1517,12 @@ export class Workspace {
      * @returns {Workspace}
      */
     static createFrom($$source = {}) {
-        const $$createField3_0 = $$createType14;
-        const $$createField4_0 = $$createType15;
-        const $$createField5_0 = $$createType16;
-        const $$createField9_0 = $$createType18;
-        const $$createField10_0 = $$createType20;
-        const $$createField11_0 = $$createType5;
+        const $$createField3_0 = $$createType15;
+        const $$createField4_0 = $$createType16;
+        const $$createField5_0 = $$createType17;
+        const $$createField9_0 = $$createType19;
+        const $$createField10_0 = $$createType21;
+        const $$createField11_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("app" in $$parsedSource) {
             $$parsedSource["app"] = $$createField3_0($$parsedSource["app"]);
@@ -1472,19 +1552,20 @@ const $$createType1 = Metric.createFrom;
 const $$createType2 = Evidence.createFrom;
 const $$createType3 = $Create.Array($$createType2);
 const $$createType4 = Coverage.createFrom;
-const $$createType5 = $Create.Array($Create.Any);
-const $$createType6 = QualityCheck.createFrom;
-const $$createType7 = $Create.Array($$createType6);
-const $$createType8 = Counts.createFrom;
-const $$createType9 = InputFile.createFrom;
-const $$createType10 = $Create.Array($$createType9);
-const $$createType11 = FileCounts.createFrom;
-const $$createType12 = QualityReport.createFrom;
-const $$createType13 = $Create.Nullable($$createType12);
-const $$createType14 = AppInfo.createFrom;
-const $$createType15 = RunRecord.createFrom;
-const $$createType16 = RunSpec.createFrom;
-const $$createType17 = TargetRecord.createFrom;
-const $$createType18 = $Create.Array($$createType17);
-const $$createType19 = Artifact.createFrom;
-const $$createType20 = $Create.Array($$createType19);
+const $$createType5 = NameQuality.createFrom;
+const $$createType6 = $Create.Array($Create.Any);
+const $$createType7 = QualityCheck.createFrom;
+const $$createType8 = $Create.Array($$createType7);
+const $$createType9 = Counts.createFrom;
+const $$createType10 = InputFile.createFrom;
+const $$createType11 = $Create.Array($$createType10);
+const $$createType12 = FileCounts.createFrom;
+const $$createType13 = QualityReport.createFrom;
+const $$createType14 = $Create.Nullable($$createType13);
+const $$createType15 = AppInfo.createFrom;
+const $$createType16 = RunRecord.createFrom;
+const $$createType17 = RunSpec.createFrom;
+const $$createType18 = TargetRecord.createFrom;
+const $$createType19 = $Create.Array($$createType18);
+const $$createType20 = Artifact.createFrom;
+const $$createType21 = $Create.Array($$createType20);

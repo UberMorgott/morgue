@@ -27,7 +27,6 @@ type Config struct {
 	DownloadTimeoutMinutes int             `json:"DownloadTimeoutMinutes" yaml:"download_timeout_minutes"`
 	PreferSystemTools      bool            `json:"PreferSystemTools" yaml:"prefer_system_tools"`
 	AutoUpdateCheck        bool            `json:"AutoUpdateCheck" yaml:"auto_update_check"`
-	AutoUpdateTools        bool            `json:"AutoUpdateTools" yaml:"auto_update_tools"`
 	AutoUpdateApp          bool            `json:"AutoUpdateApp" yaml:"auto_update_app"`
 	UpdateChannel          string          `json:"UpdateChannel" yaml:"update_channel"`
 	CSharpLanguageVersion  string          `json:"CSharpLanguageVersion" yaml:"csharp_language_version"`
@@ -40,9 +39,9 @@ type Config struct {
 	SandboxWarning         bool            `json:"SandboxWarning" yaml:"sandbox_warning"`
 
 	// GhidraHome points at a pre-existing, offline Ghidra install (the directory
-	// containing ghidraRun.bat / support/analyzeHeadless). When set (or the
-	// $GHIDRA_HOME env var), Ghidra resolves with zero download. Empty falls back
-	// to the managed install under BaseDir()/tools/ghidra.
+	// containing ghidraRun.bat / support/analyzeHeadless). When set, Ghidra
+	// resolves with zero download ($GHIDRA_HOME only with PreferSystemTools).
+	// Empty uses the managed install under BaseDir()/tools/ghidra.
 	GhidraHome string `json:"GhidraHome" yaml:"ghidra_home"`
 	// ToolsMirror rewrites the host of tool download URLs (e.g. an internal
 	// GitHub-release mirror) so tools can be fetched offline / behind a firewall.

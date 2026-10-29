@@ -208,6 +208,8 @@ var settingsAllowlist = map[string]bool{
 	"DelphiGhidraDecompile": true,
 	"AllowDynamicExecution": true,
 	"UnityExtractAssets":    true,
+	"GhidraMaxMemGB":        true,
+	"GhidraMaxCPU":          true,
 }
 
 func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {

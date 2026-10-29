@@ -13,6 +13,7 @@ export {
     FileCounts,
     InputFile,
     Metric,
+    NameQuality,
     Producer,
     QualityCheck,
     QualityReport,

@@ -134,13 +134,6 @@ export class Config {
              */
             this["AutoUpdateCheck"] = false;
         }
-        if (!("AutoUpdateTools" in $$source)) {
-            /**
-             * @member
-             * @type {boolean}
-             */
-            this["AutoUpdateTools"] = false;
-        }
         if (!("AutoUpdateApp" in $$source)) {
             /**
              * @member
@@ -214,9 +207,9 @@ export class Config {
         if (!("GhidraHome" in $$source)) {
             /**
              * GhidraHome points at a pre-existing, offline Ghidra install (the directory
-             * containing ghidraRun.bat / support/analyzeHeadless). When set (or the
-             * $GHIDRA_HOME env var), Ghidra resolves with zero download. Empty falls back
-             * to the managed install under BaseDir()/tools/ghidra.
+             * containing ghidraRun.bat / support/analyzeHeadless). When set, Ghidra
+             * resolves with zero download ($GHIDRA_HOME only with PreferSystemTools).
+             * Empty uses the managed install under BaseDir()/tools/ghidra.
              * @member
              * @type {string}
              */
@@ -310,6 +303,24 @@ export class Config {
              * @type {boolean}
              */
             this["NativeGhidraDecompile"] = false;
+        }
+        if (!("GhidraMaxMemGB" in $$source)) {
+            /**
+             * GhidraMaxMemGB caps the analyzeHeadless JVM heap; 0 = auto
+             * (min(8, 25% of physical RAM), at least 2). GhidraMaxCPU caps its analysis
+             * threads (-max-cpu); 0 = auto (half the logical CPUs, at least 1).
+             * Env GHIDRA_HEADLESS_MAXMEM / GHIDRA_MAXMEM still override the heap.
+             * @member
+             * @type {number}
+             */
+            this["GhidraMaxMemGB"] = 0;
+        }
+        if (!("GhidraMaxCPU" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["GhidraMaxCPU"] = 0;
         }
         if (!("DelphiIDRAnalysis" in $$source)) {
             /**

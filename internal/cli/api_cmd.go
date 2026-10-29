@@ -298,7 +298,6 @@ var settingTypes = map[string]string{
 	"StopOnFirstError":      "bool",
 	"PreferSystemTools":     "bool",
 	"AutoUpdateCheck":       "bool",
-	"AutoUpdateTools":       "bool",
 	"AutoUpdateApp":         "bool",
 	"GeneratePDB":           "bool",
 	"DecompileProjectMode":  "bool",
@@ -320,6 +319,8 @@ var settingTypes = map[string]string{
 	"ConcurrentTargets":      "int",
 	"DownloadRetries":        "int",
 	"DownloadTimeoutMinutes": "int",
+	"GhidraMaxMemGB":         "int",
+	"GhidraMaxCPU":           "int",
 }
 
 // APISettingsSet updates a setting by key/value via the GUI.

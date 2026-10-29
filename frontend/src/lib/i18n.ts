@@ -77,8 +77,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'settings.autoUpdateCheckHint': { en: 'Periodically check for new versions of Morgue', ru: 'Периодически проверять наличие новых версий Morgue' },
   'settings.autoUpdateApp': { en: 'Auto-update application', ru: 'Автообновление приложения' },
   'settings.autoUpdateAppHint': { en: 'Download and install app updates automatically', ru: 'Автоматически скачивать и устанавливать обновления приложения' },
-  'settings.autoUpdateTools': { en: 'Auto-update tools', ru: 'Автообновление инструментов' },
-  'settings.autoUpdateToolsHint': { en: 'Keep decompilation tools up to date automatically', ru: 'Автоматически обновлять инструменты декомпиляции' },
 
   // Settings — Decompilation
   'settings.decompilation': { en: 'Decompilation', ru: 'Декомпиляция' },
@@ -349,6 +347,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'settings.native': { en: 'Native', ru: 'Нативные' },
   'settings.native.ghidraDecompile': { en: 'Full Ghidra decompilation', ru: 'Полная декомпиляция Ghidra' },
   'settings.native.ghidraDecompileHint': { en: 'Decompile the native binary to C code with Ghidra. The core of native analysis but can be slow and heavy on large binaries.', ru: 'Декомпиляция нативного бинарника в C-код через Ghidra. Основа анализа нативного кода, но может быть медленной и тяжёлой на крупных бинарниках.' },
+  'settings.native.ghidraMaxMem': { en: 'Ghidra max memory (GB)', ru: 'Макс. память Ghidra (ГБ)' },
+  'settings.native.ghidraMaxMemHint': { en: 'JVM heap cap for Ghidra analysis; 0 = auto (min(8, 25% of RAM), at least 2)', ru: 'Лимит кучи JVM для анализа Ghidra; 0 = авто (min(8, 25% ОЗУ), не меньше 2)' },
+  'settings.native.ghidraMaxCpu': { en: 'Ghidra max CPU threads', ru: 'Макс. потоков CPU для Ghidra' },
+  'settings.native.ghidraMaxCpuHint': { en: 'Analysis threads (-max-cpu); 0 = auto (half the logical CPUs)', ru: 'Потоки анализа (-max-cpu); 0 = авто (половина логических CPU)' },
 
   'settings.delphi': { en: 'Delphi', ru: 'Delphi' },
   'settings.delphi.idrAnalysis': { en: 'IDR analysis', ru: 'Анализ IDR' },
