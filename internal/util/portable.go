@@ -142,7 +142,8 @@ func PortableEnv(dataDir, tempDir string) []string {
 	}
 }
 
-// ChildEnv returns the full environment for a spawned tool: os.Environ(),
+// ChildEnv returns the full environment for a spawned tool: os.Environ()
+// without system runtime selectors (see sanitizeEnviron),
 // then PortableEnv for BaseDir()/data, then extra (later entries win; exec.Cmd
 // keeps the last value of a duplicated key, case-insensitively on Windows).
 func ChildEnv(extra ...string) []string {
@@ -155,7 +156,9 @@ func ChildEnv(extra ...string) []string {
 	}
 	_ = os.MkdirAll(ProcTempDir(), 0o755)
 	out := make([]string, 0, len(os.Environ())+len(env)+len(extra))
-	out = append(out, os.Environ()...)
+	// Inherited system runtime selectors (JAVA_HOME, DOTNET_ROOT, PYTHONHOME,
+	// runtime dirs on PATH) are stripped unless prefer_system_tools is on.
+	out = append(out, sanitizeEnviron(os.Environ())...)
 	out = append(out, env...)
 	return append(out, extra...)
 }

@@ -126,20 +126,20 @@ func (m *Manager) CheckRuntimes() []RuntimeStatus {
 			st.Path = localBin
 			st.Local = true
 			st.Version = detectRuntimeVersion(kind, localBin)
-			// Too old for managed Java tools: shown, but not available.
-			st.Available = kind != RuntimeJava || javaMajor(st.Version) >= managedJavaFeature
+			// Too old or a JRE: shown, but not available.
+			st.Available = kind != RuntimeJava || m.javaSatisfies(localBin)
 			statuses = append(statuses, st)
 			continue
 		}
 
-		// Fall back to system
+		// Fall back to system only with the prefer_system_tools opt-in.
 		sysName := runtimeSystemName(kind)
-		if sysPath, err := exec.LookPath(sysName); err == nil {
+		if sysPath, err := exec.LookPath(sysName); err == nil && m.cfg.PreferSystemTools {
 			st.Available = true
 			st.Path = sysPath
 			st.Local = false
 			st.Version = detectRuntimeVersion(kind, sysPath)
-			st.Available = kind != RuntimeJava || javaMajor(st.Version) >= managedJavaFeature
+			st.Available = kind != RuntimeJava || m.javaSatisfies(sysPath)
 		}
 
 		statuses = append(statuses, st)
@@ -222,21 +222,29 @@ func (m *Manager) RuntimePath(kind RuntimeKind) (string, error) {
 }
 
 func (m *Manager) runtimePathUnbound(kind RuntimeKind) (string, error) {
+	if kind == RuntimeJava {
+		// Pick the installed JDK that matches the installed Ghidra's
+		// application.java.min (floor managedJavaFeature): the managed
+		// portable JDK (JAVA_HOME/PATH only with prefer_system_tools). A JRE
+		// or older Java is skipped, so selection installs the managed JDK
+		// instead of freezing a runtime Ghidra would reject.
+		req := m.javaRequirement()
+		if bin := m.selectJava(req); bin != "" {
+			return bin, nil
+		}
+		return "", fmt.Errorf("runtime %s not found — no installed JDK %d+ in Morgue's runtimes folder; install via Tools page", kind, req)
+	}
 	localBin := m.localRuntimeBin(kind)
 	if _, err := os.Stat(localBin); err == nil {
-		// An older managed JDK (e.g. the former JRE 21) is treated as missing
-		// so selection reinstalls the current managed JDK.
-		if kind != RuntimeJava || javaRuntimeSupported(localBin) {
-			return localBin, nil
-		}
+		return localBin, nil
+	}
+	if !m.cfg.PreferSystemTools {
+		return "", fmt.Errorf("runtime %s not found in Morgue's runtimes folder — install via Tools page (system runtimes are used only with prefer_system_tools)", kind)
 	}
 	sysName := runtimeSystemName(kind)
 	if sysPath, err := exec.LookPath(sysName); err == nil {
 		if kind == RuntimeAspNet && !systemDotNetHasAspNet10(sysPath) {
 			return "", fmt.Errorf("runtime %s not found — system dotnet lacks .NET 10 ASP.NET Core", kind)
-		}
-		if kind == RuntimeJava && !javaRuntimeSupported(sysPath) {
-			return "", fmt.Errorf("runtime %s not found — system java is older than JDK %d", kind, managedJavaFeature)
 		}
 		return sysPath, nil
 	}
@@ -252,12 +260,6 @@ const managedJavaFeature = 25
 
 // javaVersionOf is the Java version probe (a seam for tests).
 var javaVersionOf = func(bin string) string { return detectRuntimeVersion(RuntimeJava, bin) }
-
-// javaRuntimeSupported reports whether the java binary is at least
-// managedJavaFeature.
-func javaRuntimeSupported(bin string) bool {
-	return javaMajor(javaVersionOf(bin)) >= managedJavaFeature
-}
 
 // javaMajor returns the feature release of a `java -version` string:
 // "21.0.10" -> 21, "25" -> 25, legacy "1.8.0_402" -> 8; 0 when unparsable.
@@ -439,8 +441,10 @@ type adoptiumAsset struct {
 	} `json:"binary"`
 }
 
-// installJavaJDK downloads Adoptium Temurin JDK managedJavaFeature (a JDK:
-// Ghidra's headless launcher rejects a JRE, and Native AOT recompiles need javac).
+// installJavaJDK downloads the Adoptium Temurin JDK feature release the run
+// requires (javaRequirement: installed Ghidra's application.java.min, floor
+// managedJavaFeature). A JDK: Ghidra's headless launcher rejects a JRE, and
+// Native AOT recompiles need javac.
 func (m *Manager) installJavaJDK(ctx context.Context, cb *InstallCallbacks) error {
 	destDir := m.localRuntimeDir(RuntimeJava)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
@@ -448,7 +452,7 @@ func (m *Manager) installJavaJDK(ctx context.Context, cb *InstallCallbacks) erro
 	}
 
 	// Query Adoptium API for download URL
-	apiURL := fmt.Sprintf("https://api.adoptium.net/v3/assets/latest/%d/hotspot?os=windows&architecture=x64&image_type=jdk", managedJavaFeature)
+	apiURL := fmt.Sprintf("https://api.adoptium.net/v3/assets/latest/%d/hotspot?os=windows&architecture=x64&image_type=jdk", m.javaRequirement())
 	requestCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 

@@ -477,12 +477,12 @@ func TestPreseededHeadlessGhidraSurvivesBoundSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = os.WriteFile(filepath.Join(home, "support", "analyzeHeadless.bat"), []byte("headless"), 0644)
-	t.Setenv("GHIDRA_HOME", home)
-	m := NewManager(filepath.Join(base, "tools"), config.Config{})
+	m := NewManager(filepath.Join(base, "tools"), config.Config{GhidraHome: home})
 	if err := os.MkdirAll(filepath.Dir(m.localRuntimeBin(RuntimeJava)), 0755); err != nil {
 		t.Fatal(err)
 	}
 	_ = os.WriteFile(m.localRuntimeBin(RuntimeJava), []byte("fake-java"), 0755)
+	_ = os.WriteFile(filepath.Join(filepath.Dir(m.localRuntimeBin(RuntimeJava)), javacFile()), []byte("fake-javac"), 0755)
 	stubJavaVersion(t, "25.0.1")
 	s, _ := m.NewRunSelection(t.Context())
 	defer s.Close()

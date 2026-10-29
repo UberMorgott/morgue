@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"github.com/UberMorgott/morgue/internal/util"
 	"net/http"
 	"os"
 	"os/exec"
@@ -37,6 +38,10 @@ type Manager struct {
 func NewManager(baseDir string, cfg config.Config) *Manager {
 	// Route downloads through a configured mirror (offline / firewalled installs).
 	setAssetMirror(cfg.ToolsMirror)
+	// Runtimes and tools run from Morgue's folder; system installs (and the
+	// child-env passthrough of JAVA_HOME/DOTNET_ROOT/PATH runtimes) only with
+	// the explicit prefer_system_tools opt-in.
+	util.SetAllowSystemRuntimes(cfg.PreferSystemTools)
 	return &Manager{baseDir: baseDir, cfg: cfg, state: &policyState{statuses: map[string]ToolPolicyStatus{}}}
 }
 
@@ -45,7 +50,12 @@ func NewManager(baseDir string, cfg config.Config) *Manager {
 // is accepted when it contains support/analyzeHeadless(.bat) OR ghidraRun(.bat).
 // Returns "" when none is configured or valid. No network is touched.
 func preSeededGhidraHome(cfg config.Config) string {
-	for _, home := range []string{os.Getenv("GHIDRA_HOME"), cfg.GhidraHome} {
+	homes := []string{cfg.GhidraHome}
+	if cfg.PreferSystemTools {
+		// $GHIDRA_HOME is a system install: honored only with the opt-in.
+		homes = []string{os.Getenv("GHIDRA_HOME"), cfg.GhidraHome}
+	}
+	for _, home := range homes {
 		home = strings.TrimSpace(home)
 		if home == "" {
 			continue
@@ -538,7 +548,7 @@ func (m *Manager) RuntimeEnv() []string {
 
 	dotnetDir := m.localRuntimeDir(RuntimeDotnet)
 	if _, err := os.Stat(filepath.Join(dotnetDir, runtimeBinary(RuntimeDotnet))); err == nil {
-		env = append(env, fmt.Sprintf("PATH=%s%c%s", dotnetDir, os.PathListSeparator, os.Getenv("PATH")))
+		env = append(env, fmt.Sprintf("PATH=%s%c%s", dotnetDir, os.PathListSeparator, util.ChildPath()))
 	}
 
 	javaDir := m.localRuntimeDir(RuntimeJava)
@@ -552,7 +562,7 @@ func (m *Manager) RuntimeEnv() []string {
 			}
 		}
 		if len(env) == 1 {
-			env = append(env, fmt.Sprintf("PATH=%s%c%s", javaBinDir, os.PathListSeparator, os.Getenv("PATH")))
+			env = append(env, fmt.Sprintf("PATH=%s%c%s", javaBinDir, os.PathListSeparator, util.ChildPath()))
 		}
 	}
 

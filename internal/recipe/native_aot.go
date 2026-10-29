@@ -180,7 +180,8 @@ func rebuildExtensionJar(ctx context.Context, srcZip, origJar, outJar, ghidraHom
 	return writeRebuiltJar(origJar, classDir, outJar)
 }
 
-// findJavac locates javac next to javaPath, then via JAVA_HOME and PATH.
+// findJavac locates javac next to javaPath (the run-selected managed JDK);
+// JAVA_HOME and PATH only with the prefer_system_tools opt-in.
 // Ghidra itself needs a JDK, so one is present wherever Ghidra runs.
 func findJavac(javaPath string) (string, error) {
 	name := "javac"
@@ -191,7 +192,8 @@ func findJavac(javaPath string) (string, error) {
 	if javaPath != "" {
 		candidates = append(candidates, filepath.Join(filepath.Dir(javaPath), name))
 	}
-	if home := os.Getenv("JAVA_HOME"); home != "" {
+	allowSystem := util.AllowSystemRuntimes()
+	if home := os.Getenv("JAVA_HOME"); home != "" && allowSystem {
 		candidates = append(candidates, filepath.Join(home, "bin", name))
 	}
 	for _, c := range candidates {
@@ -199,8 +201,10 @@ func findJavac(javaPath string) (string, error) {
 			return p, nil
 		}
 	}
-	if p, err := exec.LookPath("javac"); err == nil {
-		return p, nil
+	if allowSystem {
+		if p, err := exec.LookPath("javac"); err == nil {
+			return p, nil
+		}
 	}
 	return "", fmt.Errorf("javac not found (a JDK is required to recompile the extension)")
 }

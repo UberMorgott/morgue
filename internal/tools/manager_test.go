@@ -64,8 +64,13 @@ func TestResolveGhidraFromEnv(t *testing.T) {
 	}
 	t.Setenv("GHIDRA_HOME", home)
 
+	// $GHIDRA_HOME is a system install: ignored by default.
+	if p, err := NewManager(t.TempDir(), config.Config{}).Resolve("ghidra"); err == nil {
+		t.Fatalf("GHIDRA_HOME honored without prefer_system_tools: %s", p)
+	}
+
 	// Manager base dir is empty — no managed ghidra present.
-	mgr := NewManager(t.TempDir(), config.Config{})
+	mgr := NewManager(t.TempDir(), config.Config{PreferSystemTools: true})
 
 	got, err := mgr.Resolve("ghidra")
 	if err != nil {

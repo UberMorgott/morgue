@@ -572,7 +572,8 @@ func nugetPointerTarget(destDir string) (string, error) {
 	return "", firstErr
 }
 
-// findDotnetBin locates the dotnet binary: local portable first, then system PATH.
+// findDotnetBin locates the dotnet binary: the local portable SDK; the system
+// PATH dotnet only with the prefer_system_tools opt-in.
 func findDotnetBin(toolDestDir string) (string, error) {
 	baseDir := filepath.Dir(toolDestDir)
 	localBin := filepath.Join(baseDir, "runtimes", "dotnet", "dotnet.exe")
@@ -580,9 +581,11 @@ func findDotnetBin(toolDestDir string) (string, error) {
 		return localBin, nil
 	}
 
-	if sysPath, err := exec.LookPath("dotnet"); err == nil {
-		return sysPath, nil
+	if util.AllowSystemRuntimes() {
+		if sysPath, err := exec.LookPath("dotnet"); err == nil {
+			return sysPath, nil
+		}
 	}
 
-	return "", fmt.Errorf("dotnet SDK not found — install via Tools page")
+	return "", fmt.Errorf("dotnet SDK not found in Morgue's runtimes folder — install via Tools page")
 }

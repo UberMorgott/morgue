@@ -124,9 +124,10 @@ morgue tools install --force           Reinstall/update every tool
   reject it before changing anything.
 - A tool in use by an active run is never swapped or deleted: install/delete is
   refused (CLI error, GUI message, HTTP `409 {"error":"in use"}`); retry after the run.
-- `prefer_system_tools: true` uses a tool found on `PATH` (e.g. a global
-  `dotnet tool install -g ilspycmd`) instead of the managed copy. Such tools show
-  version `system` and are never updated by Morgue.
+- `prefer_system_tools: true` (default `false`) is the only way to use system installs:
+  a tool found on `PATH` (e.g. a global `dotnet tool install -g ilspycmd`) instead of
+  the managed copy, and system runtimes (`java`/`JAVA_HOME`, `dotnet`, `GHIDRA_HOME`).
+  Such tools show version `system` and are never updated by Morgue.
 
 ## Install
 
@@ -151,6 +152,16 @@ tools. The Sysinternals `strings` EULA key (`HKCU\Software\Sysinternals\Strings`
 cannot be redirected; morgue deletes it after use unless it already existed.
 Choosing the **system-wide** WebView2 install in the first-launch dialog installs
 Microsoft's runtime machine-wide — pick **portable** to keep it in the folder.
+
+Every runtime and tool runs from Morgue's folder: the Java JDK (`tools\runtimes\java`,
+the feature release the installed Ghidra declares in `application.java.min`, at least 25),
+the .NET runtime/SDK and every decompiler. A system Java on `PATH`/`JAVA_HOME`, a system
+`dotnet` SDK (also for building embedded helpers) and `GHIDRA_HOME` are ignored; a
+missing managed runtime is installed automatically, otherwise the run fails with a clear
+error. Spawned tools do not inherit `JAVA_HOME`, `JAVA_TOOL_OPTIONS`, `DOTNET_ROOT`,
+`PYTHONHOME`/`PYTHONPATH` or `PATH` directories holding a system `java`/`dotnet`/`python`.
+`prefer_system_tools: true` opts back into system tools and runtimes; an explicit
+`ghidra_home` in `morgue.yaml` is always honored.
 
 There are no Linux or macOS builds — the GUI backend depends on Windows-only WebView2
 and Win32 APIs.

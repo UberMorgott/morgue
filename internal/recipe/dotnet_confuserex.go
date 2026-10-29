@@ -606,7 +606,7 @@ func (d *DotnetConfuserEx) runToolStep(
 // SDK installed. The run-selected .NET runtime (ctx.Tools.RuntimePath, frozen
 // in the run tool lock; the managed runtimes/dotnet payload is a full SDK) is
 // preferred, so helpers build with exactly the recorded runtime. Only when that
-// selection has no SDK (e.g. a runtime-only system dotnet) do we probe the PATH
+// selection has no SDK and prefer_system_tools is on do we probe the PATH
 // `dotnet` (may be an x86 stub) and the canonical C:\Program Files\dotnet
 // install; buildDotnetTool then notes the mismatch. Returns "" if none found.
 func (d *DotnetConfuserEx) resolveDotnetSDK(ctx *Context) string {
@@ -614,11 +614,15 @@ func (d *DotnetConfuserEx) resolveDotnetSDK(ctx *Context) string {
 	if selected := selectedDotnet(ctx); selected != "" {
 		candidates = append(candidates, selected)
 	}
-	candidates = append(candidates, "dotnet")
-	if pf := os.Getenv("ProgramFiles"); pf != "" {
-		candidates = append(candidates, filepath.Join(pf, "dotnet", "dotnet.exe"))
+	// System SDKs only with the explicit prefer_system_tools opt-in: helpers
+	// otherwise build with Morgue's own managed SDK or not at all.
+	if ctx != nil && ctx.Config != nil && ctx.Config.PreferSystemTools {
+		candidates = append(candidates, "dotnet")
+		if pf := os.Getenv("ProgramFiles"); pf != "" {
+			candidates = append(candidates, filepath.Join(pf, "dotnet", "dotnet.exe"))
+		}
+		candidates = append(candidates, `C:\Program Files\dotnet\dotnet.exe`)
 	}
-	candidates = append(candidates, `C:\Program Files\dotnet\dotnet.exe`)
 
 	seen := map[string]bool{}
 	for _, c := range candidates {

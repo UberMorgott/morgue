@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/UberMorgott/morgue/internal/util"
 	"os"
 	"path/filepath"
 	"sort"
@@ -480,7 +481,7 @@ func (s *RunSelection) runtimeEnv() []string {
 		dirs = append(dirs, filepath.Dir(entry.path))
 	}
 	if len(dirs) > 0 {
-		env = append(env, "PATH="+strings.Join(dirs, string(os.PathListSeparator))+string(os.PathListSeparator)+os.Getenv("PATH"))
+		env = append(env, "PATH="+strings.Join(dirs, string(os.PathListSeparator))+string(os.PathListSeparator)+util.ChildPath())
 	}
 	return env
 }

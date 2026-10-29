@@ -26,7 +26,8 @@ import (
 )
 
 // resolveGhidraJava returns the Java executable Ghidra should use, preferring
-// the managed JDK under <BaseDir>/runtimes/java and falling back to system java.
+// the run-selected managed JDK under <BaseDir>/runtimes/java (system Java only
+// with the prefer_system_tools opt-in).
 // Returns "" if no Java can be resolved (caller proceeds with the inherited
 // environment, matching prior behavior). m may be nil.
 func resolveGhidraJava(m *tools.Manager) string {
@@ -313,7 +314,7 @@ func runGhidra(
 		javaHome := filepath.Dir(javaBin) // <home>
 		ghidraEnv = append(ghidraEnv,
 			"JAVA_HOME="+javaHome,
-			"PATH="+javaBin+string(os.PathListSeparator)+os.Getenv("PATH"),
+			"PATH="+javaBin+string(os.PathListSeparator)+util.ChildPath(),
 		)
 		log(fmt.Sprintf("Using Java at %s (JAVA_HOME=%s)", javaPath, javaHome))
 	}
