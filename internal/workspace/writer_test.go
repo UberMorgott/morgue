@@ -437,6 +437,59 @@ func TestTerminalPublisherFailureLeavesNoDurableSuccess(t *testing.T) {
 	assertJournalOutcome(t, root, 4, "error")
 }
 
+// Navigation for a successful terminal is published before its journal record
+// is committed. When that commit then fails, AGENTS.md/INDEX.md must be
+// rewritten from the prior projection so they never claim an unjournaled success.
+func TestTerminalJournalFailureRewritesNavigation(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		fj    *faultyJournal
+		patch bool
+	}{
+		{"write", &faultyJournal{failWrite: 4}, false},
+		{"sync", &faultyJournal{failSync: 4}, false},
+		{"manifest", &faultyJournal{}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			withFaultyJournal(t, tc.fj)
+			w, r, root := openRun(t, runA)
+			var states []string
+			w.SetPublisher(func(ws runmodel.Workspace) error {
+				states = append(states, ws.Run.State)
+				return WriteNavigation(ws)
+			})
+			c := runmodel.Counts{Total: 1, Success: 1}
+			mustAppend(t, w, r.started(), r.discovered("t1", "", "game"), r.targetDone("t1", "", "success"))
+			if tc.patch {
+				old := replaceFile
+				t.Cleanup(func() { replaceFile = old })
+				// Navigation files still need the real rename.
+				replaceFile = func(src, dst string) error {
+					if filepath.Base(dst) == runmodel.ManifestPath {
+						return errors.New("simulated manifest replace failure")
+					}
+					return old(src, dst)
+				}
+			}
+			if err := w.Append(r.finished("success", c)); err == nil {
+				t.Fatal("terminal commit failure not reported")
+			}
+			if len(states) < 2 || states[len(states)-2] != "finished" || states[len(states)-1] == "finished" {
+				t.Fatalf("navigation not rewritten after failed success commit: %v", states)
+			}
+			agents, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(agents), "outcome: **success**") || !strings.Contains(string(agents), "Run state: **running**") {
+				t.Fatalf("AGENTS.md still claims success:\n%s", agents)
+			}
+			_ = w.Close()
+			assertJournalOutcome(t, root, 3, "")
+		})
+	}
+}
+
 // assertJournalOutcome checks the journal has exactly n lines and that the
 // last run.finished (if want != "") carries outcome want; want "" = none.
 func assertJournalOutcome(t *testing.T, root string, n int, want string) {

@@ -246,6 +246,16 @@ func (w *Writer) Append(ev runmodel.Event) error {
 			_ = w.jf.Sync()
 		}
 		w.fail(cause)
+		if success {
+			// Navigation was published for the success projection before the
+			// record was committed. The commit failed, so republish the prior
+			// (unfinished) projection: AGENTS.md/INDEX.md must not claim a
+			// success the journal does not hold.
+			if nerr := w.notifyLocked(); nerr != nil {
+				w.navErr = nerr
+				return fmt.Errorf("workspace: %w (navigation still claims success: %v)", cause, nerr)
+			}
+		}
 		return fmt.Errorf("workspace: %w", cause)
 	}
 	if _, err := w.jf.WriteAt(line, w.size); err != nil {
