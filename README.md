@@ -109,9 +109,21 @@ morgue tools install --force           Reinstall/update every tool
 - Pinned tools always install their pinned version; `--updates` flags them only when
   the installed version differs from the pin. Tools without a version (e.g. `strings`)
   are compared by the download's Last-Modified date.
-- `auto_update_tools: true` (GUI Settings) applies available tool updates at GUI
-  startup. It needs `auto_update_check: true`, covers managed tools only (not runtimes,
-  not tools taken from PATH) and does not affect the CLI.
+- One update policy for GUI, CLI and API: there is no startup or registry-wide
+  update. Before a run first uses a managed tool (detector tools in analysis
+  included), Morgue checks it once against upstream (15 s timeout) and updates it if
+  a newer release exists. The run then holds that exact payload: its identity
+  (version, payload SHA-256, runtime) is frozen in `<output>/.morgue/tools.lock.json`.
+  Offline or on a failed check a working installed tool is kept and the run logs a
+  freshness warning naming the tool; a missing required tool fails.
+- Pin (operator override / rollback): `morgue tools install <name> --version X`
+  installs exactly X and shows the tool as pinned; runs keep using X instead of
+  updating. `morgue tools install <name>` without `--version` clears the pin and
+  resumes automatic updates once the install succeeds (a failure keeps the pin).
+  `--version` works for GitHub-release and NuGet tools; unversioned direct-URL tools
+  reject it before changing anything.
+- A tool in use by an active run is never swapped or deleted: install/delete is
+  refused (CLI error, GUI message, HTTP `409 {"error":"in use"}`); retry after the run.
 - `prefer_system_tools: true` uses a tool found on `PATH` (e.g. a global
   `dotnet tool install -g ilspycmd`) instead of the managed copy. Such tools show
   version `system` and are never updated by Morgue.
@@ -177,7 +189,7 @@ morgue gamedata <exportDir> -o <dir>   Organize an existing AssetRipper Unity ex
   [--inventory <csv>] [--full <dir>]   into a game-data tree
 
 morgue tools check [--updates]         List managed tools and their install status
-morgue tools install [name] [--force]  Install all missing tools, or a specific one
+morgue tools install [name] [--force] [--version X]  Install all missing tools, or one (pin with --version)
 
 morgue self-update [--check]           Update the binary to the latest release
 morgue version                         Print version and commit
@@ -187,7 +199,7 @@ morgue api status                      Check whether the GUI is running
 morgue api stop                        Cancel the GUI's active run
 morgue api run <path> [-o <dir>] [--wait]   Queue a job (shown live in the GUI)
 morgue api tools [--wait]              List tools via the GUI
-morgue api tools install [name]        Install tool(s) via the GUI
+morgue api tools install [name] [--version X]  Install tool(s) via the GUI (409 while in use)
 morgue api tools delete <name>         Remove a tool via the GUI
 morgue api settings                    Show settings
 morgue api settings set <key> <value>  Update a setting

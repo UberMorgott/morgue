@@ -30,7 +30,18 @@ The GUI is running and the user can see your actions in real-time.
 ### Tools Management
   morgue tools check                    — list all tools with status
   morgue tools install                  — install all missing tools
-  morgue tools install <name>           — install specific tool
+  morgue tools install <name>           — install specific tool (clears a pin)
+  morgue tools install <name> --version X — install exactly X and pin it
+
+Tool update policy (GUI, CLI and API identical): no startup update. Each run
+checks every managed tool it uses once before first use and updates it when a
+newer release exists, then freezes the exact identities (version, payload
+SHA-256, runtime) in <output>/.morgue/tools.lock.json. Offline or on a failed
+check, a working installed tool is kept and a warn log naming the tool is
+emitted; a missing required tool fails the run. A pin (--version X) is honored
+by every run until a plain install of that tool succeeds. A tool leased by an
+active run is never swapped or deleted: install/delete is refused (HTTP 409
+{"error":"in use"}); retry after the run.
 
 ### Control Running GUI (API mode)
   morgue api status                     — check if GUI is running
@@ -41,7 +52,8 @@ The GUI is running and the user can see your actions in real-time.
   morgue api tools                      — list tools via GUI
   morgue api tools --wait               — wait for tool operations
   morgue api tools install              — install all missing tools via GUI
-  morgue api tools install <name>       — install specific tool via GUI
+  morgue api tools install <name>       — install specific tool via GUI (clears a pin)
+  morgue api tools install <name> --version X — install exactly X via GUI and pin it
   morgue api tools delete <name>        — remove tool via GUI
   morgue api settings                   — get all settings
   morgue api settings set <Key> <Value> — change a setting
@@ -63,7 +75,10 @@ application/json, including POST /api/stop with an empty JSON object {}.
   GET  /api/run/status          — pipeline progress (phase, step, files)
   GET  /api/tools               — tool list with install status
   GET  /api/tools?wait=30       — long-poll until tool state changes (max 120s)
-  POST /api/tools/install       — install tool {"name":"..."} or all {"name":""}
+  POST /api/tools/install       — install tool {"name":"..."} or all {"name":""};
+                                  {"name":"...","version":"X"} pins X, without
+                                  version clears the pin; 409 {"error":"in use"}
+                                  while an active run uses the tool
   POST /api/tools/delete        — remove tool {"name":"..."}
   GET  /api/settings            — all settings JSON
   PUT  /api/settings            — update settings {"key":"...","value":"..."}
