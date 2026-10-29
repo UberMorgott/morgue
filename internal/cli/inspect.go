@@ -76,6 +76,12 @@ func Inspect(opts InspectOptions) error {
 	if fi, err := os.Stat(opts.Root); err != nil || !fi.IsDir() {
 		return fmt.Errorf("inspect: %s is not a directory", opts.Root)
 	}
+	if opts.Read == nil {
+		opts.Read = workspace.Read
+	}
+	if opts.RebuildManifest == nil {
+		opts.RebuildManifest = workspace.RebuildManifest
+	}
 	read := opts.Read
 	if opts.Rebuild {
 		read = opts.RebuildManifest
@@ -218,7 +224,7 @@ func oneLine(s string) string {
 }
 
 // NewInspectCmd builds `morgue inspect OUTPUT [--json] [--rebuild-manifest]
-// [--offset N] [--limit N]` using the given readers.
+// [--offset N] [--limit N]` using the given readers (nil = workspace package).
 func NewInspectCmd(read, rebuild func(string) (workspace.Recovery, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "inspect OUTPUT",

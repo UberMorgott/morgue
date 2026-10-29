@@ -61,9 +61,15 @@ type WorkspaceService struct {
 	lastSeq uint64
 }
 
-// NewWorkspaceService builds the service. recent nil uses the store that
-// WriteNavigation records into.
+// NewWorkspaceService builds the service. Nil reader funcs default to the
+// workspace package readers; recent nil uses the store WriteNavigation records into.
 func NewWorkspaceService(reader WorkspaceReader, recent *workspace.RecentStore) *WorkspaceService {
+	if reader.Read == nil {
+		reader.Read = workspace.Read
+	}
+	if reader.ReadEvents == nil {
+		reader.ReadEvents = workspace.ReadEvents
+	}
 	if recent == nil {
 		recent = workspace.DefaultRecentStore()
 	}

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/UberMorgott/morgue/internal/runmodel"
 	"github.com/UberMorgott/morgue/internal/workspace"
@@ -82,5 +83,53 @@ func TestInspectRebuildUsesRebuilder(t *testing.T) {
 	}
 	if called != "rebuild" || !strings.Contains(out.String(), "manifest: rebuilt") {
 		t.Fatalf("called=%s out=%s", called, out.String())
+	}
+}
+
+// Acceptance: a 100k-event interrupted journal inspects within 2 s via the
+// real reader, and inspect does not modify the workspace.
+func TestInspect100kInterruptedJournalUnder2s(t *testing.T) {
+	if testing.Short() {
+		t.Skip("large journal")
+	}
+	root := filepath.Join(t.TempDir(), "out")
+	id := strings.Repeat("c", 32)
+	t0 := time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)
+	h := runmodel.RunHandle{ID: id, StartedAt: t0, Output: root}
+	spec := runmodel.RunSpec{Version: runmodel.SpecVersion, Path: "game", Output: root, Exclude: []string{}, ReferencePaths: []string{}}
+	w, err := workspace.Open(h, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for seq := uint64(1); seq <= 100000; seq++ {
+		var p runmodel.Payload = runmodel.LogRecord{Level: "info", Message: "line"}
+		if seq == 1 {
+			p = runmodel.RunStarted{Handle: h, Spec: spec}
+		}
+		ev, err := runmodel.NewEvent(id, seq, t0.Add(time.Duration(seq-1)*time.Microsecond), "", "", p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := w.Append(ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Close(); err != nil { // no run.finished: simulated crash
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(filepath.Join(root, runmodel.ManifestPath))
+	var out bytes.Buffer
+	start := time.Now()
+	if err := Inspect(InspectOptions{Root: root, Out: &out}); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("inspect took %v", d)
+	}
+	if !strings.Contains(out.String(), "status: interrupted") || !strings.Contains(out.String(), "seq 100000") {
+		t.Fatalf("out:\n%s", out.String())
+	}
+	if after, _ := os.ReadFile(filepath.Join(root, runmodel.ManifestPath)); !bytes.Equal(before, after) {
+		t.Fatal("inspect modified morgue.json")
 	}
 }

@@ -228,3 +228,38 @@ func TestNavTargetDirRejectsEscapes(t *testing.T) {
 		}
 	}
 }
+
+// End to end with the real Writer: after a normal run every navigation file
+// exists, links resolve, and Read reports the same finished workspace.
+func TestNavigationPublishedByWriterNormalRun(t *testing.T) {
+	navRecentOverride = NewRecentStore(filepath.Join(t.TempDir(), RecentRunsFile))
+	t.Cleanup(func() { navRecentOverride = nil })
+	w, r, root := openRun(t, runA)
+	w.SetPublisher(WriteNavigation)
+	tid := "t00000000000000aa"
+	mustAppend(t, w, r.started(), r.discovered(tid, "", "game"))
+	if err := os.MkdirAll(filepath.Join(root, "game", "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(root, "game", "symbols.json"), []byte("{}"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "game", "src", "Main.c"), []byte("int main(){}"), 0o644)
+	one := runmodel.Counts{Total: 1, Success: 1}
+	mustAppend(t, w, r.progress(tid), r.targetDone(tid, "", "success"), r.finished("success", one))
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{AgentsPath, IndexPath, "game/" + IndexPath} {
+		assertLinksResolve(t, filepath.Join(root, filepath.FromSlash(p)))
+	}
+	g, _ := os.ReadFile(filepath.Join(root, "game", IndexPath))
+	if !strings.Contains(string(g), "src/Main.c") || !strings.Contains(string(g), "State: **success**") {
+		t.Fatalf("target index:\n%s", g)
+	}
+	rec, err := Read(root)
+	if err != nil || rec.Interrupted || rec.Workspace.Run.State != "finished" {
+		t.Fatalf("read: %+v %v", rec.Workspace.Run, err)
+	}
+	if got := navRecentOverride.List(); len(got) != 1 {
+		t.Fatalf("recent = %+v", got)
+	}
+}
