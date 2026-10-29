@@ -264,7 +264,18 @@ func APIToolsWait() error {
 
 // APIToolsInstall installs a tool by name via the GUI.
 func APIToolsInstall(name string) error {
-	return apiPost("/tools/install", map[string]string{"name": name})
+	return APIToolsInstallVersion(name, "")
+}
+
+// APIToolsInstallVersion installs name via the GUI. version != "" pins that
+// exact version (operator override); an empty version clears an existing pin
+// on success. A tool leased by an active run answers 409 "in use".
+func APIToolsInstallVersion(name, version string) error {
+	payload := map[string]string{"name": name}
+	if version != "" {
+		payload["version"] = version
+	}
+	return apiPost("/tools/install", payload)
 }
 
 // APIToolsDelete deletes a tool by name via the GUI.

@@ -367,13 +367,18 @@ func toolsCmd() *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			force, _ := cmd.Flags().GetBool("force")
+			version, _ := cmd.Flags().GetString("version")
 			if len(args) == 1 {
-				return cli.ToolsInstallOne(cmd.Context(), args[0], force)
+				return cli.ToolsInstallOneVersion(cmd.Context(), args[0], version, force)
+			}
+			if version != "" {
+				return fmt.Errorf("--version requires a tool name")
 			}
 			return cli.ToolsInstall(cmd.Context(), force)
 		},
 	}
 	installCmd.Flags().BoolP("force", "f", false, "Reinstall/update through a staged replacement with rollback on failure")
+	installCmd.Flags().String("version", "", "Install exactly this version and pin it (operator override); a later plain `tools install NAME` clears the pin")
 	cmd.AddCommand(installCmd)
 
 	return cmd
@@ -462,7 +467,7 @@ func apiCmd() *cobra.Command {
 	}
 	apiToolsCmd.Flags().Bool("wait", false, "Wait until all tool operations finish")
 
-	apiToolsCmd.AddCommand(&cobra.Command{
+	apiToolsInstallCmd := &cobra.Command{
 		Use:   "install [name]",
 		Short: "Install a tool (or all missing tools) via GUI API",
 		Args:  cobra.RangeArgs(0, 1),
@@ -471,9 +476,15 @@ func apiCmd() *cobra.Command {
 			if len(args) > 0 {
 				name = args[0]
 			}
-			return cli.APIToolsInstall(name)
+			version, _ := cmd.Flags().GetString("version")
+			if version != "" && name == "" {
+				return fmt.Errorf("--version requires a tool name")
+			}
+			return cli.APIToolsInstallVersion(name, version)
 		},
-	})
+	}
+	apiToolsInstallCmd.Flags().String("version", "", "Install exactly this version and pin it; a later install without --version clears the pin")
+	apiToolsCmd.AddCommand(apiToolsInstallCmd)
 
 	apiToolsCmd.AddCommand(&cobra.Command{
 		Use:   "delete <name>",
