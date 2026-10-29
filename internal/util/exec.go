@@ -88,8 +88,19 @@ func runCmdStreaming(ctx context.Context, name string, args []string, dir string
 		cmd.Stdin = stdin
 	}
 	HideCmdWindow(cmd)
+	var tree *killTree
 	if breakaway {
 		applyBreakaway(cmd)
+		// Outside morgue's job, nothing else would reap the grandchildren
+		// (analyzeHeadless.bat -> java.exe): bind them to a kill-on-close job and
+		// make cancellation terminate the whole tree, not just cmd.exe (whose
+		// orphaned JVM would also keep stdout open and block the read below).
+		tree = newKillTree()
+		defer tree.close()
+		cmd.Cancel = func() error {
+			tree.terminate()
+			return cmd.Process.Kill()
+		}
 	}
 
 	stdoutPipe, err := cmd.StdoutPipe()
@@ -103,6 +114,9 @@ func runCmdStreaming(ctx context.Context, name string, args []string, dir string
 	defer trackEula(name, args)()
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start %s: %w", name, err)
+	}
+	if tree != nil {
+		tree.assign(cmd.Process.Pid)
 	}
 
 	// Read stdout line by line, forwarding to callback and collecting full output
