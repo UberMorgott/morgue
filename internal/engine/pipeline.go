@@ -141,6 +141,10 @@ func (e *Engine) runPipeline(ctx context.Context, opts Options, events chan<- Pi
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if opts.run != nil && opts.run.selectionErr != nil {
+		em.emitErr("tools", opts.Input, opts.run.selectionErr)
+		return opts.run.selectionErr
+	}
 	if _, err := os.Stat(opts.Input); err != nil {
 		em.emitErr("scan", opts.Input, err)
 		return fmt.Errorf("scan: %w", err)
@@ -560,6 +564,9 @@ func (e *Engine) ensureRuntimeDeps(filePath string, rec recipe.Recipe, em emitte
 
 // ensureTools installs missing tools for a recipe.
 func (e *Engine) ensureTools(ctx context.Context, filePath string, rec recipe.Recipe, em emitter, skipAssets bool) error {
+	if em.run != nil && em.run.selection != nil {
+		return e.ensureSelectedTools(ctx, filePath, recipeTools(rec, skipAssets), em)
+	}
 	needed := e.tools.ToolsNeeded(recipeTools(rec, skipAssets))
 	if len(needed) == 0 {
 		for _, name := range recipeTools(rec, skipAssets) {
@@ -825,6 +832,10 @@ func (e *Engine) executeRecipe(
 	var execErr error
 	if opts.run != nil {
 		execErr = opts.run.verifyTargetInputs(ctx, *opts, reconInput{path: filePath, sha: reconResult.SHA256})
+		if execErr == nil {
+			// Exact tool identities reach the workspace before any invocation.
+			execErr = opts.run.persistToolsLock(false)
+		}
 	}
 	if execErr == nil {
 		execErr = invokeRecipe(rec, rctx)
@@ -990,6 +1001,10 @@ func (e *Engine) executeRecipeWithFilter(
 	var execErr error
 	if opts.run != nil {
 		execErr = opts.run.verifyTargetInputs(ctx, *opts, reconInput{path: filePath, sha: reconResult.SHA256})
+		if execErr == nil {
+			// Exact tool identities reach the workspace before any invocation.
+			execErr = opts.run.persistToolsLock(false)
+		}
 	}
 	if execErr == nil {
 		execErr = invokeRecipe(rec, rctx)

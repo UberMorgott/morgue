@@ -189,7 +189,7 @@ func (o *artifactObserver) Record(path, kind, stepID, tool string, shared bool) 
 	}
 	sum := sha256.Sum256([]byte(identity))
 	id := "a" + hex.EncodeToString(sum[:8])
-	artifact := runmodel.Artifact{ID: id, TargetID: targetID, Path: rel, External: external, Kind: kind, Producer: runmodel.Producer{Recipe: o.recipe, StepID: stepID, Tool: tool}, HashStatus: "not-collected", Complete: o.complete, Warning: "exact tool identity/provenance is not collected in M2"}
+	artifact := runmodel.Artifact{ID: id, TargetID: targetID, Path: rel, External: external, Kind: kind, Producer: runmodel.Producer{Recipe: o.recipe, StepID: stepID, Tool: tool, Version: o.run.toolVersion(tool)}, HashStatus: "not-collected", Complete: o.complete, Warning: "exact tool identity/provenance is not collected in M2"}
 	if !o.complete {
 		artifact.Warning += "; target failed and this product may be partial"
 	}

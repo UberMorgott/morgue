@@ -37,6 +37,11 @@ func (r *Run) consume(opts Options, ev PipelineEvent) {
 				r.finishTargetLocked(t, terminal, errorText(err), "")
 			}
 		}
+		// Seal tool acquisition and persist the final sorted run lock before the
+		// terminal record is published; a failure is an execution error.
+		if lockErr := r.persistToolsLock(true); lockErr != nil {
+			r.eventErr = errors.Join(r.eventErr, persistErr(lockErr))
+		}
 		if summaryErr := r.writeSummaryLocked(); summaryErr != nil {
 			r.eventErr = errors.Join(r.eventErr, fmt.Errorf("write summary: %w", summaryErr))
 		}

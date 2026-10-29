@@ -17,6 +17,7 @@ import (
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/runmodel"
 	"github.com/UberMorgott/morgue/internal/scanner"
+	"github.com/UberMorgott/morgue/internal/tools"
 	"github.com/UberMorgott/morgue/internal/util"
 	"github.com/UberMorgott/morgue/internal/workspace"
 )
@@ -54,6 +55,12 @@ type Run struct {
 	// in order, on the next emit and in a bounded final flush, so a slow (but
 	// draining) consumer never loses a terminal state. Guarded by mu.
 	overflow []runmodel.Event
+	// selection freezes every tool/runtime/helper identity used by this run;
+	// engine.tools is its bound manager from before recon until completion.
+	selection       *tools.RunSelection
+	selectionErr    error
+	toolsLockMu     sync.Mutex
+	toolsLockSealed bool
 }
 
 // maxFinalFlush bounds the busy-wait that drains pending must-keep events at the
@@ -268,9 +275,23 @@ func (r *Run) execute(ctx context.Context, pause *PauseGate, events chan<- runmo
 	r.cancel = cancel
 	r.products = newSharedProducts(runCtx)
 	r.events = events
+	// Bind the run-local tool manager before recon: every Resolve, install and
+	// runtime lookup of this run (children included) goes through one selection.
+	if sel, selErr := r.engine.tools.NewRunSelection(runCtx); selErr != nil {
+		r.selectionErr = fmt.Errorf("select run tools: %w", selErr)
+	} else {
+		r.selection = sel
+		r.engine.tools = sel.Bind()
+	}
 	r.emitLocked("", "", r.handle.StartedAt, runmodel.RunStarted{Handle: r.handle, Spec: r.Spec()})
 	r.mu.Unlock()
 	err := r.engine.runPipeline(runCtx, r.options(pause), legacy)
+	if r.selection != nil {
+		// Leases are released on every exit; the sealed lock stays on disk.
+		if closeErr := r.selection.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("release run tools: %w", closeErr))
+		}
+	}
 	r.mu.Lock()
 	// Best-effort delivery of any must-keep events (e.g. run.finished) still
 	// queued behind a momentarily full buffer, bounded so a dead consumer cannot
