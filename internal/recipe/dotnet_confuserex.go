@@ -1,17 +1,21 @@
 package recipe
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"time"
 
 	"github.com/UberMorgott/morgue/internal/recon"
+	"github.com/UberMorgott/morgue/internal/tools"
 	"github.com/UberMorgott/morgue/internal/util"
 )
 
@@ -660,29 +664,105 @@ func (d *DotnetConfuserEx) buildCflowPass(ctx *Context, dotnet string, logTool f
 // the cached dll. Shared by cfxextract and cfxstrings.
 func buildDotnetTool(ctx *Context, dotnet string, logTool func(string, string),
 	tool, csproj, dllName string, assets embed.FS, assetPrefix string, srcFiles []string, buildMsg string) (string, error) {
-	cacheDir := util.ToolDir(tool)
-	binDir := filepath.Join(cacheDir, "bin", "Release", "net8.0")
-	dll := filepath.Join(binDir, dllName)
-
-	// Cached build — reuse.
-	if _, err := os.Stat(dll); err == nil {
-		return dll, nil
+	if ctx.Tools == nil || !tools.KnownHelper(tool) {
+		dll, _, err := buildHelperCached(ctx, dotnet, logTool, tool, csproj, dllName, assets, assetPrefix, srcFiles, buildMsg)
+		return dll, err
 	}
-
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		return "", fmt.Errorf("create cache dir: %w", err)
+	// Bound run manager: the SDK runtime is selected first, then cache
+	// validation/build/publication run under the exclusive helper lock and the
+	// result is frozen (payload + source/SDK digest) in the run tool lock.
+	if _, err := ctx.Tools.RuntimePath(tools.RuntimeDotnet); err != nil {
+		return "", fmt.Errorf("select .NET runtime for %s: %w", tool, err)
 	}
+	var dll string
+	_, err := ctx.Tools.WithHelper(ctx.Ctx, tool, func() (string, string, error) {
+		path, digest, err := buildHelperCached(ctx, dotnet, logTool, tool, csproj, dllName, assets, assetPrefix, srcFiles, buildMsg)
+		dll = path
+		return path, digest, err
+	})
+	if err != nil {
+		return "", fmt.Errorf("helper %s: %w", tool, err)
+	}
+	return dll, nil
+}
 
-	// Write embedded source (overwrite to keep it in sync with the binary).
+// helperStamp records the source digest the cached helper build was made from.
+const helperStamp = ".helper-source.sha256"
+
+// helperSourceDigest covers the embedded source and project files, the SDK
+// identity (path + `dotnet --version`) and the application revision. A cached
+// DLL is reused only when its stamp matches this digest, never on existence.
+func helperSourceDigest(ctx *Context, dotnet, tool string, assets embed.FS, assetPrefix string, srcFiles []string) (string, error) {
+	h := sha256.New()
+	rev := "unknown"
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range info.Settings {
+			if s.Key == "vcs.revision" && s.Value != "" {
+				rev = s.Value
+			}
+		}
+	}
+	sdkVersion := ""
+	if r, err := util.RunCmd(ctx.Ctx, dotnet, []string{"--version"}, ""); err == nil && r != nil && r.ExitCode == 0 {
+		sdkVersion = strings.TrimSpace(r.Stdout)
+	}
+	fmt.Fprintf(h, "morgue-helper\x00%s\x00rev:%s\x00sdk:%s\x00%s\x00", tool, rev, dotnet, sdkVersion)
 	for _, name := range srcFiles {
 		data, err := assets.ReadFile(assetPrefix + name)
 		if err != nil {
 			return "", fmt.Errorf("read embedded %s: %w", name, err)
 		}
-		if err := os.WriteFile(filepath.Join(cacheDir, name), data, 0644); err != nil {
-			return "", fmt.Errorf("write %s: %w", name, err)
+		fmt.Fprintf(h, "%s\x00%d\x00", name, len(data))
+		h.Write(data)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// buildHelperCached returns the helper DLL and its source digest, rebuilding
+// when the cached build's stamp does not match the current digest.
+func buildHelperCached(ctx *Context, dotnet string, logTool func(string, string),
+	tool, csproj, dllName string, assets embed.FS, assetPrefix string, srcFiles []string, buildMsg string) (string, string, error) {
+	cacheDir := util.ToolDir(tool)
+	binDir := filepath.Join(cacheDir, "bin", "Release", "net8.0")
+	dll := filepath.Join(binDir, dllName)
+	digest, err := helperSourceDigest(ctx, dotnet, tool, assets, assetPrefix, srcFiles)
+	if err != nil {
+		return "", "", err
+	}
+
+	// Cached build — reuse only when built from exactly this source/SDK/app.
+	if stamp, err := os.ReadFile(filepath.Join(cacheDir, helperStamp)); err == nil && strings.TrimSpace(string(stamp)) == digest {
+		if _, err := os.Stat(dll); err == nil {
+			return dll, digest, nil
 		}
 	}
+
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return "", "", fmt.Errorf("create cache dir: %w", err)
+	}
+	_ = os.Remove(filepath.Join(cacheDir, helperStamp))
+
+	// Write embedded source (overwrite to keep it in sync with the binary).
+	for _, name := range srcFiles {
+		data, err := assets.ReadFile(assetPrefix + name)
+		if err != nil {
+			return "", "", fmt.Errorf("read embedded %s: %w", name, err)
+		}
+		if err := os.WriteFile(filepath.Join(cacheDir, name), data, 0644); err != nil {
+			return "", "", fmt.Errorf("write %s: %w", name, err)
+		}
+	}
+	path, err := runHelperBuild(ctx, dotnet, logTool, tool, csproj, dllName, cacheDir, dll, buildMsg)
+	if err != nil {
+		return "", "", err
+	}
+	if err := os.WriteFile(filepath.Join(cacheDir, helperStamp), []byte(digest+"\n"), 0644); err != nil {
+		return "", "", fmt.Errorf("write helper stamp: %w", err)
+	}
+	return path, digest, nil
+}
+
+func runHelperBuild(ctx *Context, dotnet string, logTool func(string, string), tool, csproj, dllName, cacheDir, dll, buildMsg string) (string, error) {
 
 	logTool(tool, buildMsg)
 	r, err := util.RunCmd(ctx.Ctx, dotnet, []string{"build", "-c", "Release", csproj}, cacheDir)
