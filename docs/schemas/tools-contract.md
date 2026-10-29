@@ -35,6 +35,8 @@ func ReadInstalledLock(baseDir string) (InstalledLock, error)
   cover source + project file + SDK identity + application commit. RecordHelper
   hashes an already-built payload under the same lock, then leases it. WithHelper
   is required for publication; no target execution occurs while compiling.
+  Publication returns ErrInUse immediately if another run leases that helper;
+  waiting while holding other helper leases could form a discovery-order cycle.
 - Automatic selection forces one uncached upstream version probe per distinct
   used tool/run, at most three concurrent probes, 15 seconds per request. Pinned
   definitions and operator overrides use the exact requested version. Working

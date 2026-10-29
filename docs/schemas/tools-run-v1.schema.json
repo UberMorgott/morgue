@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tools-run-v1.schema.json",
+  "title": "Morgue run tools lock v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "complete", "tools"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "complete": { "type": "boolean" },
+    "tools": { "type": "array", "items": { "$ref": "#/$defs/identity" } }
+  },
+  "$defs": {
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "source", "payloadSha256", "runtimeVersion", "runtimeSha256", "managed", "hashScope"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1, "not": { "const": "latest" } },
+        "source": { "enum": ["github", "nuget", "direct", "dotnet", "system", "embedded", "runtime", "unknown"] },
+        "payloadSha256": { "type": "string", "pattern": "^([a-f0-9]{64})?$" },
+        "runtimeVersion": { "type": "string" },
+        "runtimeSha256": { "type": "string", "pattern": "^([a-f0-9]{64})?$" },
+        "managed": { "type": "boolean" },
+        "hashScope": { "enum": ["payload-inventory-v1", "not-collected"] }
+      },
+      "allOf": [{
+        "if": { "properties": { "hashScope": { "const": "payload-inventory-v1" } } },
+        "then": { "properties": { "payloadSha256": { "pattern": "^[a-f0-9]{64}$" } } }
+      }]
+    }
+  }
+}

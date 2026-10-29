@@ -1,88 +1,150 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
-	"sync"
 )
 
 const lockFile = "tools.lock.json"
 
-// lockMu serializes the read-modify-write of tools.lock.json so concurrent
-// installs of different tools don't clobber each other's entries.
-var lockMu sync.Mutex
-
-// Lock records the exact installed tag per tool for reproducible setup.
+// Lock is the legacy Go view. Disk writes always use InstalledLock v2.
 type Lock struct {
 	Tools map[string]string `json:"tools"`
 }
 
-// ReadLock loads tools.lock.json from baseDir. A missing file yields an empty
-// (non-nil) lock with no error. A corrupt (unparseable) file is treated as
-// recoverable: the parse error is logged and an empty lock is returned with the
-// error surfaced so callers can distinguish corruption from "missing".
-func ReadLock(baseDir string) (Lock, error) {
-	lk := Lock{Tools: map[string]string{}}
-	data, err := os.ReadFile(filepath.Clean(filepath.Join(baseDir, lockFile)))
+func emptyInstalledLock() InstalledLock {
+	return InstalledLock{SchemaVersion: InstalledLockVersion, Tools: map[string]ToolIdentity{}, OperatorVersions: map[string]string{}}
+}
+
+func ReadInstalledLock(baseDir string) (InstalledLock, error) {
+	lk := emptyInstalledLock()
+	data, err := os.ReadFile(filepath.Join(baseDir, lockFile))
+	if os.IsNotExist(err) {
+		return lk, nil
+	}
 	if err != nil {
-		if os.IsNotExist(err) {
-			return lk, nil
-		}
 		return lk, err
 	}
-	if err := json.Unmarshal(data, &lk); err != nil {
-		log.Printf("tools: corrupt %s in %s (%v); treating as empty lock", lockFile, baseDir, err)
-		return Lock{Tools: map[string]string{}}, err
+	var raw struct {
+		SchemaVersion    int                        `json:"schemaVersion"`
+		Tools            map[string]json.RawMessage `json:"tools"`
+		OperatorVersions map[string]string          `json:"operatorVersions"`
 	}
-	if lk.Tools == nil {
-		lk.Tools = map[string]string{}
+	if err = json.Unmarshal(data, &raw); err != nil {
+		return lk, err
+	}
+	if raw.SchemaVersion != 0 && raw.SchemaVersion != InstalledLockVersion {
+		return lk, fmt.Errorf("unsupported installed lock version %d", raw.SchemaVersion)
+	}
+	for name, value := range raw.Tools {
+		var tag string
+		if json.Unmarshal(value, &tag) == nil {
+			lk.Tools[name] = ToolIdentity{Name: name, Version: observedVersion(tag), Source: "unknown", Managed: true, HashScope: "not-collected"}
+			continue
+		}
+		var id ToolIdentity
+		if err = json.Unmarshal(value, &id); err != nil {
+			return emptyInstalledLock(), err
+		}
+		id.Name = name
+		lk.Tools[name] = id
+	}
+	if raw.OperatorVersions != nil {
+		lk.OperatorVersions = raw.OperatorVersions
 	}
 	return lk, nil
 }
 
-// WriteLock persists the lock to baseDir/tools.lock.json atomically: it writes a
-// temp file in the same directory then renames it over the target, so a crash
-// mid-write can't leave a truncated lock.
-func WriteLock(baseDir string, lk Lock) error {
-	if lk.Tools == nil {
-		lk.Tools = map[string]string{}
+func ReadLock(baseDir string) (Lock, error) {
+	installed, err := ReadInstalledLock(baseDir)
+	lk := Lock{Tools: map[string]string{}}
+	if err != nil {
+		log.Printf("tools: corrupt %s (%v)", lockFile, err)
+		return lk, err
 	}
+	for name, id := range installed.Tools {
+		lk.Tools[name] = id.Version
+	}
+	return lk, nil
+}
+
+func writeInstalledLock(baseDir string, lk InstalledLock) error {
+	lk.SchemaVersion = InstalledLockVersion
 	data, err := json.MarshalIndent(lk, "", "  ")
 	if err != nil {
 		return err
 	}
-	target := filepath.Join(baseDir, lockFile)
 	tmp, err := os.CreateTemp(baseDir, lockFile+".tmp-*")
 	if err != nil {
 		return err
 	}
-	tmpName := tmp.Name()
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
+	name := tmp.Name()
+	defer os.Remove(name)
+	if _, err = tmp.Write(data); err == nil {
+		err = tmp.Sync()
+	}
+	cerr := tmp.Close()
+	if err != nil {
 		return err
 	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpName)
-		return err
+	if cerr != nil {
+		return cerr
 	}
-	if err := os.Rename(tmpName, target); err != nil {
-		_ = os.Remove(tmpName)
-		return err
-	}
-	return nil
+	return os.Rename(name, filepath.Join(baseDir, lockFile))
 }
 
-// RecordInstall updates the lock with a tool's installed tag and persists it.
-// The read-modify-write is mutex-guarded and preserves all existing entries.
-// A corrupt lock is recovered (ReadLock logs it and yields an empty map) rather
-// than aborting the install record.
+func WriteLock(baseDir string, lk Lock) error {
+	lease, err := acquireToolLock(context.Background(), baseDir, "installed-state", true, true)
+	if err != nil {
+		return err
+	}
+	defer lease.Close()
+	next, _ := ReadInstalledLock(baseDir)
+	for name, version := range lk.Tools {
+		id := next.Tools[name]
+		id.Name = name
+		id.Version = observedVersion(version)
+		if id.Source == "" {
+			id.Source = "unknown"
+			id.Managed = true
+			id.HashScope = "not-collected"
+		}
+		next.Tools[name] = id
+	}
+	return writeInstalledLock(baseDir, next)
+}
+
+// recordIdentity holds a cross-process state lock independently of payload locks.
+// The optional pin pointer means set/clear; nil preserves an operator decision.
+func (m *Manager) recordIdentity(ctx context.Context, id ToolIdentity, pin *string) error {
+	lease, err := acquireToolLock(ctx, m.baseDir, "installed-state", true, true)
+	if err != nil {
+		return err
+	}
+	defer lease.Close()
+	lk, readErr := ReadInstalledLock(m.baseDir)
+	if readErr != nil {
+		var syntax *json.SyntaxError
+		if !errors.As(readErr, &syntax) {
+			return readErr
+		}
+	}
+	lk.Tools[id.Name] = id
+	if pin != nil {
+		if *pin == "" {
+			delete(lk.OperatorVersions, id.Name)
+		} else {
+			lk.OperatorVersions[id.Name] = *pin
+		}
+	}
+	return writeInstalledLock(m.baseDir, lk)
+}
+
 func (m *Manager) RecordInstall(name, tag string) error {
-	lockMu.Lock()
-	defer lockMu.Unlock()
-	lk, _ := ReadLock(m.baseDir)
-	lk.Tools[name] = tag
-	return WriteLock(m.baseDir, lk)
+	return m.recordIdentity(context.Background(), ToolIdentity{Name: name, Version: observedVersion(tag), Source: "unknown", Managed: true, HashScope: "not-collected"}, nil)
 }

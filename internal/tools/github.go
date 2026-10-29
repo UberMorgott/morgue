@@ -165,7 +165,7 @@ func fetchLatestRelease(ctx context.Context, repo, token string) (tagName string
 		return "", nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	release, _, err := client.Repositories.GetLatestRelease(ctx, parts[0], parts[1])
@@ -202,7 +202,7 @@ func fetchReleaseByTag(ctx context.Context, repo, token, tag string) (string, []
 	if err != nil {
 		return "", nil, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	release, _, err := client.Repositories.GetReleaseByTag(ctx, parts[0], parts[1], tag)
 	if err != nil {
@@ -217,10 +217,17 @@ func fetchReleaseByTag(ctx context.Context, repo, token, tag string) (string, []
 
 // downloadAndExtract downloads each matched asset into destDir, extracting archives.
 func downloadAndExtract(ctx context.Context, matched []assetInfo, destDir string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
+	return downloadAndExtractVerified(ctx, matched, destDir, "", onProgress, onExtract)
+}
+
+func downloadAndExtractVerified(ctx context.Context, matched []assetInfo, destDir, expectedHash string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
 	for _, asset := range matched {
 		archivePath := filepath.Join(destDir, asset.Name)
 		if err := downloadFile(ctx, asset.URL, archivePath, onProgress); err != nil {
 			_ = os.Remove(archivePath)
+			return err
+		}
+		if err := verifyHash(archivePath, expectedHash); err != nil {
 			return err
 		}
 		if isArchiveFile(archivePath) {
@@ -395,7 +402,7 @@ func installFromGitHub(ctx context.Context, tool ToolDef, destDir, token string,
 			return "", fmt.Errorf("pinned release %s for %s: no installable asset matched glob %q (found %d assets)",
 				tag, tool.Name, tool.AssetGlob, len(assets))
 		}
-		if derr := downloadAndExtract(ctx, []assetInfo{*primary}, destDir, onProgress, onExtract); derr != nil {
+		if derr := downloadAndExtractVerified(ctx, []assetInfo{*primary}, destDir, tool.SHA256, onProgress, onExtract); derr != nil {
 			return "", derr
 		}
 		if verr := validateBinaryInstalled(tool, destDir); verr != nil {

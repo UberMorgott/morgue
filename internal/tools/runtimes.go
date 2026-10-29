@@ -155,6 +155,8 @@ func detectRuntimeVersion(kind RuntimeKind, binPath string) string {
 		cmd = exec.CommandContext(ctx, binPath, "--version")
 	case RuntimeJava:
 		cmd = exec.CommandContext(ctx, binPath, "-version")
+	case RuntimeAspNet:
+		cmd = exec.CommandContext(ctx, binPath, "--list-runtimes")
 	default:
 		return ""
 	}
@@ -167,6 +169,16 @@ func detectRuntimeVersion(kind RuntimeKind, binPath string) string {
 	}
 
 	text := strings.TrimSpace(string(out))
+	if kind == RuntimeAspNet {
+		var versions []string
+		for line := range strings.SplitSeq(text, "\n") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 && fields[0] == "Microsoft.AspNetCore.App" && strings.HasPrefix(fields[1], "10.") {
+				versions = append(versions, fields[1])
+			}
+		}
+		return latestStableVersion(versions)
+	}
 	// java -version outputs multi-line; take first line, strip quotes
 	if kind == RuntimeJava {
 		lines := strings.Split(text, "\n")
@@ -193,6 +205,20 @@ func detectRuntimeVersion(kind RuntimeKind, binPath string) string {
 // dotnet only counts when it actually hosts an ASP.NET Core 10.x runtime; otherwise
 // the caller is told the runtime is missing and installs the bundled portable copy.
 func (m *Manager) RuntimePath(kind RuntimeKind) (string, error) {
+	if m.selection != nil {
+		s := m.selection
+		s.work.Lock()
+		defer s.work.Unlock()
+		if err := s.ctx.Err(); err != nil {
+			return "", err
+		}
+		entry, err := s.selectRuntime(s.ctx, kind, nil)
+		return entry.path, err
+	}
+	return m.runtimePathUnbound(kind)
+}
+
+func (m *Manager) runtimePathUnbound(kind RuntimeKind) (string, error) {
 	localBin := m.localRuntimeBin(kind)
 	if _, err := os.Stat(localBin); err == nil {
 		return localBin, nil
@@ -243,13 +269,40 @@ func listRuntimesHasAspNet10(listRuntimesOutput string) bool {
 
 // InstallRuntime downloads and installs a portable runtime.
 func (m *Manager) InstallRuntime(kind RuntimeKind, cb *InstallCallbacks) error {
+	return m.InstallRuntimeContext(context.Background(), kind, cb)
+}
+
+func (m *Manager) InstallRuntimeContext(ctx context.Context, kind RuntimeKind, cb *InstallCallbacks) error {
+	if m.selection != nil {
+		s := m.selection
+		ctx, cancel := context.WithCancel(ctx)
+		stop := context.AfterFunc(s.ctx, cancel)
+		defer stop()
+		defer cancel()
+		s.work.Lock()
+		defer s.work.Unlock()
+		if err := s.ctx.Err(); err != nil {
+			return err
+		}
+		_, err := s.selectRuntime(ctx, kind, cb)
+		return err
+	}
+	lease, err := acquireToolLock(ctx, m.baseDir, "runtime:"+string(kind), true, false)
+	if err != nil {
+		return err
+	}
+	defer lease.Close()
+	return m.installRuntimeLocked(ctx, kind, cb)
+}
+
+func (m *Manager) installRuntimeInto(ctx context.Context, kind RuntimeKind, cb *InstallCallbacks) error {
 	switch kind {
 	case RuntimeDotnet:
-		return m.installDotnetSDK(cb)
+		return m.installDotnetSDK(ctx, cb)
 	case RuntimeJava:
-		return m.installJavaJRE(cb)
+		return m.installJavaJRE(ctx, cb)
 	case RuntimeAspNet:
-		return m.installAspNetRuntime(cb)
+		return m.installAspNetRuntime(ctx, cb)
 	default:
 		return fmt.Errorf("unknown runtime: %s", kind)
 	}
@@ -296,13 +349,17 @@ func detectRequiredDotnetVersion(toolsBaseDir string) string {
 }
 
 // installDotnetSDK downloads the .NET SDK portable zip, version auto-detected.
-func (m *Manager) installDotnetSDK(cb *InstallCallbacks) error {
+func (m *Manager) installDotnetSDK(ctx context.Context, cb *InstallCallbacks) error {
 	destDir := m.localRuntimeDir(RuntimeDotnet)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return fmt.Errorf("create dotnet dir: %w", err)
 	}
 
-	dotnetVersion := detectRequiredDotnetVersion(m.baseDir)
+	toolBase := m.baseDir
+	if m.runtimeToolBase != "" {
+		toolBase = m.runtimeToolBase
+	}
+	dotnetVersion := detectRequiredDotnetVersion(toolBase)
 	zipPath := filepath.Join(m.baseDir, "runtimes", "dotnet-sdk.zip")
 	url := fmt.Sprintf("https://aka.ms/dotnet/%s/dotnet-sdk-win-x64.zip", dotnetVersion)
 
@@ -313,7 +370,7 @@ func (m *Manager) installDotnetSDK(cb *InstallCallbacks) error {
 		}
 	}
 
-	if err := downloadFile(context.Background(), url, zipPath, progressCb); err != nil {
+	if err := downloadFile(ctx, url, zipPath, progressCb); err != nil {
 		return fmt.Errorf("download .NET SDK: %w", err)
 	}
 	defer func() { _ = os.Remove(zipPath) }()
@@ -341,7 +398,7 @@ type adoptiumAsset struct {
 }
 
 // installJavaJRE downloads Adoptium Temurin JRE 21.
-func (m *Manager) installJavaJRE(cb *InstallCallbacks) error {
+func (m *Manager) installJavaJRE(ctx context.Context, cb *InstallCallbacks) error {
 	destDir := m.localRuntimeDir(RuntimeJava)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return fmt.Errorf("create java dir: %w", err)
@@ -349,10 +406,10 @@ func (m *Manager) installJavaJRE(cb *InstallCallbacks) error {
 
 	// Query Adoptium API for download URL
 	apiURL := "https://api.adoptium.net/v3/assets/latest/21/hotspot?os=windows&architecture=x64&image_type=jre"
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	requestCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	req, err := http.NewRequestWithContext(requestCtx, "GET", apiURL, nil)
 	if err != nil {
 		return fmt.Errorf("create adoptium request: %w", err)
 	}
@@ -394,7 +451,7 @@ func (m *Manager) installJavaJRE(cb *InstallCallbacks) error {
 		}
 	}
 
-	if err := downloadFile(context.Background(), downloadURL, zipPath, progressCb); err != nil {
+	if err := downloadFile(ctx, downloadURL, zipPath, progressCb); err != nil {
 		return fmt.Errorf("download Java JRE: %w", err)
 	}
 	defer func() { _ = os.Remove(zipPath) }()
@@ -451,7 +508,7 @@ func aspNetRuntimeURL() string {
 
 // installAspNetRuntime downloads the portable .NET 10 ASP.NET runtime zip into
 // baseDir/runtimes/dotnet-aspnet10/. Mirrors installDotnetSDK.
-func (m *Manager) installAspNetRuntime(cb *InstallCallbacks) error {
+func (m *Manager) installAspNetRuntime(ctx context.Context, cb *InstallCallbacks) error {
 	destDir := m.localRuntimeDir(RuntimeAspNet)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return fmt.Errorf("create aspnet dir: %w", err)
@@ -467,7 +524,7 @@ func (m *Manager) installAspNetRuntime(cb *InstallCallbacks) error {
 		}
 	}
 
-	if err := downloadFile(context.Background(), url, zipPath, progressCb); err != nil {
+	if err := downloadFile(ctx, url, zipPath, progressCb); err != nil {
 		return fmt.Errorf("download .NET ASP.NET runtime: %w", err)
 	}
 	defer func() { _ = os.Remove(zipPath) }()

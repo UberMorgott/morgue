@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tools-installed-v2.schema.json",
+  "title": "Morgue installed tools lock v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "tools", "operatorVersions"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "tools": { "type": "object", "additionalProperties": { "$ref": "tools-run-v1.schema.json#/$defs/identity" } },
+    "operatorVersions": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } }
+  }
+}

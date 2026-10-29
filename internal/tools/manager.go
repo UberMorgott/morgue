@@ -26,15 +26,18 @@ type InstallCallbacks struct {
 
 // Manager handles tool installation and resolution.
 type Manager struct {
-	baseDir string
-	cfg     config.Config
+	baseDir         string
+	cfg             config.Config
+	selection       *RunSelection
+	state           *policyState
+	runtimeToolBase string
 }
 
 // NewManager creates a Manager that stores tools under baseDir.
 func NewManager(baseDir string, cfg config.Config) *Manager {
 	// Route downloads through a configured mirror (offline / firewalled installs).
 	setAssetMirror(cfg.ToolsMirror)
-	return &Manager{baseDir: baseDir, cfg: cfg}
+	return &Manager{baseDir: baseDir, cfg: cfg, state: &policyState{statuses: map[string]ToolPolicyStatus{}}}
 }
 
 // preSeededGhidraHome returns the ghidraRun.bat path of a pre-existing, offline
@@ -75,6 +78,13 @@ func validateGhidraHome(home string) string {
 
 // Resolve returns the full path to a tool's binary, or an error if not installed.
 func (m *Manager) Resolve(name string) (string, error) {
+	if m.selection != nil {
+		return m.selection.resolve(name)
+	}
+	return m.resolveUnbound(name)
+}
+
+func (m *Manager) resolveUnbound(name string) (string, error) {
 	tool, ok := FindByName(name)
 	if !ok {
 		return "", fmt.Errorf("unknown tool: %s", name)
@@ -156,6 +166,12 @@ func findBinaryRecursive(dir, binaryName string) string {
 
 // Check returns the installation status of a named tool.
 func (m *Manager) Check(name string) ToolStatus {
+	st := m.checkUnbound(name)
+	m.applyPolicyStatus(&st)
+	return st
+}
+
+func (m *Manager) checkUnbound(name string) ToolStatus {
 	tool, ok := FindByName(name)
 	if !ok {
 		return ToolStatus{Name: name}
@@ -243,35 +259,15 @@ func (m *Manager) IsInstalled(name string) bool {
 // Callbacks are optional — pass nil for no progress reporting.
 // Cancelling ctx aborts an in-flight download and removes the partial file.
 func (m *Manager) Install(ctx context.Context, name string, cb *InstallCallbacks) (string, error) {
-	tool, ok := FindByName(name)
-	if !ok {
-		return "", fmt.Errorf("unknown tool: %s", name)
+	if m.selection != nil {
+		ids, err := m.selection.Ensure(ctx, []string{name}, cb)
+		if err != nil {
+			return "", err
+		}
+		return ids[0].Version, nil
 	}
-
-	// Install into a fresh staging dir next to the live one, validate it, then
-	// swap it in. A failed or cancelled (re)install therefore never destroys a
-	// working tool. Staging lives in baseDir so findDotnetBin / release cache
-	// resolve exactly as for the final dir.
-	destDir := filepath.Join(m.baseDir, name)
-	stageDir := filepath.Join(m.baseDir, "."+name+".staging")
-	_ = os.RemoveAll(stageDir)
-	if err := os.MkdirAll(stageDir, 0755); err != nil {
-		return "", fmt.Errorf("create staging dir: %w", err)
-	}
-	defer func() { _ = os.RemoveAll(stageDir) }()
-
-	version, err := m.installInto(ctx, tool, stageDir, cb)
-	if err == nil {
-		err = validateBinaryInstalled(tool, stageDir)
-	}
-	if err != nil {
-		return "", err
-	}
-	if err := swapDir(stageDir, destDir); err != nil {
-		return "", fmt.Errorf("activate %s: %w", name, err)
-	}
-	_ = m.RecordInstall(name, version)
-	return version, nil
+	id, err := m.InstallVersion(ctx, name, InstallOptions{}, cb)
+	return id.Version, err
 }
 
 // swapDir replaces dest with staged. The previous dest is moved aside first and
@@ -501,6 +497,11 @@ func (m *Manager) CheckAllWithUpdates() []ToolStatus {
 	statuses := make([]ToolStatus, 0, len(Registry))
 	for _, t := range Registry {
 		st := m.Check(t.Name)
+		if st.OperatorVersion != "" {
+			if pinned, err := toolWithVersion(t, st.OperatorVersion); err == nil {
+				t = pinned
+			}
+		}
 		// Clean up stored version for display
 		st.Version = cleanVersionTag(st.Version)
 		st.LatestVersion = latestVersion(ctx, t)
@@ -519,12 +520,20 @@ func (m *Manager) CheckLatestVersionSingle(name string) (latest string, updateAv
 	}
 	ctx := context.Background() // no caller context; probes are Timeout-bounded
 	st := m.Check(name)
+	if st.OperatorVersion != "" {
+		if pinned, err := toolWithVersion(tool, st.OperatorVersion); err == nil {
+			tool = pinned
+		}
+	}
 	latest = latestVersion(ctx, tool)
 	return latest, st.Installed && !st.system && isUpdate(st.Version, latest)
 }
 
 // RuntimeEnv returns environment variables for local runtimes (PATH prepend, JAVA_HOME).
 func (m *Manager) RuntimeEnv() []string {
+	if m.selection != nil {
+		return m.selection.runtimeEnv()
+	}
 	var env []string
 
 	dotnetDir := m.localRuntimeDir(RuntimeDotnet)
@@ -577,5 +586,10 @@ func (m *Manager) Delete(name string) error {
 	if !ok {
 		return fmt.Errorf("unknown tool: %s", name)
 	}
-	return os.RemoveAll(filepath.Join(m.baseDir, name))
+	lease, err := acquireToolLock(context.Background(), m.baseDir, name, true, false)
+	if err != nil {
+		return err
+	}
+	defer lease.Close()
+	return m.deleteLocked(name)
 }
