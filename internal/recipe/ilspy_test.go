@@ -8,7 +8,40 @@ import (
 	"testing"
 
 	"github.com/UberMorgott/morgue/internal/config"
+	"github.com/UberMorgott/morgue/internal/util"
 )
+
+func TestToolDiagnosticsRetainEveryAttempt(t *testing.T) {
+	ctx := &Context{Output: t.TempDir()}
+	for _, code := range []int{1, 0} {
+		saveToolResult(ctx, "ilspycmd", &util.CmdResult{Stdout: "raw stdout", Stderr: "raw stderr", ExitCode: code})
+	}
+	files, err := filepath.Glob(filepath.Join(ctx.Output, "logs", "*.log"))
+	if err != nil || len(files) != 2 {
+		t.Fatalf("%v %v", files, err)
+	}
+	for _, path := range files {
+		b, err := os.ReadFile(path)
+		if err != nil || string(b) != "raw stdout\nraw stderr" {
+			t.Fatalf("raw output lost: %s %v", b, err)
+		}
+		if _, err := os.Stat(path + ".json"); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestNonemptySourceRequired(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "Empty.cs"), nil, 0644)
+	if countNonemptySource(dir, ".cs") != 0 {
+		t.Fatal("empty decompilation accepted")
+	}
+	os.WriteFile(filepath.Join(dir, "Real.cs"), []byte("class Demo {}"), 0644)
+	if countNonemptySource(dir, ".cs") != 1 {
+		t.Fatal("nonempty source missing")
+	}
+}
 
 func TestIlspyCommandArgsRetainOriginalReferences(t *testing.T) {
 	root := t.TempDir()

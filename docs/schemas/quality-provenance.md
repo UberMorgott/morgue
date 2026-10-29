@@ -6,3 +6,4 @@
 - Producer step IDs: managed.decompile (ilspycmd), managed.deobfuscate (de4dot-cex), managed.strings (cfxstrings), managed.extract (cfxextract), java.decompile (vineflower), native.decompile (ghidra), native.rename (morgue), il2cpp.stubs (il2cppdumper/il2cppinspector), unity.extract (assetripper). Embedded helpers use their content identity as version; never pretend they are external-tool versions.
 - Fidelity constants: source, decompiled-source, pseudocode, stub. Metadata/assets retain their existing artifact kinds. Source means original source; ILSpy/Vineflower emit decompiled-source, Ghidra emits pseudocode, DummyDLL C# emits stub.
 - Metric.Validate and Coverage.Validate reject absent counts, invalid unknowns and fabricated ratios. Comparable is an explicit assertion of a shared stable identity universe.
+- Inventory producer IDs: managed.inventory and java.inventory (morgue); these record bytecode metadata, never recovered source bodies.

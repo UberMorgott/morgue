@@ -57,6 +57,8 @@ internal static class Program
             return 2;
         }
         string input = args[0];
+        using (var inputStream = File.OpenRead(input))
+            Console.WriteLine("INPUT_SHA256:" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(inputStream)).ToLowerInvariant());
         string output = args[1];
         string tsv = null;
         bool allowDynamic = false;
@@ -111,6 +113,7 @@ internal static class Program
             Console.WriteLine("REWROTE:0");
             Console.WriteLine("RESIDUAL:0");
             module.Write(output); // emit a copy so the caller path is uniform
+            Console.WriteLine("SITES:0");
             return 0;
         }
         Console.WriteLine("DECRYPTOR:" + decryptor.FullName);
@@ -230,6 +233,12 @@ internal static class Program
 
         try { module.Write(output); }
         catch (Exception e) { Console.Error.WriteLine("write: " + e.Message); return 1; }
+
+        // This is a detected-shape call-site inventory, not a claim to cover
+        // every string encryption scheme. Emit only after the IL was saved.
+        Console.WriteLine($"SITES:{sites.Count}");
+        for (int i = 0; i < sites.Count; i++)
+            Console.WriteLine($"SITE:0x{sites[i].InputToken:x8}:{sites[i].CallIndex}:{(plain[i] == null ? "residual" : "replaced")}");
 
         try
         {
@@ -427,10 +436,11 @@ internal static class Program
     {
         public readonly MethodDefinition Method;
         public readonly int CallIndex;
+        public readonly uint InputToken;
         public readonly int Magic;
         public readonly string Enc;
         public Site(MethodDefinition m, int idx, int magic, string enc)
-        { Method = m; CallIndex = idx; Magic = magic; Enc = enc; }
+        { Method = m; CallIndex = idx; InputToken = m.MetadataToken.ToUInt32(); Magic = magic; Enc = enc; }
     }
 
     // LocateDecryptor ranks candidate methods by call-site count. A candidate

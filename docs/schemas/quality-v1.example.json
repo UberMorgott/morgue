@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "family": "managed",
+  "status": "unknown",
+  "functions": {
+    "found": {
+      "value": null,
+      "status": "unknown",
+      "basis": "No stable bytecode-to-source identity mapping",
+      "evidence": []
+    },
+    "emitted": {
+      "value": null,
+      "status": "unknown",
+      "basis": "No stable bytecode-to-source identity mapping",
+      "evidence": []
+    },
+    "ratio": null,
+    "comparable": false
+  },
+  "types": {
+    "found": {
+      "value": null,
+      "status": "unknown",
+      "basis": "No stable bytecode-to-source identity mapping",
+      "evidence": []
+    },
+    "emitted": {
+      "value": null,
+      "status": "unknown",
+      "basis": "No stable bytecode-to-source identity mapping",
+      "evidence": []
+    },
+    "ratio": null,
+    "comparable": false
+  },
+  "decompilerErrors": {
+    "value": null,
+    "status": "unknown",
+    "basis": "No stable bytecode-to-source identity mapping",
+    "evidence": []
+  },
+  "unknownResultTypes": {
+    "value": null,
+    "status": "unknown",
+    "basis": "No stable bytecode-to-source identity mapping",
+    "evidence": []
+  },
+  "unresolvedReferences": {
+    "value": null,
+    "status": "unknown",
+    "basis": "No stable bytecode-to-source identity mapping",
+    "evidence": []
+  },
+  "residualObfuscation": {
+    "value": null,
+    "status": "unknown",
+    "basis": "No stable bytecode-to-source identity mapping",
+    "evidence": []
+  },
+  "stringDecryption": {
+    "found": {
+      "value": null,
+      "status": "unknown",
+      "basis": "No stable bytecode-to-source identity mapping",
+      "evidence": []
+    },
+    "emitted": {
+      "value": null,
+      "status": "unknown",
+      "basis": "No stable bytecode-to-source identity mapping",
+      "evidence": []
+    },
+    "ratio": null,
+    "comparable": false
+  },
+  "warnings": [],
+  "checks": []
+}

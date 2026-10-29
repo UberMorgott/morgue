@@ -1,13 +1,16 @@
 package recipe
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/UberMorgott/morgue/internal/quality"
 	"github.com/UberMorgott/morgue/internal/recon"
+	"github.com/UberMorgott/morgue/internal/runmodel"
 	"github.com/UberMorgott/morgue/internal/tools"
 	"github.com/UberMorgott/morgue/internal/util"
 )
@@ -98,10 +101,17 @@ func (j *Java) Execute(ctx *Context) error {
 	// memory cap allows (the JVM sizes its default heap from physical RAM).
 	res, runErr := util.RunCmdStreamingEnvBreakaway(ctx.Ctx, ctx.Tools.RuntimeEnv(), javaPath,
 		vineflowerArgs(jarPath, ctx.Target, srcDir), "", onLine)
+	saveToolResult(ctx, "vineflower", res, vineflowerArgs(jarPath, ctx.Target, srcDir))
 	if runErr == nil && res != nil && res.ExitCode != 0 {
 		runErr = fmt.Errorf("vineflower exit %d: %s", res.ExitCode, lastLine(res.Stderr))
 	}
-	files := countFilesWithExt(srcDir, ".java")
+	files := countNonemptySource(srcDir, ".java")
+	if files == 0 && runErr == nil {
+		runErr = fmt.Errorf("vineflower produced no Java source")
+	}
+	if files > 0 {
+		qualityWarning(ctx, recordJavaProducts(ctx, srcDir, vineflowerArgs(jarPath, ctx.Target, srcDir)))
+	}
 	if runErr != nil && files == 0 {
 		report(1, Failed, time.Since(start), runErr, 0, "")
 		return runErr
@@ -136,4 +146,44 @@ func vineflowerArgs(jarPath, target, srcDir string) []string {
 func lastLine(s string) string {
 	lines := strings.Split(strings.TrimSpace(s), "\n")
 	return strings.TrimSpace(lines[len(lines)-1])
+}
+
+func recordJavaProducts(ctx *Context, src string, args []string) error {
+	targetID := provenanceTargetID(ctx)
+	hash, err := util.SHA256File(ctx.Target)
+	if err != nil {
+		return err
+	}
+	producer := selectedProducer(ctx, "vineflower", "java.decompile", args)
+	if err := recordSourceProducts(ctx, src, ctx.Target, hash, targetID, producer, ".java"); err != nil {
+		return err
+	}
+	path := filepath.Join(ctx.Output, "java-identities.ndjson")
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	enc := json.NewEncoder(f)
+	_, inventoryErr := quality.JavaInventory(ctx.Ctx, ctx.Target, func(module string, id quality.Identity) error {
+		name := id.Name
+		r := runmodel.ProvenanceRecord{SchemaVersion: 1, ID: hash + ":" + module + ":" + id.Kind + ":" + name, TargetID: targetID, InputSHA256: hash, Module: module, ArtifactPath: "java-identities.ndjson", ArtifactKind: "metadata", OriginalName: &name, NameSource: "metadata", Confidence: "high", Evidence: []runmodel.Evidence{}, Producer: runmodel.ProvenanceProducer{Tool: "morgue", Version: "unknown", StepID: "java.inventory", Args: []string{}}}
+		if err := enc.Encode(r); err != nil {
+			return err
+		}
+		if ctx.Provenance != nil {
+			return ctx.Provenance.Write(r)
+		}
+		return nil
+	})
+	closeErr := f.Close()
+	if inventoryErr != nil {
+		return inventoryErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if ctx.Artifacts != nil {
+		return ctx.Artifacts.Record(path, "metadata", "java.inventory", "morgue", false)
+	}
+	return nil
 }

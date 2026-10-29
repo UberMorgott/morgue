@@ -170,7 +170,43 @@
         "comparable": {
           "type": "boolean"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "ratio": {
+                "type": "number"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "comparable": {
+                "const": true
+              },
+              "found": {
+                "properties": {
+                  "status": {
+                    "const": "measured"
+                  },
+                  "value": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              },
+              "emitted": {
+                "properties": {
+                  "status": {
+                    "const": "measured"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "Evidence": {
       "type": "object",

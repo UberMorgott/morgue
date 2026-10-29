@@ -132,7 +132,7 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 	_ = os.MkdirAll(srcDir, 0755)
 	ilspyArgs := ilspyCommandArgs(ctx, ctx.Target, []string{"-p", "-o", srcDir})
 	ilspyBin, ilspyRun := dotnetExec(ctx.Ctx, ilspyPath, ilspyArgs)
-	result, err := util.RunCmd(ctx.Ctx, ilspyBin, ilspyRun, "")
+	result, err := runILSpy(ctx, ilspyBin, ilspyRun)
 	exitCode := -1
 	if result != nil {
 		exitCode = result.ExitCode
@@ -147,8 +147,9 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 		_ = os.RemoveAll(srcDir)
 		_ = os.MkdirAll(srcDir, 0755)
 		retryArgs := ilspyCommandArgs(ctx, ctx.Target, []string{"-o", srcDir})
+		ilspyArgs = retryArgs
 		rb, ra := dotnetExec(ctx.Ctx, ilspyPath, retryArgs)
-		result, err = util.RunCmd(ctx.Ctx, rb, ra, "")
+		result, err = runILSpy(ctx, rb, ra)
 		exitCode = -1
 		if result != nil {
 			exitCode = result.ExitCode
@@ -162,6 +163,7 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 
 			// Fallback: per-type decompilation
 			logTool("ilspycmd", "ilspycmd whole-assembly failed, trying per-type fallback...")
+			ilspyArgs = nil // Mixed per-type arguments are retained in individual invocation logs.
 			fallbackOK := perTypeFallback(ctx, ilspyPath, ctx.Target, srcDir, func(msg string) { logTool("ilspycmd", msg) })
 			if !fallbackOK {
 				report(2, Failed, time.Since(start), originalErr, "ilspycmd")
@@ -173,7 +175,13 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 	} else {
 		logTool("ilspycmd", "ilspycmd succeeded in project mode")
 	}
-	csCount := countFilesWithExt(srcDir, ".cs")
+	csCount := countNonemptySource(srcDir, ".cs")
+	if csCount == 0 {
+		err := fmt.Errorf("ilspycmd produced no C# source")
+		report(2, Failed, time.Since(start), err, "ilspycmd")
+		return err
+	}
+	qualityWarning(ctx, recordManagedProducts(ctx, ctx.Target, srcDir, ilspyArgs, ""))
 	reportCount(2, time.Since(start), "ilspycmd", csCount, "types")
 
 	// Step 3: Build indexes
@@ -198,7 +206,7 @@ func (d *DotnetGeneric) Execute(ctx *Context) error {
 // one by one. Returns true if at least one type was decompiled successfully.
 func perTypeFallback(ctx *Context, ilspyPath, target, srcDir string, log func(string)) bool {
 	lb, la := dotnetExec(ctx.Ctx, ilspyPath, ilspyCommandArgs(ctx, target, []string{"-l", "cisde", "--disable-updatecheck"}))
-	listResult, listErr := util.RunCmd(ctx.Ctx, lb, la, "")
+	listResult, listErr := runILSpy(ctx, lb, la)
 	if listErr != nil || listResult == nil || listResult.ExitCode != 0 {
 		msg := "per-type fallback: failed to list types"
 		if listResult != nil && listResult.Stderr != "" {
@@ -222,7 +230,7 @@ func perTypeFallback(ctx *Context, ilspyPath, target, srcDir string, log func(st
 	failed := 0
 	for _, typeName := range types {
 		tb, ta := dotnetExec(ctx.Ctx, ilspyPath, ilspyCommandArgs(ctx, target, []string{"-t", typeName, "-o", srcDir, "--disable-updatecheck"}))
-		typeResult, _ := util.RunCmd(ctx.Ctx, tb, ta, "")
+		typeResult, _ := runILSpy(ctx, tb, ta)
 		if typeResult != nil && typeResult.ExitCode == 0 {
 			succeeded++
 		} else {

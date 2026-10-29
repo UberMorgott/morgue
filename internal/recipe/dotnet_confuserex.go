@@ -196,14 +196,14 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 			current = rewritten
 			if post, _, perr := recon.CountPUAUserStrings(current); perr == nil {
 				if post == 0 {
-					logTool("cfxstrings", "host: all residual encrypted strings decrypted")
+					logTool("cfxstrings", "host: no residual PUA markers; other encryption may remain")
 				} else {
 					logTool("cfxstrings", fmt.Sprintf("host: %d encrypted strings still remain after cfxstrings", post))
 				}
 			}
 		}
 	} else {
-		logTool("de4dot-cex", "verified: no residual encrypted strings in deobfuscated assembly")
+		logTool("de4dot-cex", "no residual PUA markers in deobfuscated assembly; other encryption may remain")
 		report(2, Success, time.Since(start), nil, "de4dot-cex")
 	}
 
@@ -338,7 +338,7 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 	}
 	ilspyArgs := ilspyCommandArgs(ctx, current, []string{"-p", "-o", srcDir}, extractedDLLs...)
 	ilspyBin, ilspyRun := dotnetExec(ctx.Ctx, ilspyPath, ilspyArgs)
-	result, runErr := util.RunCmd(ctx.Ctx, ilspyBin, ilspyRun, "")
+	result, runErr := runILSpy(ctx, ilspyBin, ilspyRun)
 	exitCode := -1
 	if result != nil {
 		exitCode = result.ExitCode
@@ -352,7 +352,13 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 		report(7, Failed, time.Since(start), execErr, "ilspycmd")
 		return execErr
 	}
-	csCount := countFilesWithExt(srcDir, ".cs")
+	csCount := countNonemptySource(srcDir, ".cs")
+	if csCount == 0 {
+		err := fmt.Errorf("ilspycmd produced no C# source")
+		report(7, Failed, time.Since(start), err, "ilspycmd")
+		return err
+	}
+	qualityWarning(ctx, recordManagedProducts(ctx, current, srcDir, ilspyArgs, ""))
 	reportCount(7, time.Since(start), "ilspycmd", csCount, "types")
 
 	// Post-decompile residual-string check: ConfuserEx string encryption that
@@ -361,7 +367,7 @@ func (d *DotnetConfuserEx) Execute(ctx *Context) error {
 	if pua := countPUAInSource(srcDir); pua > 0 {
 		logTool("ilspycmd", fmt.Sprintf("WARNING: %d residual encrypted (\\ueXXXX) chars in decompiled source — string decryption incomplete", pua))
 	} else if csCount > 0 {
-		logTool("ilspycmd", "verified: decompiled source contains no residual encrypted strings")
+		logTool("ilspycmd", "no residual PUA markers in source; string-decryption coverage remains unknown without call-site evidence")
 	}
 
 	// Step 8: Build indexes
@@ -420,6 +426,7 @@ func (d *DotnetConfuserEx) cfxStringsHost(ctx *Context, stage, interDir string, 
 			logTool("cfxstrings", "host: "+line)
 		}
 	})
+	saveToolResult(ctx, "cfxstrings", r, args)
 	if rerr != nil || r == nil || r.ExitCode != 0 {
 		stderr := ""
 		if r != nil {
@@ -867,6 +874,7 @@ func (d *DotnetConfuserEx) extractEmbedded(ctx *Context, logTool func(string, st
 			logTool("cfxextract", line)
 		}
 	})
+	saveToolResult(ctx, "cfxextract", r)
 	if runErr != nil {
 		return 0, nil, fmt.Errorf("run extractor: %w", runErr)
 	}
@@ -1049,6 +1057,9 @@ func (d *DotnetConfuserEx) decompileExtracted(
 						logTool("cfxstrings", name+": "+line)
 					}
 				})
+				logCtx := *ctx
+				logCtx.Output = childDir
+				saveToolResult(&logCtx, "cfxstrings", r, cfxArgs)
 				if rerr == nil && r != nil && r.ExitCode == 0 {
 					if _, e := os.Stat(out); e == nil {
 						stage = out
@@ -1086,7 +1097,9 @@ func (d *DotnetConfuserEx) decompileExtracted(
 		}
 		ilspyArgs := ilspyCommandArgs(ctx, stage, []string{"-p", "-o", childSrc}, dlls...)
 		ilspyBin, ilspyRun := dotnetExec(ctx.Ctx, ilspyPath, ilspyArgs)
-		r, runErr := util.RunCmd(ctx.Ctx, ilspyBin, ilspyRun, "")
+		logCtx := *ctx
+		logCtx.Output = childDir
+		r, runErr := runILSpy(&logCtx, ilspyBin, ilspyRun)
 		if runErr != nil || r == nil || r.ExitCode != 0 {
 			stderr := ""
 			if r != nil {
@@ -1097,10 +1110,14 @@ func (d *DotnetConfuserEx) decompileExtracted(
 		}
 
 		// 4. Per-child strings.json + index.json (reuse existing helpers).
-		if countFilesWithExt(childSrc, ".cs") == 0 {
+		if countNonemptySource(childSrc, ".cs") == 0 {
 			logTool("ilspycmd", fmt.Sprintf("%s: decompiler produced no source", name))
 			continue
 		}
+		childCtx := *ctx
+		childCtx.Output = childDir
+		childCtx.Artifacts = nil // The enclosing observer is bound to the host, not this child.
+		qualityWarning(ctx, recordManagedProducts(&childCtx, stage, childSrc, ilspyArgs, children[dll]))
 		analyzeChildStrings(childSrc, filepath.Join(childDir, "strings.json"))
 		if _, ierr := buildIndex(childSrc); ierr != nil {
 			logTool("ilspycmd", fmt.Sprintf("%s: index build failed: %v", name, ierr))

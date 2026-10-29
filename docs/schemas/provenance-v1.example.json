@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "module:0x06000001",
+  "targetId": "t0123456789abcdef",
+  "inputSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "artifactPath": "managed-identities.ndjson",
+  "artifactKind": "metadata",
+  "module": "Example.dll",
+  "token": "0x06000001",
+  "rva": "0x2000",
+  "address": null,
+  "originalName": "Run",
+  "recoveredName": null,
+  "nameSource": "metadata",
+  "confidence": "high",
+  "evidence": [],
+  "producer": {
+    "tool": "morgue",
+    "version": "unknown",
+    "stepId": "managed.inventory",
+    "args": []
+  }
+}
