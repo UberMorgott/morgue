@@ -19,8 +19,7 @@ const (
 	stateFinished = "finished"
 	statePending  = "pending"
 
-	warnQuality   = "quality not yet collected: every target quality is null until v0.8 M4; absence is not a pass"
-	warnToolsLock = ".morgue/tools.lock.json is provisional (complete:false): exact tool identities are not recorded until v0.8 M3"
+	warnQuality = "quality not yet collected: every target quality is null until v0.8 M4; absence is not a pass"
 )
 
 var (
@@ -246,7 +245,7 @@ func (p *projector) start(ev *runmodel.Event) error {
 		ToolsLock:      runmodel.RunToolsLockPath,
 		Targets:        []runmodel.TargetRecord{},
 		Artifacts:      []runmodel.Artifact{},
-		Warnings:       []string{warnQuality, warnToolsLock},
+		Warnings:       []string{warnQuality},
 	}
 	return nil
 }

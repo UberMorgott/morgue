@@ -170,7 +170,7 @@ func TestWriterNormalRunManifestAgreesWithJournal(t *testing.T) {
 	if len(ws.Artifacts) != 1 || ws.Artifacts[0].Path != "game/child/src" || ws.Artifacts[0].HashStatus != "pending" || ws.Artifacts[0].External {
 		t.Fatalf("artifacts not upserted by id: %+v", ws.Artifacts)
 	}
-	if len(ws.Warnings) != 2 || ws.Journal != runmodel.JournalPath || ws.ToolsLock != runmodel.RunToolsLockPath {
+	if len(ws.Warnings) != 1 || ws.Journal != runmodel.JournalPath || ws.ToolsLock != runmodel.RunToolsLockPath {
 		t.Fatalf("root fields: %+v", ws)
 	}
 	if fmt.Sprint(published) != "[1 2 3 4 6 7 8 9]" && fmt.Sprint(published) != "[1 2 3 5 6 7 8 9]" {
