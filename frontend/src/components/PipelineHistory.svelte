@@ -1,6 +1,7 @@
 <script lang="ts">
   import { t, type Lang } from '../lib/i18n';
   import type { HistoryEntry } from '../lib/pipeline';
+  import { basename, statusKey, statusTone } from '../lib/history';
 
   let { lang = 'en' as Lang, entries = [] as HistoryEntry[], onselect }: {
     lang?: Lang;
@@ -8,30 +9,47 @@
     onselect?: (detail: { path: string }) => void;
   } = $props();
 
-  function relativeTime(ts: number): string {
-    const diff = Math.floor((Date.now() - ts) / 1000);
+  const dotClass: Record<string, string> = {
+    success: 'dot-success',
+    error: 'dot-error',
+    warning: 'dot-warning',
+    running: 'dot-active',
+    muted: '',
+  };
+
+  function relativeTime(iso: string | null): string {
+    if (!iso) return '';
+    const ts = Date.parse(iso);
+    if (Number.isNaN(ts)) return '';
+    const diff = Math.max(0, Math.floor((Date.now() - ts) / 1000));
     if (diff < 60) return `<1${t(lang, 'home.ago.minutes')}`;
     if (diff < 3600) return `${Math.floor(diff / 60)}${t(lang, 'home.ago.minutes')}`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}${t(lang, 'home.ago.hours')}`;
     return `${Math.floor(diff / 86400)}${t(lang, 'home.ago.days')}`;
   }
-
-  function basename(p: string): string {
-    return p.split(/[\\/]/).pop() || p;
-  }
 </script>
 
 <div class="history-section animate-in">
-  <h3 class="history-heading">{t(lang, 'home.recent')}</h3>
+  <h3 class="section-label history-heading">{t(lang, 'home.recent')}</h3>
   <div class="history-list glass">
-    {#each entries.slice(0, 5) as entry (entry.timestamp)}
-      <button class="history-item" onclick={() => onselect?.({ path: entry.path })}>
-        <span class="dot {entry.success ? 'dot-success' : 'dot-error'}"></span>
-        <span class="history-name">{basename(entry.path)}</span>
-        {#if entry.kind}
-          <span class="tag tag-accent">{entry.kind}</span>
+    {#each entries.slice(0, 5) as entry (entry.path)}
+      {@const key = statusKey(entry)}
+      {@const tone = statusTone(entry)}
+      <button
+        class="history-item"
+        title={entry.path}
+        disabled={!entry.input}
+        onclick={() => entry.input && onselect?.({ path: entry.input })}
+      >
+        <span class="dot {dotClass[tone]}"></span>
+        <span class="history-name font-mono text-sm">{basename(entry.input || entry.path)}</span>
+        {#if key}
+          <span class="tag {tone === 'error' ? 'tag-error' : tone === 'muted' ? 'tag-muted' : 'tag-accent'}">{t(lang, key)}</span>
         {/if}
-        <span class="history-time">{relativeTime(entry.timestamp)}</span>
+        {#if entry.targets > 0}
+          <span class="history-time text-xs">{entry.targets} {t(lang, 'history.targets')}</span>
+        {/if}
+        <span class="history-time text-xs">{relativeTime(entry.startedAt)}</span>
       </button>
     {/each}
   </div>
@@ -43,12 +61,7 @@
     max-width: 480px;
   }
   .history-heading {
-    font-size: 0.85rem;
-    color: var(--text-muted);
     margin: 0 0 8px 4px;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
   }
   .history-list {
     display: flex;
@@ -66,20 +79,21 @@
     cursor: pointer;
     transition: background 0.15s;
   }
-  .history-item:hover {
+  .history-item:hover:not(:disabled) {
     background: var(--bg-card-hover);
   }
+  .history-item:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
   .history-name {
-    font-size: 0.88rem;
     color: var(--text-primary);
     flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: 'Consolas', 'Courier New', monospace;
   }
   .history-time {
-    font-size: 0.75rem;
     color: var(--text-muted);
     flex-shrink: 0;
   }

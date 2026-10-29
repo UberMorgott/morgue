@@ -1,4 +1,5 @@
 import { writable, derived } from 'svelte/store';
+import { loadRecent, wailsHistoryBackend, type HistoryBackend, type RecentRun } from './history';
 import type {
   EventV2, RunStarted, ScanCompleted, TargetDiscovered, TargetFinished, StepProgress,
   ToolProgress, LogRecord, RunFinished, RunOutcome, Counts,
@@ -733,33 +734,43 @@ export function eventErrorText(d: any): string {
 }
 
 // --- History ---
+// Recent runs are workspace references persisted by the backend and resolved
+// from disk on every refresh (lib/history.ts). localStorage is only read once
+// for the legacy import; outcomes are never taken from it.
 
-export interface HistoryEntry {
-  path: string;
-  kind: string;
-  output: string;
-  timestamp: number;
-  success: boolean;
-  error?: string;
+export type HistoryEntry = RecentRun;
+
+export const history = writable<HistoryEntry[]>([]);
+
+let historyBackend: HistoryBackend = wailsHistoryBackend;
+let historySeq = 0;
+
+/** Replaces the backend (tests, or generated bindings at integration). */
+export function setHistoryBackend(b: HistoryBackend) {
+  historyBackend = b;
 }
 
-const HISTORY_KEY = 'morgue-history';
-const MAX_HISTORY = 20;
+/** Reloads the recent list from the backend; stale responses are dropped. */
+export async function refreshHistory(): Promise<void> {
+  const mine = ++historySeq;
+  const list = await loadRecent(historyBackend);
+  if (mine === historySeq) history.set(list);
+}
 
-function loadHistory(): HistoryEntry[] {
-  try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-  } catch {
-    return [];
+/** @deprecated History is recorded by the backend; this only refreshes. */
+export function addHistoryEntry(_entry?: unknown) {
+  void refreshHistory();
+}
+
+// Refresh when a run is admitted or reaches a terminal phase.
+let lastHistoryKey = '';
+pipelineState.subscribe((s) => {
+  const key = `${s.runId}|${isTerminal(s.phase)}`;
+  if (s.runId && key !== lastHistoryKey) {
+    lastHistoryKey = key;
+    void refreshHistory();
   }
-}
+});
 
-export const history = writable<HistoryEntry[]>(loadHistory());
-
-export function addHistoryEntry(entry: HistoryEntry) {
-  history.update(h => {
-    const next = [entry, ...h.filter(e => e.path !== entry.path)].slice(0, MAX_HISTORY);
-    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(next)); } catch {}
-    return next;
-  });
-}
+// Initial load in the app (not under unit tests without a window).
+if (typeof window !== 'undefined' && !(import.meta as any).vitest) void refreshHistory();
