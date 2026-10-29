@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/UberMorgott/morgue/internal/quality"
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/util"
 )
@@ -67,6 +68,24 @@ func (n *Native) Execute(ctx *Context) error {
 	// "strings" = only copy + strings, "ghidra" = only ghidra, "" = all.
 	runStrings := ctx.StepFilter == "" || ctx.StepFilter == "strings"
 	doGhidra := ctx.StepFilter == "" || ctx.StepFilter == "ghidra"
+
+	// Quality evidence: what the decompile step actually did (and why not),
+	// written however Execute returns so the collector never guesses.
+	ev := quality.NativeEvidence{Family: "native"}
+	decompile := func(status, reason string) {
+		ev.Decompile = &quality.StepEvidence{Status: status, Reason: reason, Tool: "ghidra",
+			Binary: filepath.Base(ctx.Target), Output: "src"}
+	}
+	if doGhidra {
+		defer func() {
+			if ev.Decompile == nil {
+				decompile(quality.StepSkipped, "decompile step did not run")
+			}
+			if werr := quality.WriteNativeEvidence(ctx.Output, ev); werr != nil {
+				logTool("ghidra", fmt.Sprintf("write %s: %v", quality.EvidenceFile, werr))
+			}
+		}()
+	}
 
 	// Step 0: Copy original. Always persisted (a single copy of the target is
 	// cheap and valuable for reproducibility) — kept consistent across all
@@ -180,6 +199,7 @@ func (n *Native) Execute(ctx *Context) error {
 	// Step 2: Decompile with Ghidra
 	if doGhidra && ctx.Config != nil && !ctx.Config.NativeGhidraDecompile {
 		logTool("ghidra", "Ghidra decompilation disabled in settings")
+		decompile(quality.StepDisabled, "Ghidra decompilation disabled in settings")
 		extrasFallback("Ghidra disabled in settings")
 	} else if doGhidra {
 		report(2, Running, 0, nil, "ghidra")
@@ -192,6 +212,7 @@ func (n *Native) Execute(ctx *Context) error {
 			logTool("ghidra", fmt.Sprintf(
 				"Ghidra unavailable (%v) — skipping decompilation. Imports/strings/sections were still extracted. "+
 					"Set GHIDRA_HOME to a local Ghidra install or configure ToolsMirror for offline use.", err))
+			decompile(quality.StepUnavailable, err.Error())
 			extrasFallback("Ghidra unavailable")
 			ghidraPath = ""
 		}
@@ -235,9 +256,11 @@ func (n *Native) Execute(ctx *Context) error {
 				funcCount, err = ghidraRun()
 			}
 			if err != nil {
+				decompile(quality.StepFailed, err.Error())
 				report(2, Failed, time.Since(start), err, "ghidra")
 				return err
 			}
+			decompile(quality.StepSucceeded, "")
 			reportCount(2, time.Since(start), "ghidra", funcCount, "functions")
 
 			// Split the combined .c into per-function files + emit functions_index.json
@@ -290,6 +313,13 @@ func (n *Native) Execute(ctx *Context) error {
 		// templated function clones + emit game-only views. Additive, logged.
 		runDedupeAndGameViews(srcDir, func(m string) { logTool("ghidra", m) })
 		reportCount(3, time.Since(start), "", idx.FileCount, "files")
+	}
+	if ev.Decompile != nil && ev.Decompile.Status == quality.StepSucceeded {
+		// Provenance after renames so name_map.csv rows are included.
+		if n, perr := ghidraProvenance(ctx.Provenance, ctx.Output, srcDir, ctx.Target,
+			ghidraVersion(ctx), ctx.Compiler == recon.NativeAOTCompiler); perr != nil {
+			logTool("ghidra", fmt.Sprintf("Provenance incomplete after %d records: %v", n, perr))
+		}
 	}
 
 	return nil

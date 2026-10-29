@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/UberMorgott/morgue/internal/quality"
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/util"
 )
@@ -65,6 +66,17 @@ func (d *Delphi) Execute(ctx *Context) error {
 		}
 	}
 
+	// Quality evidence for the optional IDR/Ghidra steps, written on every return.
+	ev := quality.NativeEvidence{Family: "delphi"}
+	step := func(tool, status, reason, out string) *quality.StepEvidence {
+		return &quality.StepEvidence{Status: status, Reason: reason, Tool: tool, Binary: filepath.Base(ctx.Target), Output: out}
+	}
+	defer func() {
+		if werr := quality.WriteNativeEvidence(ctx.Output, ev); werr != nil {
+			logTool("ghidra", fmt.Sprintf("write %s: %v", quality.EvidenceFile, werr))
+		}
+	}()
+
 	// Step 0: Copy original. Always persisted (a single copy of the target is
 	// cheap and valuable for reproducibility) — kept consistent across recipes.
 	var start time.Time
@@ -101,6 +113,7 @@ func (d *Delphi) Execute(ctx *Context) error {
 	if ctx.Config != nil && !ctx.Config.DelphiIDRAnalysis {
 		report(2, Skipped, 0, nil, "idr")
 		logTool("idr", "IDR analysis disabled in settings")
+		ev.IDR = step("idr", quality.StepDisabled, "IDR analysis disabled in settings", "idr")
 	} else {
 		report(2, Running, 0, nil, "idr")
 		start = time.Now()
@@ -108,15 +121,23 @@ func (d *Delphi) Execute(ctx *Context) error {
 		if err != nil {
 			logTool("idr", fmt.Sprintf("IDR not available: %v", err))
 			report(2, Skipped, time.Since(start), nil, "idr")
+			ev.IDR = step("idr", quality.StepUnavailable, err.Error(), "idr")
 		} else {
 			idrOut := filepath.Join(ctx.Output, "idr")
 			_ = os.MkdirAll(idrOut, 0755)
-			result, _ := util.RunCmd(ctx.Ctx, idrPath, []string{"-a", ctx.Target, "-o", idrOut}, "")
-			if result != nil && result.ExitCode != 0 {
+			result, runErr := util.RunCmd(ctx.Ctx, idrPath, []string{"-a", ctx.Target, "-o", idrOut}, "")
+			switch {
+			case result != nil && result.ExitCode != 0:
 				logTool("idr", fmt.Sprintf("IDR failed: exit %d", result.ExitCode))
 				report(2, Failed, time.Since(start), fmt.Errorf("IDR exit %d", result.ExitCode), "idr")
-			} else {
+				ev.IDR = step("idr", quality.StepFailed, fmt.Sprintf("IDR exit %d", result.ExitCode), "idr")
+			case result == nil:
+				logTool("idr", fmt.Sprintf("IDR did not run: %v", runErr))
+				report(2, Failed, time.Since(start), runErr, "idr")
+				ev.IDR = step("idr", quality.StepFailed, fmt.Sprintf("IDR did not run: %v", runErr), "idr")
+			default:
 				report(2, Success, time.Since(start), nil, "idr")
+				ev.IDR = step("idr", quality.StepSucceeded, "", "idr")
 			}
 		}
 	}
@@ -125,6 +146,7 @@ func (d *Delphi) Execute(ctx *Context) error {
 	if ctx.Config != nil && !ctx.Config.DelphiGhidraDecompile {
 		report(3, Skipped, 0, nil, "ghidra")
 		logTool("ghidra", "Ghidra decompilation disabled in settings")
+		ev.Decompile = step("ghidra", quality.StepDisabled, "Ghidra decompilation disabled in settings", "src")
 	} else {
 		report(3, Running, 0, nil, "ghidra")
 		start = time.Now()
@@ -132,6 +154,7 @@ func (d *Delphi) Execute(ctx *Context) error {
 		if err != nil {
 			logTool("ghidra", fmt.Sprintf("Ghidra not available: %v", err))
 			report(3, Skipped, time.Since(start), nil, "ghidra")
+			ev.Decompile = step("ghidra", quality.StepUnavailable, err.Error(), "src")
 		} else {
 			srcDir := filepath.Join(ctx.Output, "src")
 			funcCount, runErr := runGhidra(ctx.Ctx, ghidraPath, resolveGhidraJava(ctx.Tools), ctx.Target, srcDir,
@@ -148,8 +171,13 @@ func (d *Delphi) Execute(ctx *Context) error {
 			)
 			if runErr != nil {
 				report(3, Failed, time.Since(start), runErr, "ghidra")
+				ev.Decompile = step("ghidra", quality.StepFailed, runErr.Error(), "src")
 			} else {
 				reportCount(3, time.Since(start), "ghidra", funcCount, "functions")
+				ev.Decompile = step("ghidra", quality.StepSucceeded, "", "src")
+				if n, perr := ghidraProvenance(ctx.Provenance, ctx.Output, srcDir, ctx.Target, ghidraVersion(ctx), false); perr != nil {
+					logTool("ghidra", fmt.Sprintf("Provenance incomplete after %d records: %v", n, perr))
+				}
 			}
 		}
 	}

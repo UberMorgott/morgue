@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/UberMorgott/morgue/internal/quality"
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/util"
 )
@@ -159,10 +160,29 @@ func (u *UE5) Execute(ctx *Context) error {
 	pakFiles := findPakFiles(gameRoot)
 	log(fmt.Sprintf("Game root: %s, found %d PAK/IoStore files", gameRoot, len(pakFiles)))
 
+	// Quality evidence: extraction / usmap / decompile outcomes, written on
+	// every return so assets-only and failed steps are distinguishable.
+	ev := quality.NativeEvidence{Family: "ue5",
+		Extraction: &quality.ExtractionEvidence{Status: quality.StepSkipped, Containers: len(pakFiles)}}
+	decompile := func(status, reason, binary string) {
+		ev.Decompile = &quality.StepEvidence{Status: status, Reason: reason, Tool: "ghidra", Binary: binary, Output: "src"}
+	}
+	defer func() {
+		if ev.Decompile == nil {
+			decompile(quality.StepSkipped, "decompile step did not run", "")
+		}
+		if werr := quality.WriteNativeEvidence(ctx.Output, ev); werr != nil {
+			log(fmt.Sprintf("write %s: %v", quality.EvidenceFile, werr))
+		}
+	}()
+	extraction := func(status, reason string) { ev.Extraction.Status, ev.Extraction.Reason = status, reason }
+	ueBinary := "" // decompiled shipping executable, for provenance
+
 	// Step 0: Extract PAK assets
 	if ctx.Config != nil && !ctx.Config.UE5ExtractPAK {
 		report(0, Skipped, 0, nil, "retoc")
 		log("PAK extraction disabled in settings")
+		extraction(quality.StepDisabled, "PAK extraction disabled in settings")
 	} else {
 		report(0, Running, 0, nil, "retoc")
 		start := time.Now()
@@ -170,6 +190,7 @@ func (u *UE5) Execute(ctx *Context) error {
 		if err != nil {
 			log(fmt.Sprintf("retoc not available: %v — skipping PAK extraction", err))
 			report(0, Skipped, time.Since(start), nil, "retoc")
+			extraction(quality.StepUnavailable, err.Error())
 		} else {
 			// retoc to-legacy operates on IoStore .utoc containers (Zen->Legacy
 			// .uasset/.uexp). It must be pointed at the DIRECTORY containing the
@@ -180,6 +201,7 @@ func (u *UE5) Execute(ctx *Context) error {
 			if len(tocDirs) == 0 {
 				log("No .utoc IoStore containers found — skipping extraction (retoc to-legacy requires .utoc)")
 				report(0, Skipped, time.Since(start), nil, "retoc")
+				extraction(quality.StepSkipped, "no .utoc IoStore containers (legacy .pak extraction is not supported)")
 			} else {
 				// extractDir is always the recipe's own output subdir (never a
 				// source dir), so clearing it can't touch the game files. Clear it
@@ -233,6 +255,16 @@ func (u *UE5) Execute(ctx *Context) error {
 						okDirs++
 					}
 				}
+				ev.Extraction.Dirs, ev.Extraction.FailedDirs = len(tocDirs), failedDirs
+				ev.Extraction.FilesProduced, ev.Extraction.LastError = producedThisRun, lastErr
+				switch {
+				case cancelled:
+					extraction(quality.StepFailed, "cancelled")
+				case failedDirs == 0:
+					extraction(quality.StepSucceeded, "")
+				default:
+					extraction(quality.StepFailed, fmt.Sprintf("%d of %d dir(s) failed", failedDirs, len(tocDirs)))
+				}
 				switch {
 				case cancelled:
 					report(0, Failed, time.Since(start), ctx.Ctx.Err(), "retoc")
@@ -273,7 +305,9 @@ func (u *UE5) Execute(ctx *Context) error {
 		case usmapPath != "":
 			log(fmt.Sprintf("SDK class dump: parsing mappings %s", filepath.Base(usmapPath)))
 			m, perr := ParseUsmap(usmapPath)
+			ev.Usmap = &quality.UsmapEvidence{Found: true, Path: filepath.Base(usmapPath), Parsed: perr == nil}
 			if perr != nil {
+				ev.Usmap.Error = perr.Error()
 				// Oodle / unsupported compression / corrupt: honest message, no fake.
 				log(fmt.Sprintf("SDK class dump: cannot use usmap (%v)", perr))
 				if n := sdkFallbackFromSymbols(ctx.Output, log); n > 0 {
@@ -284,6 +318,10 @@ func (u *UE5) Execute(ctx *Context) error {
 				}
 			} else {
 				res, werr := writeSDKDump(ctx.Output, m, usmapPath)
+				ev.Usmap.Classes = len(m.Structs)
+				if werr == nil {
+					ev.Usmap.SDKClasses = res.Classes
+				}
 				if werr != nil {
 					log(fmt.Sprintf("SDK class dump failed: %v", werr))
 					report(1, Failed, time.Since(start), werr, "")
@@ -294,6 +332,7 @@ func (u *UE5) Execute(ctx *Context) error {
 				}
 			}
 		default:
+			ev.Usmap = &quality.UsmapEvidence{}
 			log("SDK class dump: no .usmap mappings found")
 			if n := sdkFallbackFromSymbols(ctx.Output, log); n > 0 {
 				log(fmt.Sprintf("SDK class dump: wrote class-name-only fallback from symbols.json (%d classes, no properties — full property layout needs a .usmap)", n))
@@ -342,6 +381,7 @@ func (u *UE5) Execute(ctx *Context) error {
 	if ctx.Config != nil && !ctx.Config.UE5GhidraDecompile {
 		report(3, Skipped, 0, nil, "ghidra")
 		log("Ghidra decompilation disabled in settings")
+		decompile(quality.StepDisabled, "Ghidra decompilation disabled in settings", filepath.Base(findUEShippingExe(gameRoot)))
 	} else {
 		report(3, Running, 0, nil, "ghidra")
 		start := time.Now()
@@ -349,11 +389,13 @@ func (u *UE5) Execute(ctx *Context) error {
 		if err != nil {
 			log(fmt.Sprintf("Ghidra not available: %v — skipping decompilation", err))
 			report(3, Skipped, time.Since(start), nil, "ghidra")
+			decompile(quality.StepUnavailable, err.Error(), filepath.Base(findUEShippingExe(gameRoot)))
 		} else {
 			nativeBin := findUEShippingExe(gameRoot)
 			if nativeBin == "" {
 				log("No UE shipping executable found under Binaries/Win64 — skipping Ghidra decompilation")
 				report(3, Skipped, time.Since(start), nil, "ghidra")
+				decompile(quality.StepSkipped, "no UE shipping executable under Binaries/Win64", "")
 			} else {
 				log(fmt.Sprintf("Ghidra decompiling: %s", filepath.Base(nativeBin)))
 				srcDir := filepath.Join(ctx.Output, "src")
@@ -372,7 +414,10 @@ func (u *UE5) Execute(ctx *Context) error {
 				if runErr != nil {
 					log(fmt.Sprintf("Ghidra decompilation failed: %v", runErr))
 					report(3, Failed, time.Since(start), runErr, "ghidra")
+					decompile(quality.StepFailed, runErr.Error(), filepath.Base(nativeBin))
 				} else {
+					decompile(quality.StepSucceeded, "", filepath.Base(nativeBin))
+					ueBinary = nativeBin
 					reportCount(3, time.Since(start), "ghidra", funcCount, "functions")
 					// Split combined .c into per-function files + symbols.json
 					// (F1/F2). Guarded by the 'combined .c exists' check inside
@@ -535,6 +580,14 @@ func (u *UE5) Execute(ctx *Context) error {
 		} else {
 			log(fmt.Sprintf("Exported %d hookable functions (named/resolved, addr+name+signature) -> indexes/hookable.json", n))
 			reportCount(6, time.Since(start), "", n, "functions")
+		}
+	}
+
+	if ueBinary != "" {
+		// After name resolution so name_map.csv renames are included.
+		if n, perr := ghidraProvenance(ctx.Provenance, ctx.Output, filepath.Join(ctx.Output, "src"), ueBinary,
+			ghidraVersion(ctx), false); perr != nil {
+			log(fmt.Sprintf("[ghidra] Provenance incomplete after %d records: %v", n, perr))
 		}
 	}
 

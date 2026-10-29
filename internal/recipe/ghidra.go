@@ -1,9 +1,12 @@
 package recipe
 
 import (
+	"bufio"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -13,6 +16,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/UberMorgott/morgue/internal/provenance"
+	"github.com/UberMorgott/morgue/internal/quality"
+	"github.com/UberMorgott/morgue/internal/runmodel"
 	"github.com/UberMorgott/morgue/internal/tools"
 	"github.com/UberMorgott/morgue/internal/util"
 )
@@ -106,6 +112,16 @@ func javacName() string {
 	return "javac"
 }
 
+// ghidraStatusFile is the per-function decompile status NDJSON MorgueExport.java
+// writes next to the combined .c: one {"address","name","source","thunk",
+// "status","warnings","undefinedReturn","message"} line per function Ghidra
+// found, framed by a {"kind":"program"} header and a {"kind":"summary"} trailer.
+// ghidraLogFile is the raw analyzeHeadless stdout/stderr.
+const (
+	ghidraStatusFile = "ghidra_functions.ndjson"
+	ghidraLogFile    = "ghidra.log"
+)
+
 // ghidraExportScript is a Java GhidraScript that decompiles all functions to C.
 // Ghidra 12+ removed Jython; .py scripts require PyGhidra (CPython+JPype).
 // Java scripts always work with analyzeHeadless out of the box.
@@ -126,6 +142,9 @@ public class MorgueExport extends GhidraScript {
     public void run() throws Exception {
         String[] args = getScriptArgs();
         String outputPath = args[0];
+        // Optional second arg: per-function status NDJSON (one line per function
+        // Ghidra found, whatever the decompile outcome) for measured quality.
+        PrintWriter st = args.length > 1 ? new PrintWriter(new FileWriter(args[1])) : null;
 
         DecompInterface decomp = new DecompInterface();
         decomp.openProgram(currentProgram);
@@ -134,14 +153,31 @@ public class MorgueExport extends GhidraScript {
 
         PrintWriter f = new PrintWriter(new FileWriter(outputPath));
         f.println("// Decompiled by Ghidra via Morgue");
+        f.println("// PSEUDOCODE: Ghidra decompiler output reconstructed from machine code, not original source.");
         f.println("// Binary: " + currentProgram.getExecutablePath());
         f.println("// Architecture: " + currentProgram.getLanguage());
         f.println();
 
+        if (st != null) {
+            boolean pdb = false;
+            try { pdb = currentProgram.getOptions("Program Information").getBoolean("PDB Loaded", false); } catch (Exception ignored) { }
+            st.println("{\"kind\":\"program\",\"ghidraVersion\":" + js(ghidra.framework.Application.getApplicationVersion())
+                + ",\"language\":" + js(String.valueOf(currentProgram.getLanguageID()))
+                + ",\"imageBase\":" + js("0x" + Long.toHexString(currentProgram.getImageBase().getOffset()))
+                + ",\"pdbLoaded\":" + pdb
+                + ",\"functionCount\":" + currentProgram.getFunctionManager().getFunctionCount() + "}");
+        }
+
+        int found = 0;
         int count = 0;
         int errors = 0;
         while (funcs.hasNext()) {
             Function func = funcs.next();
+            found++;
+            String status;
+            String message = "";
+            int warnings = 0;
+            boolean undefinedReturn = false;
             try {
                 DecompileResults results = decomp.decompileFunction(func, 120, monitor);
                 if (results != null && results.decompileCompleted()) {
@@ -152,33 +188,79 @@ public class MorgueExport extends GhidraScript {
                         if (sig != null) {
                             f.println(sig);
                         }
-                        f.println(c.getC());
+                        String body = c.getC();
+                        f.println(body);
                         f.println();
                         count++;
+                        status = "decompiled";
+                        for (int i = body.indexOf("WARNING:"); i >= 0; i = body.indexOf("WARNING:", i + 8)) { warnings++; }
+                        String rt = func.getReturnType() == null ? "" : func.getReturnType().getName();
+                        undefinedReturn = rt.startsWith("undefined");
                         System.out.println("Morgue:fn:" + count + ":" + func.getName());
                         System.out.flush();
+                    } else {
+                        f.println("// FAILED: " + func.getName() + " @ " + func.getEntryPoint() + " (no decompiled function)");
+                        f.println();
+                        errors++;
+                        status = "empty";
                     }
                 } else {
+                    message = results == null ? "no result" : results.getErrorMessage();
                     f.println("// FAILED: " + func.getName() + " @ " + func.getEntryPoint());
                     f.println();
                     errors++;
+                    status = "failed";
                 }
             } catch (Exception e) {
+                message = String.valueOf(e.getMessage());
                 f.println("// ERROR: " + func.getName() + " @ " + func.getEntryPoint() + " — " + e.getMessage());
                 f.println();
                 errors++;
+                status = "error";
+            }
+            if (st != null) {
+                st.println("{\"address\":" + js("0x" + Long.toHexString(func.getEntryPoint().getOffset()))
+                    + ",\"name\":" + js(func.getName())
+                    + ",\"source\":" + js(String.valueOf(func.getSymbol().getSource()))
+                    + ",\"thunk\":" + func.isThunk()
+                    + ",\"status\":" + js(status)
+                    + ",\"warnings\":" + warnings
+                    + ",\"undefinedReturn\":" + undefinedReturn
+                    + ",\"message\":" + js(message == null ? "" : message.trim()) + "}");
             }
             // Flush periodically so a JVM OOM mid-run still leaves a usable partial .c
-            if ((count + errors) % 200 == 0) { f.flush(); }
+            if (found % 200 == 0) { f.flush(); if (st != null) { st.flush(); } }
         }
 
         f.println();
         f.println("// Total: " + count + " functions decompiled, " + errors + " errors");
         f.close();
+        if (st != null) {
+            st.println("{\"kind\":\"summary\",\"found\":" + found + ",\"decompiled\":" + count + ",\"errors\":" + errors + "}");
+            st.close();
+        }
         decomp.dispose();
 
         System.out.println("Morgue: Decompiled " + count + " functions, " + errors + " errors -> " + outputPath);
         System.out.flush();
+    }
+
+    private static String js(String s) {
+        if (s == null) { return "null"; }
+        StringBuilder b = new StringBuilder("\"");
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            switch (ch) {
+                case '"': b.append("\\\""); break;
+                case '\\': b.append("\\\\"); break;
+                case '\n': b.append("\\n"); break;
+                case '\r': b.append("\\r"); break;
+                case '\t': b.append("\\t"); break;
+                default:
+                    if (ch < 0x20) { b.append(String.format("\\u%04x", (int) ch)); } else { b.append(ch); }
+            }
+        }
+        return b.append('"').toString();
     }
 }
 `
@@ -292,13 +374,14 @@ func runGhidra(
 	}
 	baseName := strings.TrimSuffix(filepath.Base(binaryPath), filepath.Ext(binaryPath))
 	outputFile := filepath.Join(outDir, baseName+".c")
+	statusFile := filepath.Join(outDir, ghidraStatusFile)
 
 	// analyzeHeadless runs in a JVM, which is not long-path aware: an input or
 	// output path near MAX_PATH fails with "<path> is not a valid directory or
 	// file". Go's own \\?\ handling cannot help a child process, so stage the
 	// binary (and the .c it produces) under a short temp dir, keeping the file
 	// name — it appears in Ghidra's output — and move the result back after.
-	runBinary, runOutput := binaryPath, outputFile
+	runBinary, runOutput, runStatus := binaryPath, outputFile, statusFile
 	if util.NearMaxPath(binaryPath) || util.NearMaxPath(outputFile) {
 		stage, mkErr := os.MkdirTemp("", "morgue-gh-*")
 		if mkErr != nil {
@@ -307,6 +390,7 @@ func runGhidra(
 		defer func() { _ = os.RemoveAll(stage) }()
 		runBinary = filepath.Join(stage, filepath.Base(binaryPath))
 		runOutput = filepath.Join(stage, baseName+".c")
+		runStatus = filepath.Join(stage, ghidraStatusFile)
 		if cpErr := copyFile(binaryPath, runBinary); cpErr != nil {
 			return 0, fmt.Errorf("stage %s for ghidra: %w", filepath.Base(binaryPath), cpErr)
 		}
@@ -326,7 +410,7 @@ func runGhidra(
 	// breakaway the JVM OOM-crashes on the large binaries we target.
 	args := append([]string{projDir, "MorgueProject", "-import", runBinary}, preArgs...)
 	args = append(args,
-		"-postScript", scriptPath, runOutput,
+		"-postScript", scriptPath, runOutput, runStatus,
 		"-scriptPath", filepath.Dir(scriptPath),
 		"-deleteProject",
 	)
@@ -369,6 +453,12 @@ func runGhidra(
 	exitCode := -1
 	if result != nil {
 		exitCode = result.ExitCode
+		// Persist the raw tool log before anything parses it (quality and
+		// provenance cite it as evidence). Logged-not-fatal.
+		raw := "# analyzeHeadless stdout\n" + result.Stdout + "\n# analyzeHeadless stderr\n" + result.Stderr
+		if werr := os.WriteFile(filepath.Join(outDir, ghidraLogFile), []byte(raw), 0644); werr != nil {
+			log(fmt.Sprintf("write %s: %v", ghidraLogFile, werr))
+		}
 	}
 	if runErr != nil || exitCode != 0 {
 		stderr := ""
@@ -385,6 +475,11 @@ func runGhidra(
 	if runOutput != outputFile {
 		if cpErr := copyFile(runOutput, outputFile); cpErr != nil {
 			log(fmt.Sprintf("staged output copy back failed: %v", cpErr))
+		}
+		if fileExists(runStatus) {
+			if cpErr := copyFile(runStatus, statusFile); cpErr != nil {
+				log(fmt.Sprintf("staged status copy back failed: %v", cpErr))
+			}
 		}
 	}
 
@@ -582,4 +677,236 @@ func buildIndexWith(outDir string, roots []string, exts map[string]bool) (*outpu
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
+}
+
+// ghidraProvenance streams provenance for one Ghidra-decompiled module under
+// srcDir (= <out>/src): artifact rows for the combined pseudocode, the status
+// and split catalogs and the raw log, one row per function Ghidra found
+// (address + RVA identity, Ghidra's own name and its SourceType), and one row
+// per single-string-candidate rename from indexes/name_map.csv. Streaming: the
+// status file and functions.ndjson are merged in their shared Ghidra order.
+// A nil sink is a no-op. Returns the number of records written.
+func ghidraProvenance(sink provenance.Sink, out, srcDir, binary, fallbackVersion string, nativeAOT bool) (int, error) {
+	if sink == nil {
+		return 0, nil
+	}
+	module := filepath.Base(binary)
+	rel := func(p string) string {
+		r, err := filepath.Rel(out, p)
+		if err != nil {
+			return filepath.ToSlash(p)
+		}
+		return filepath.ToSlash(r)
+	}
+	statusPath := filepath.Join(srcDir, ghidraStatusFile)
+	statusRel := rel(statusPath)
+	baseName := strings.TrimSuffix(module, filepath.Ext(module))
+	combined := filepath.Join(srcDir, baseName+".c")
+	combinedRel := rel(combined)
+
+	// Program header first: observed Ghidra version and image base.
+	version, imageBase, pdbLoaded := fallbackVersion, uint64(0), false
+	sf, err := os.Open(statusPath) //nolint:gosec // G304: fixed file under the pipeline's own output tree
+	if err != nil {
+		if os.IsNotExist(err) {
+			sf = nil
+		} else {
+			return 0, err
+		}
+	}
+	var sr *bufio.Reader
+	if sf != nil {
+		defer func() { _ = sf.Close() }()
+		sr = bufio.NewReaderSize(sf, scannerInitBuf)
+	}
+	nextStatus := func() (quality.GhidraFunction, bool) {
+		for sr != nil {
+			b, rerr := sr.ReadBytes('\n')
+			if len(b) > 0 {
+				var g quality.GhidraFunction
+				if json.Unmarshal(b, &g) == nil {
+					return g, true
+				}
+			}
+			if rerr != nil {
+				return quality.GhidraFunction{}, false
+			}
+		}
+		return quality.GhidraFunction{}, false
+	}
+	first, ok := nextStatus()
+	if ok && first.Kind == "program" {
+		if first.GhidraVersion != "" {
+			version = first.GhidraVersion
+		}
+		if v, perr := strconv.ParseUint(strings.TrimPrefix(first.ImageBase, "0x"), 16, 64); perr == nil {
+			imageBase = v
+		}
+		pdbLoaded = first.PDBLoaded
+		first, ok = nextStatus()
+	}
+	producer := runmodel.ProvenanceProducer{Tool: "ghidra", Version: version, StepID: "native.decompile",
+		Args: []string{"analyzeHeadless", "-import", module, "-postScript", "MorgueExport.java"}}
+	strp := func(s string) *string { return &s }
+	written := 0
+	write := func(r runmodel.ProvenanceRecord) error {
+		r.SchemaVersion = runmodel.ProvenanceVersion
+		r.Module = module
+		if r.Evidence == nil {
+			r.Evidence = []runmodel.Evidence{}
+		}
+		if err := sink.Write(r); err != nil {
+			return err
+		}
+		written++
+		return nil
+	}
+
+	artifacts := []struct{ path, kind, detail string }{
+		{combined, runmodel.FidelityPseudocode, "combined Ghidra decompiler output (pseudocode, not original source)"},
+		{statusPath, "index", "per-function decompile status from MorgueExport.java"},
+		{filepath.Join(srcDir, "functions.ndjson"), "index", "split function catalog"},
+		{filepath.Join(srcDir, ghidraLogFile), "log", "raw analyzeHeadless stdout/stderr"},
+	}
+	for _, a := range artifacts {
+		if !fileExists(a.path) {
+			continue
+		}
+		p := rel(a.path)
+		if err := write(runmodel.ProvenanceRecord{ID: module + ":artifact:" + p, ArtifactPath: p, ArtifactKind: a.kind,
+			NameSource: "unknown", Confidence: "unknown", Producer: producer,
+			Evidence: []runmodel.Evidence{{Path: p, Detail: a.detail}}}); err != nil {
+			return written, err
+		}
+	}
+
+	// Split catalog reader: one entry per decompiled function, same order.
+	var fr *bufio.Reader
+	if ff, ferr := os.Open(filepath.Join(srcDir, "functions.ndjson")); ferr == nil { //nolint:gosec // G304: fixed file under the pipeline's own output tree
+		defer func() { _ = ff.Close() }()
+		fr = bufio.NewReaderSize(ff, scannerInitBuf)
+	}
+	nextSplit := func() (funcEntry, bool) {
+		for fr != nil {
+			b, rerr := fr.ReadBytes('\n')
+			if len(b) > 0 {
+				var e funcEntry
+				if json.Unmarshal(b, &e) == nil {
+					return e, true
+				}
+			}
+			if rerr != nil {
+				return funcEntry{}, false
+			}
+		}
+		return funcEntry{}, false
+	}
+
+	for g := first; ok; g, ok = nextStatus() {
+		if g.Kind != "" {
+			continue
+		}
+		addr := quality.NormalizeAddr(g.Address)
+		r := runmodel.ProvenanceRecord{ID: module + ":fn:" + addr, ArtifactPath: combinedRel,
+			ArtifactKind: runmodel.FidelityPseudocode, Producer: producer}
+		if addr != "" {
+			r.Address = strp(addr)
+			if v, perr := strconv.ParseUint(strings.TrimPrefix(addr, "0x"), 16, 64); perr == nil && imageBase > 0 && v >= imageBase {
+				r.RVA = strp("0x" + strconv.FormatUint(v-imageBase, 16))
+			}
+		}
+		if g.Status == "decompiled" {
+			if e, sok := nextSplit(); sok && quality.NormalizeAddr(e.Address) == addr {
+				r.ArtifactPath = "src/" + e.File
+				if p := rel(filepath.Join(srcDir, filepath.FromSlash(e.File))); p != "" {
+					r.ArtifactPath = p
+				}
+			}
+		}
+		detail := fmt.Sprintf("Ghidra %s; SourceType %s; thunk=%t", g.Status, g.Source, g.Thunk)
+		if g.Message != "" {
+			detail += "; " + g.Message
+		}
+		r.Evidence = []runmodel.Evidence{{Path: statusRel, Detail: detail}}
+		name := g.Name
+		switch g.Source {
+		case "IMPORTED":
+			r.OriginalName = strp(name)
+			switch {
+			case g.Thunk:
+				r.NameSource, r.Confidence = "metadata", "high" // import table thunk
+			case pdbLoaded:
+				r.NameSource, r.Confidence = "debug-symbol", "high"
+			default:
+				r.NameSource, r.Confidence = "export", "high"
+			}
+		case "USER_DEFINED":
+			r.RecoveredName = strp(name)
+			if nativeAOT {
+				r.NameSource, r.Confidence = "metadata", "medium" // ghidra-nativeaot runtime metadata
+			} else {
+				r.NameSource, r.Confidence = "heuristic", "low"
+			}
+		case "ANALYSIS":
+			r.RecoveredName = strp(name)
+			r.NameSource, r.Confidence = "heuristic", "medium" // Ghidra analyzers (FID, RTTI, demangler)
+		default:
+			// DEFAULT: FUN_<addr> is a generated placeholder, not a recovered name.
+			r.NameSource, r.Confidence = "unknown", "unknown"
+		}
+		if err := write(r); err != nil {
+			return written, err
+		}
+	}
+
+	// Renames by the conservative single-string-candidate rule (nameres.go).
+	nmPath := filepath.Join(srcDir, "indexes", "name_map.csv")
+	if nf, nerr := os.Open(nmPath); nerr == nil { //nolint:gosec // G304: fixed file under the pipeline's own output tree
+		defer func() { _ = nf.Close() }()
+		cr := csv.NewReader(bufio.NewReader(nf))
+		cr.FieldsPerRecord = -1
+		renameProducer := runmodel.ProvenanceProducer{Tool: "morgue", Version: "nameres-v1", StepID: "native.rename", Args: []string{}}
+		nmRel, refsRel := rel(nmPath), rel(filepath.Join(srcDir, "indexes", "string_refs.csv"))
+		header := true
+		for {
+			rec, rerr := cr.Read()
+			if rerr == io.EOF {
+				break
+			}
+			if rerr != nil {
+				return written, rerr
+			}
+			if header || len(rec) < 3 {
+				header = false
+				continue
+			}
+			addr := quality.NormalizeAddr(rec[0])
+			r := runmodel.ProvenanceRecord{ID: module + ":rename:" + addr, ArtifactPath: nmRel, ArtifactKind: "index",
+				RecoveredName: strp(rec[2]), NameSource: "single-string-candidate", Confidence: "medium",
+				Producer: renameProducer,
+				Evidence: []runmodel.Evidence{
+					{Path: refsRel, Detail: fmt.Sprintf("function references exactly one qualified C++ identifier string %q", rec[2])},
+					{Path: nmRel, Detail: "Ghidra default name " + rec[1] + " replaced; it was a placeholder, not an original name"},
+				}}
+			if addr != "" {
+				r.Address = strp(addr)
+			}
+			if err := write(r); err != nil {
+				return written, err
+			}
+		}
+	}
+	return written, nil
+}
+
+// ghidraVersion is the run-selected Ghidra version (fallback when the status
+// file's observed version is absent). "" when unknown, never "latest".
+func ghidraVersion(ctx *Context) string {
+	if ctx == nil || ctx.Tools == nil {
+		return ""
+	}
+	if v := ctx.Tools.Check("ghidra").Version; v != "latest" {
+		return v
+	}
+	return ""
 }

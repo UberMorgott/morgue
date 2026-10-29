@@ -563,6 +563,11 @@ type bucketWriter struct {
 	curRel     string
 }
 
+// pseudocodeBanner opens every split function file: Ghidra output is
+// reconstructed pseudocode, never original source, whatever its .c extension.
+const pseudocodeBanner = "// PSEUDOCODE: Ghidra decompiler output reconstructed from machine code, not original source.\n" +
+	"// Names: FUN_<addr> are Ghidra defaults (unknown); see provenance.ndjson / indexes/name_map.csv for name sources.\n"
+
 func newBucketWriter(funcsDir string) *bucketWriter {
 	return &bucketWriter{funcsDir: funcsDir, curIndex: -1}
 }
@@ -640,6 +645,13 @@ func (b *bucketWriter) openFile(bucket string, index int) error {
 	b.curBucket = bucket
 	b.curIndex = index
 	b.curWritten = existing
+	if existing == 0 {
+		// Fidelity label: every split file says what it is before any record.
+		if _, err := b.curBuf.WriteString(pseudocodeBanner); err != nil {
+			return err
+		}
+		b.curWritten = int64(len(pseudocodeBanner))
+	}
 	// rel path from srcDir (= parent of funcsDir).
 	b.curRel = filepath.ToSlash(filepath.Join(filepath.Base(b.funcsDir), bucket, name))
 	return nil
