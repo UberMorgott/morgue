@@ -61,6 +61,10 @@ type Run struct {
 	selectionErr    error
 	toolsLockMu     sync.Mutex
 	toolsLockSealed bool
+	// dieOnce selects the recon detector once per run; diePath is its frozen
+	// path ("" when not installed or unavailable).
+	dieOnce sync.Once
+	diePath string
 }
 
 // maxFinalFlush bounds the busy-wait that drains pending must-keep events at the

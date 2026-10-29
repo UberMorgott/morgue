@@ -446,6 +446,9 @@ func (e *Engine) classifyTarget(
 	em emitter,
 ) (recon.Result, error) {
 	em.emit("recon", filePath, "Classifying...")
+	if em.run != nil && em.run.selection != nil {
+		ctx = recon.WithDiE(ctx, e.detectorPath(ctx, filePath, em))
+	}
 	reconResult, err := e.Classify(ctx, filePath)
 	if err != nil {
 		em.emitErr("recon", filePath, err)

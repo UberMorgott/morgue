@@ -220,3 +220,49 @@ func TestFreshnessWarningNamesToolBeforeReady(t *testing.T) {
 		t.Fatalf("m3fake events = %v, want [warn ready]", order)
 	}
 }
+
+// The recon detector (diec) is selected through the run selection when it is
+// installed, so its exact identity lands in the run tool lock.
+func TestRunRecordsReconDetectorInLock(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Last-Modified", "Mon, 02 Jan 2023 15:04:05 GMT")
+		_, _ = w.Write([]byte("diec"))
+	}))
+	defer srv.Close()
+	orig := tools.Registry
+	tools.Registry = []tools.ToolDef{{Name: "diec", Method: tools.MethodDirectURL, URL: srv.URL + "/diec.exe", Binary: "diec.exe", Category: tools.CategoryDetector}}
+	t.Cleanup(func() { tools.Registry = orig })
+	toolBase := t.TempDir()
+	dir := filepath.Join(toolBase, "diec")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(dir, "diec.exe"), []byte("diec"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, ".version"), []byte("2023.01.02"), 0o644)
+	out := t.TempDir()
+	e := New(config.Default(), toolBase)
+	r, err := e.PrepareRun(context.Background(), runmodel.RunRequest{Path: terminalInput(t, "a.dll", "b.dll"), Output: out, Recipe: terminalRecipeName})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Execute(context.Background(), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(out, filepath.FromSlash(runmodel.RunToolsLockPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lock tools.RunToolsLock
+	if err := json.Unmarshal(data, &lock); err != nil {
+		t.Fatal(err)
+	}
+	found := 0
+	for _, id := range lock.Tools {
+		if id.Name == "diec" {
+			found++
+		}
+	}
+	if found != 1 || !lock.Complete {
+		t.Fatalf("diec not recorded once in sealed run lock: %s", data)
+	}
+}

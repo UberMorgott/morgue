@@ -89,6 +89,36 @@ func (e *Engine) ensureSelectedTools(ctx context.Context, filePath string, names
 	return persistErr(em.run.persistToolsLock(false))
 }
 
+// detectorPath selects the DiE detector once per run through the run
+// selection (freshness check + frozen identity in the run tool lock) when it
+// is installed. DiE stays optional and is never auto-installed for recon: a
+// missing or failed detector returns "" and recon proceeds without it.
+func (e *Engine) detectorPath(ctx context.Context, filePath string, em emitter) string {
+	r := em.run
+	r.dieOnce.Do(func() {
+		if !e.tools.IsInstalled("diec") {
+			return
+		}
+		if ids, err := r.selection.Ensure(ctx, []string{"diec"}, nil); err != nil {
+			if ctx.Err() == nil {
+				em.emitWarn("recon", filePath, "diec detector unavailable for this run: "+err.Error())
+			}
+			return
+		} else if len(ids) > 0 {
+			em.send(PipelineEvent{Phase: "tools", Target: filePath, Tool: "diec", ToolStage: "ready", ToolVersion: ids[0].Version})
+		}
+		p, err := e.tools.Resolve("diec")
+		if err != nil {
+			return
+		}
+		r.diePath = p
+		if perr := r.persistToolsLock(false); perr != nil {
+			em.emitWarn("recon", filePath, persistErr(perr).Error())
+		}
+	})
+	return r.diePath
+}
+
 func persistErr(err error) error {
 	if err != nil {
 		return fmt.Errorf("record run tool lock: %w", err)

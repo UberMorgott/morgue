@@ -14,6 +14,23 @@ import (
 	"github.com/UberMorgott/morgue/internal/util"
 )
 
+type dieKey struct{}
+
+// WithDiE binds the Detect It Easy console path recon uses for ctx. A run
+// passes its selected (locked) diec; "" disables DiE for that run.
+func WithDiE(ctx context.Context, path string) context.Context {
+	return context.WithValue(ctx, dieKey{}, path)
+}
+
+// dieConsolePath is the bound diec path, else the managed install path
+// (standalone classification such as `morgue info`).
+func dieConsolePath(ctx context.Context) string {
+	if p, ok := ctx.Value(dieKey{}).(string); ok {
+		return p
+	}
+	return util.ToolPath("diec", "diec.exe")
+}
+
 // parsePE opens and parses a PE file, returning the parsed structure.
 func parsePE(path string) (*peparser.File, error) {
 	f, err := peparser.New(util.LongPath(path), nil)
@@ -101,10 +118,13 @@ func Classify(ctx context.Context, path string) (Result, error) {
 	}
 	importNames := importedDLLNames(f)
 
-	// Run DiE if available (best-effort)
-	diecPath := util.ToolPath("diec", "diec.exe")
-	if _, statErr := os.Stat(diecPath); statErr == nil {
-		RunDiE(ctx, &r, diecPath, path)
+	// Run DiE if available (best-effort). A run binds its frozen selection
+	// with WithDiE so the detector is freshness-checked and recorded in the
+	// run tool lock; "" from the run disables DiE.
+	if diecPath := dieConsolePath(ctx); diecPath != "" {
+		if _, statErr := os.Stat(diecPath); statErr == nil {
+			RunDiE(ctx, &r, diecPath, path)
+		}
 	}
 
 	// Read capped file data for embedded signal detection (max 10MB to avoid OOM)
