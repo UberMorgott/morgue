@@ -141,6 +141,34 @@ export class EnrichedToolStatus {
              */
             this["RuntimeDeps"] = undefined;
         }
+        if (!("Freshness" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["Freshness"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["FreshnessWarning"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["OperatorVersion"] = undefined;
+        }
+        if (!("InUse" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["InUse"] = false;
+        }
         if (/** @type {any} */(false)) {
             /**
              * @member

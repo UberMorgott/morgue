@@ -69,7 +69,7 @@
 
   async function refresh() {
     try {
-      mergeStatuses(await ToolsService.CheckAll() as RawToolStatus[]);
+      mergeStatuses(await ToolsService.CheckAll());
     } catch (e) { console.error('tools refresh failed:', e); }
   }
 
@@ -138,7 +138,7 @@
   async function loadTools() {
     loading = true;
     try {
-      const statuses = (await ToolsService.CheckAll() || []) as RawToolStatus[];
+      const statuses = (await ToolsService.CheckAll()) || [];
       tools = statuses.map(s => toToolView(s));
       loading = false;
 

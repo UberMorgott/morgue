@@ -111,6 +111,20 @@ export function InstallRuntime(kind) {
 }
 
 /**
+ * InstallVersion installs name through the same policy as CLI and API: an
+ * exact version records an operator override (shown as pinned, honored by the
+ * next run's freshness check); an empty version resumes automatic updates.
+ * A tool leased by an active run is never swapped (tools.ErrInUse). Success is
+ * reported only after activation and installed-lock recording.
+ * @param {string} name
+ * @param {string} version
+ * @returns {$CancellablePromise<void>}
+ */
+export function InstallVersion(name, version) {
+    return $Call.ByID(3520339664, name, version);
+}
+
+/**
  * MarkUpdateChecked saves the current time as the last update check timestamp.
  * @returns {$CancellablePromise<void>}
  */
@@ -136,6 +150,18 @@ export function ShouldCheckUpdates() {
  */
 export function StartInstall(name) {
     return $Call.ByID(322445274, name);
+}
+
+/**
+ * StartInstallVersion is StartInstall with an optional exact version. A
+ * non-empty version records an operator override (pin) on success; an empty
+ * version clears an existing override on success. The version requires a name.
+ * @param {string} name
+ * @param {string} version
+ * @returns {$CancellablePromise<void>}
+ */
+export function StartInstallVersion(name, version) {
+    return $Call.ByID(385037862, name, version);
 }
 
 /**
