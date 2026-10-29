@@ -1,6 +1,8 @@
 package recipe
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -204,12 +206,11 @@ func (u *UnityMono) Execute(ctx *Context) error {
 	// *_Data asset tree (10-20 GB on a real title). Writing it under ctx.Output
 	// made every managed assembly re-export an identical copy (141 assemblies of
 	// Valheim projected to ~2.5 TB). Keyed by the *_Data dir under the run-wide
-	// root instead, so the second and later assemblies hit the .ripped marker.
+	// root instead; later assemblies reuse only the current run's completed work.
 	gameDataDir := monoGameDataDir(ctx.Target)
 	assetRoot := sharedAssetDir(ctx, gameDataDir)
 	rawExportDir := filepath.Join(assetRoot, "raw-export")
 	tmpDir := filepath.Join(assetRoot, ".tmp")
-	rippedMarker := filepath.Join(rawExportDir, ".ripped")
 	if ctx.SkipAssets() {
 		logTool("assetripper", "asset extraction disabled (--code-only / UnityExtractAssets), skipping game-asset export")
 		report(4, Skipped, time.Since(start), nil, "assetripper")
@@ -219,23 +220,29 @@ func (u *UnityMono) Execute(ctx *Context) error {
 	} else if gameDataDir == "" {
 		logTool("assetripper", "could not locate Unity *_Data dir, skipping game-asset export")
 		report(4, Skipped, time.Since(start), nil, "assetripper")
-	} else if stageDone(rippedMarker, false) {
-		logTool("assetripper", "game assets already extracted — skipping")
-		reportCount(4, time.Since(start), "assetripper", countAssetFiles(rawExportDir), "assets")
 	} else {
 		logTool("assetripper", fmt.Sprintf("Exporting %s (full=true)", gameDataDir))
-		rLastLog := time.Now().Add(-2 * time.Second)
-		rerr := RunAssetRipperExport(ctx.Ctx, ripperPath, gameDataDir, rawExportDir, tmpDir, true, func(line string) {
-			if time.Since(rLastLog) >= time.Second && strings.TrimSpace(line) != "" {
-				logTool("assetripper", strings.TrimSpace(line))
-				rLastLog = time.Now()
+		if ctx.Inputs != nil {
+			if err := ctx.Inputs.Record("unity-data", gameDataDir); err != nil {
+				return err
 			}
+		}
+		rLastLog := time.Now().Add(-2 * time.Second)
+		reused, rerr := runSharedProduct(ctx, sharedProductKey(ctx, gameDataDir, "mono-assets", "full=true", rawExportDir), rawExportDir, "asset", "extract-assets", "assetripper", func() error {
+			return RunAssetRipperExport(ctx.Ctx, ripperPath, gameDataDir, rawExportDir, tmpDir, true, func(line string) {
+				if time.Since(rLastLog) >= time.Second && strings.TrimSpace(line) != "" {
+					logTool("assetripper", strings.TrimSpace(line))
+					rLastLog = time.Now()
+				}
+			})
 		})
 		if rerr != nil {
 			logTool("assetripper", fmt.Sprintf("AssetRipper export failed (non-fatal): %v", rerr))
 			report(4, Failed, time.Since(start), rerr, "assetripper")
 		} else {
-			_ = os.WriteFile(rippedMarker, []byte("ok"), 0644)
+			if reused {
+				logTool("assetripper", "reused completed export from this live run")
+			}
 			reportCount(4, time.Since(start), "assetripper", countAssetFiles(rawExportDir), "assets")
 		}
 	}
@@ -255,12 +262,6 @@ func (u *UnityMono) Execute(ctx *Context) error {
 			// once per assembly would rebuild an identical tree N times.
 			gameDataOut = filepath.Join(assetRoot, "GameData")
 		}
-		organizedMarker := filepath.Join(gameDataOut, ".organized")
-		if stageDone(organizedMarker, false) {
-			logTool("gamedata", "game data already organized — skipping")
-			report(5, Skipped, time.Since(start), nil, "gamedata")
-			return nil
-		}
 		inventoryCSV := ""
 		if cand := filepath.Join(ctx.Output, "inventory", "assets.csv"); fileNonEmpty(cand) {
 			inventoryCSV = cand
@@ -269,33 +270,41 @@ func (u *UnityMono) Execute(ctx *Context) error {
 		if st := ctx.Tools.Check("assetripper"); st.Version != "" {
 			toolVersions["assetripper"] = st.Version
 		}
-		rep, gerr := gamedata.Organize(gamedata.Options{
-			ExportDir:     exportAssets,
-			FullExportDir: exportAssets,
-			OutDir:        gameDataOut,
-			InventoryCSV:  inventoryCSV,
-			ToolVersions:  toolVersions,
-			Log:           func(s string) { logTool("gamedata", s) },
-			Progress: func(d, t int, u string) {
-				if ctx.Progress != nil {
-					ctx.Progress <- StepProgress{
-						Step: 5, Total: total, Name: steps[5].Name,
-						Tool: "gamedata", Status: Running,
-						Count: d, CountTotal: t, Unit: u,
+		defTotal := 0
+		reused, gerr := runSharedProduct(ctx, sharedProductKey(ctx, gameDataDir, "mono-organize", rawExportDir, gameDataOut), gameDataOut, "asset", "organize-data", "gamedata", func() error {
+			rep, gerr := gamedata.Organize(gamedata.Options{
+				ExportDir:     exportAssets,
+				FullExportDir: exportAssets,
+				OutDir:        gameDataOut,
+				InventoryCSV:  inventoryCSV,
+				ToolVersions:  toolVersions,
+				Log:           func(s string) { logTool("gamedata", s) },
+				Progress: func(d, t int, u string) {
+					if ctx.Progress != nil {
+						ctx.Progress <- StepProgress{
+							Step: 5, Total: total, Name: steps[5].Name,
+							Tool: "gamedata", Status: Running,
+							Count: d, CountTotal: t, Unit: u,
+						}
 					}
+				},
+			})
+			if gerr == nil {
+				for _, c := range rep.DefCountsByType {
+					defTotal += c
 				}
-			},
+			}
+			return gerr
 		})
 		if gerr != nil {
 			logTool("gamedata", fmt.Sprintf("Organize failed (non-fatal): %v", gerr))
 			report(5, Failed, time.Since(start), gerr, "gamedata")
 		} else {
-			defTotal := 0
-			for _, c := range rep.DefCountsByType {
-				defTotal += c
+			if reused {
+				logTool("gamedata", "reused organized data from this live run")
+			} else {
+				logTool("gamedata", fmt.Sprintf("Organized %d defs", defTotal))
 			}
-			_ = os.WriteFile(organizedMarker, []byte("ok"), 0644)
-			logTool("gamedata", fmt.Sprintf("Organized %d defs, %d actions, %d failed", defTotal, rep.ActionCount, len(rep.Failed)))
 			reportCount(5, time.Since(start), "gamedata", defTotal, "defs")
 		}
 	}
@@ -304,9 +313,9 @@ func (u *UnityMono) Execute(ctx *Context) error {
 }
 
 // sharedAssetDir returns the run-wide directory holding the AssetRipper export
-// for one game, e.g. <run root>/_assets/Valheim_Data. Every target of the same
-// game resolves to the same path, so the export runs once and later targets see
-// the .ripped marker. Falls back to the per-target output when there is no run
+// for one game, e.g. <run root>/_assets/Valheim_Data-<identity>. Every target of
+// the same game resolves to the same path; equal basenames from different games
+// remain distinct. Falls back to the per-target output when there is no run
 // root (direct recipe use) or no *_Data dir.
 func sharedAssetDir(ctx *Context, gameDataDir string) string {
 	root := ctx.SharedOut
@@ -317,7 +326,62 @@ func sharedAssetDir(ctx *Context, gameDataDir string) string {
 		return ctx.Output
 	}
 	// gameDataDir is an existing directory, so its base is already a legal segment.
-	return filepath.Join(root, "_assets", filepath.Base(gameDataDir))
+	identity := canonicalGamePath(gameDataDir)
+	hash := sha256.Sum256([]byte(identity))
+	return filepath.Join(root, "_assets", filepath.Base(gameDataDir)+"-"+hex.EncodeToString(hash[:4]))
+}
+
+func canonicalGamePath(path string) string {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+	if absolute, err := filepath.Abs(path); err == nil {
+		path = absolute
+	}
+	return strings.ToLower(filepath.Clean(path))
+}
+
+func sharedProductKey(ctx *Context, gameDataDir, product, settings, output string) string {
+	identity := canonicalGamePath(gameDataDir)
+	if hash, err := util.SHA256File(filepath.Join(gameDataDir, "globalgamemanagers")); err == nil {
+		identity += "|" + hash
+	}
+	version := ""
+	if ctx.Tools != nil {
+		version = ctx.Tools.Check("assetripper").Version
+	}
+	return product + "|" + identity + "|" + settings + "|" + version + "|" + canonicalGamePath(output)
+}
+
+func runSharedProduct(ctx *Context, key, output, kind, stepID, tool string, fn func() error) (bool, error) {
+	work := func() error {
+		if err := fn(); err != nil {
+			return err
+		}
+		if !fileNonEmpty(output) {
+			return fmt.Errorf("%s produced no output in %s", tool, output)
+		}
+		return nil
+	}
+	reused := false
+	var err error
+	if ctx.Shared != nil {
+		reused, err = ctx.Shared.Do(key, work)
+	} else {
+		err = work()
+	}
+	if err != nil {
+		return false, err
+	}
+	if !fileNonEmpty(output) {
+		return false, fmt.Errorf("shared product disappeared: %s", output)
+	}
+	if ctx.Artifacts != nil {
+		if err := ctx.Artifacts.Record(output, kind, stepID, tool, true); err != nil {
+			return reused, err
+		}
+	}
+	return reused, nil
 }
 
 // monoGameDataDir returns the Unity *_Data directory for a Mono target. For Mono

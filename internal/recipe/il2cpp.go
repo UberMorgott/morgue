@@ -74,6 +74,11 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 	if metadataPath == "" {
 		return fmt.Errorf("could not find global-metadata.dat under %s", filepath.Dir(ctx.Target))
 	}
+	if ctx.Inputs != nil {
+		if err := ctx.Inputs.Record("il2cpp-metadata", metadataPath); err != nil {
+			return err
+		}
+	}
 
 	steps := i.Steps()
 	total := len(steps)
@@ -146,12 +151,6 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		report(1, Failed, time.Since(start), err, "")
 		return err
 	}
-	// force re-runs every stage even when its output marker exists. Driven by the
-	// global KeepIntermediates inverse is wrong; we gate purely on KeepIntermediates
-	// being unrelated — resume is the default, so force stays false here. (A CLI
-	// --force flag can flip this in a later milestone.)
-	force := false
-
 	// Legacy Il2CppDumper writes a fixed DummyDll/ subdir; root it under .tmp so its
 	// raw output is transient, then runLegacyDump mirrors the DLLs into dump/dll.
 	legacyMetaDir := filepath.Join(layout.TmpDir, "legacy-dump")
@@ -166,18 +165,10 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		logTool("il2cpp", fmt.Sprintf("Detected IL2CPP metadata version %d", metaVersion))
 	}
 
-	csMarker := filepath.Join(layout.CsDir, "il2cpp.cs")
-	var toolUsed string
-	if stageDone(csMarker, force) && fileNonEmpty(dummyDllDir) {
-		logTool("il2cpp", "Dump already present (dump/cs + dump/dll) — skipping extraction")
-		toolUsed = "cached"
-	} else {
-		used, derr := runDumpStage(ctx, metadataPath, legacyMetaDir, dummyDllDir, metaVersion, logTool)
-		if derr != nil {
-			report(1, Failed, time.Since(start), derr, used)
-			return derr
-		}
-		toolUsed = used
+	toolUsed, derr := runDumpStage(ctx, metadataPath, legacyMetaDir, dummyDllDir, metaVersion, logTool)
+	if derr != nil {
+		report(1, Failed, time.Since(start), derr, toolUsed)
+		return derr
 	}
 
 	// Count outputs for logging
@@ -293,7 +284,6 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 	// an export failure logs + reports but never aborts the run.
 	report(3, Running, 0, nil, "assetripper")
 	start = time.Now()
-	rippedMarker := filepath.Join(layout.DataDir, ".ripped")
 	gameDataDir := findGameDataDir(ctx.Target)
 	if ctx.SkipAssets() {
 		logTool("assetripper", "asset extraction disabled (--code-only / UnityExtractAssets), skipping data layer")
@@ -304,24 +294,27 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 	} else if gameDataDir == "" {
 		logTool("assetripper", "could not locate *_Data dir, skipping data layer")
 		report(3, Skipped, time.Since(start), nil, "assetripper")
-	} else if stageDone(rippedMarker, force) {
-		logTool("assetripper", "data layer already extracted — skipping")
-		reportCount(3, time.Since(start), "assetripper", countAssetFiles(layout.DataDir), "assets")
 	} else {
 		full := ctx.Config.IL2CPPFullExport
+		if ctx.Inputs != nil {
+			if err := ctx.Inputs.Record("unity-data", gameDataDir); err != nil {
+				return err
+			}
+		}
 		logTool("assetripper", fmt.Sprintf("Exporting %s (full=%v)", gameDataDir, full))
 		rLastLog := time.Now().Add(-2 * time.Second)
-		rerr := RunAssetRipperExport(ctx.Ctx, ripperPath, gameDataDir, layout.DataDir, layout.TmpDir, full, func(line string) {
-			if time.Since(rLastLog) >= time.Second && strings.TrimSpace(line) != "" {
-				logTool("assetripper", strings.TrimSpace(line))
-				rLastLog = time.Now()
-			}
+		_, rerr := runSharedProduct(ctx, sharedProductKey(ctx, gameDataDir, "il2cpp-assets", fmt.Sprint(full), layout.DataDir), layout.DataDir, "asset", "extract-data", "assetripper", func() error {
+			return RunAssetRipperExport(ctx.Ctx, ripperPath, gameDataDir, layout.DataDir, layout.TmpDir, full, func(line string) {
+				if time.Since(rLastLog) >= time.Second && strings.TrimSpace(line) != "" {
+					logTool("assetripper", strings.TrimSpace(line))
+					rLastLog = time.Now()
+				}
+			})
 		})
 		if rerr != nil {
 			logTool("assetripper", fmt.Sprintf("AssetRipper export failed (non-fatal): %v", rerr))
 			report(3, Failed, time.Since(start), rerr, "assetripper")
 		} else {
-			_ = os.WriteFile(rippedMarker, []byte("ok"), 0644)
 			reportCount(3, time.Since(start), "assetripper", countAssetFiles(layout.DataDir), "assets")
 		}
 	}

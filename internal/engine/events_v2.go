@@ -37,6 +37,16 @@ func (r *Run) consume(opts Options, ev PipelineEvent) {
 				r.finishTargetLocked(t, terminal, errorText(err), "")
 			}
 		}
+		if summaryErr := r.writeSummaryLocked(); summaryErr != nil {
+			r.eventErr = errors.Join(r.eventErr, fmt.Errorf("write summary: %w", summaryErr))
+		}
+		err = errors.Join(ev.Error, r.eventErr)
+		if err != nil {
+			outcome = errorOutcome(err)
+		}
+		if r.persistenceErr != nil {
+			outcome = OutcomeError
+		}
 		targets := make([]runmodel.TargetResult, 0, len(r.order))
 		for _, targetID := range r.order {
 			targets = append(targets, r.targets[targetID].model)
@@ -45,6 +55,10 @@ func (r *Run) consume(opts Options, ev PipelineEvent) {
 		r.result = runmodel.RunResult{Handle: r.handle, Outcome: outcome, Targets: targets, Counts: counts, LeafTargets: leaves, Error: errorText(err)}
 		now := time.Now().UTC()
 		r.emitLocked("", "", now, runmodel.RunFinished{Outcome: outcome, FinishedAt: now, DurationMs: time.Since(r.handle.StartedAt).Milliseconds(), Error: errorText(err), Targets: counts, LeafTargets: leaves})
+		if r.persistenceErr != nil {
+			r.result.Outcome = OutcomeError
+			r.result.Error = r.persistenceErr.Error()
+		}
 		return
 	}
 	if ev.TargetOutcome != "" {

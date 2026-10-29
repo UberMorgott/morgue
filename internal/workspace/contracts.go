@@ -13,6 +13,10 @@ var (
 	ErrNoEvents = errors.New("workspace has no events")
 )
 
+// PhysicalPath resolves existing files/directories using platform-native final
+// handle paths. On Windows this follows junctions as well as symbolic links.
+func PhysicalPath(path string) (string, error) { return realPath(path) }
+
 // Sink is the engine's persistence boundary. Append precedes notification.
 type Sink interface {
 	Append(runmodel.Event) error

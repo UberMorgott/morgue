@@ -190,7 +190,9 @@ func TestPreparedRunCancellationDuringAnalysisPreservesScannedTargets(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := &cancelDuringAnalysis{Context: context.Background(), done: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r.store = &cancelOnMatchSink{Sink: r.store, cancel: cancel}
 	ch := make(chan runmodel.Event, 1000)
 	result, err := r.Execute(ctx, nil, ch)
 	close(ch)

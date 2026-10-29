@@ -21,6 +21,12 @@ func TestTypedProgressAndLegacyErrorProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer r.Close()
+	// These are in-memory sequencer tests; integrated durability is covered by
+	// workspace_test. A real Writer correctly rejects progress before started.
+	if err := r.store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r.store = nil
 	opts := r.options(nil)
 	ch := make(chan runmodel.Event, 10)
 	r.events = ch
@@ -66,6 +72,10 @@ func TestConcurrentEventSequencer(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer r.Close()
+	if err := r.store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r.store = nil
 	ch := make(chan runmodel.Event, 100)
 	r.events = ch
 	em := emitter{run: r, opts: r.options(nil)}

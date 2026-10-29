@@ -95,6 +95,11 @@ type ChildObserver interface {
 // InputObserver records inputs consumed after recon, such as IL2CPP metadata.
 type InputObserver interface{ Record(role, path string) error }
 
+// ArtifactObserver records an existing product after its producer completes.
+type ArtifactObserver interface {
+	Record(path, kind, stepID, tool string, shared bool) error
+}
+
 // SharedProducts reuses a completed product only within the same live run.
 // key includes game input identity and effective settings. Failed work is never
 // cached. fn is called at most once for a successfully completed key.
@@ -104,17 +109,18 @@ type SharedProducts interface {
 
 // Context provides everything a recipe needs to execute.
 type Context struct {
-	Inputs   InputObserver
-	Shared   SharedProducts
-	Children ChildObserver
-	Target   string
-	Output   string
-	Progress chan StepProgress
-	Log      chan string
-	Tools    *tools.Manager
-	Ctx      context.Context
-	Config   *config.Config
-	Pause    PauseChecker
+	Artifacts ArtifactObserver
+	Inputs    InputObserver
+	Shared    SharedProducts
+	Children  ChildObserver
+	Target    string
+	Output    string
+	Progress  chan StepProgress
+	Log       chan string
+	Tools     *tools.Manager
+	Ctx       context.Context
+	Config    *config.Config
+	Pause     PauseChecker
 	// ReferencePaths adds dependency search directories for managed decompilers.
 	ReferencePaths []string
 	// Obfuscator is the recon-detected obfuscator name (e.g. "ConfuserEx" or

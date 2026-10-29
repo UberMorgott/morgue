@@ -18,6 +18,7 @@ import (
 	"github.com/UberMorgott/morgue/internal/runmodel"
 	"github.com/UberMorgott/morgue/internal/scanner"
 	"github.com/UberMorgott/morgue/internal/util"
+	"github.com/UberMorgott/morgue/internal/workspace"
 )
 
 var (
@@ -27,21 +28,27 @@ var (
 )
 
 // Run owns a single top-level execution, including all recursively unpacked targets.
-// Output reservations are process-local in M1; durable OS locks arrive with M2.
+// The prepared run holds the workspace's OS lifetime lock until completion;
+// process-local reservations also protect the user's requested output root.
 type Run struct {
-	mu          sync.Mutex
-	engine      *Engine
-	handle      runmodel.RunHandle
-	spec        runmodel.RunSpec
-	state       int // 0 prepared, 1 executing, 2 closed
-	reservation string
-	events      chan<- runmodel.Event
-	seq         uint64
-	targets     map[string]*runTarget
-	keys        map[string]string
-	order       []string
-	result      runmodel.RunResult
-	eventErr    error
+	mu             sync.Mutex
+	engine         *Engine
+	handle         runmodel.RunHandle
+	spec           runmodel.RunSpec
+	state          int // 0 prepared, 1 executing, 2 closed
+	reservation    string
+	events         chan<- runmodel.Event
+	seq            uint64
+	targets        map[string]*runTarget
+	keys           map[string]string
+	order          []string
+	result         runmodel.RunResult
+	eventErr       error
+	store          workspace.Sink
+	persistenceErr error
+	cancel         context.CancelFunc
+	products       *sharedProducts
+	artifacts      map[string]runmodel.Artifact
 	// overflow holds must-keep lifecycle/outcome events that could not be sent
 	// because the consumer's buffer was momentarily full. They are re-delivered,
 	// in order, on the next emit and in a bounded final flush, so a slow (but
@@ -72,6 +79,8 @@ type runTarget struct {
 	started   time.Time
 	finished  bool
 	announced bool
+	inputs    []runmodel.InputFile
+	files     runmodel.FileCounts
 }
 
 func cloneConfig(cfg config.Config) config.Config {
@@ -181,6 +190,13 @@ func (e *Engine) PrepareRun(ctx context.Context, req runmodel.RunRequest) (*Run,
 			return invalid("gameDataOut is ambiguous for multiple Unity games; run each game separately")
 		}
 	}
+	h, err := runmodel.NewHandle(output)
+	if err != nil {
+		return nil, err
+	}
+	if spec.GameDataOut != "" {
+		spec.GameDataOut = filepath.Join(spec.GameDataOut, "run-"+h.ID)
+	}
 	key := pathKey(output)
 	if _, loaded := preparedOutputs.LoadOrStore(key, struct{}{}); loaded {
 		return nil, ErrOutputBusy
@@ -194,29 +210,34 @@ func (e *Engine) PrepareRun(ctx context.Context, req runmodel.RunRequest) (*Run,
 	if err := os.MkdirAll(output, 0755); err != nil {
 		return nil, fmt.Errorf("prepare output: %w", err)
 	}
-	// Detect unwritable output now, rather than returning an admitted handle first.
-	f, err := os.CreateTemp(output, ".morgue-admission-*")
+	h.Output = output
+	writer, err := workspace.Open(h, spec)
+	if errors.Is(err, workspace.ErrNotEmpty) {
+		name := strings.TrimSuffix(filepath.Base(input), filepath.Ext(input))
+		if name == "" || name == "." || name == string(filepath.Separator) {
+			name = "run"
+		}
+		output = filepath.Join(output, name+"-"+h.ID)
+		h.Output = output
+		spec.Output = output
+		writer, err = workspace.Open(h, spec)
+	}
+	if errors.Is(err, workspace.ErrLocked) {
+		return nil, ErrOutputBusy
+	}
 	if err != nil {
-		return nil, fmt.Errorf("prepare output: %w", err)
+		return nil, fmt.Errorf("prepare workspace: %w", err)
 	}
-	tmp := f.Name()
-	closeErr := f.Close()
-	removeErr := os.Remove(tmp)
-	if err := errors.Join(closeErr, removeErr); err != nil {
-		return nil, fmt.Errorf("prepare output: %w", err)
-	}
-	h, err := runmodel.NewHandle(output)
-	if err != nil {
-		return nil, err
-	}
+	writer.SetPublisher(workspace.WriteNavigation)
 	r := newRun(New(cfg, e.toolBaseDir), h, spec)
+	r.store = writer
 	r.reservation = key
 	release = false
 	return r, nil
 }
 
 func newRun(e *Engine, h runmodel.RunHandle, spec runmodel.RunSpec) *Run {
-	return &Run{engine: e, handle: h, spec: spec, targets: map[string]*runTarget{}, keys: map[string]string{}}
+	return &Run{engine: e, handle: h, spec: spec, targets: map[string]*runTarget{}, keys: map[string]string{}, artifacts: map[string]runmodel.Artifact{}, products: newSharedProducts(context.Background())}
 }
 
 func (r *Run) Handle() runmodel.RunHandle { return r.handle }
@@ -233,16 +254,23 @@ func (r *Run) options(pause *PauseGate) Options {
 
 // Execute is single-use. Delivery is best-effort; RunResult is authoritative.
 func (r *Run) Execute(ctx context.Context, pause *PauseGate, events chan<- runmodel.Event) (runmodel.RunResult, error) {
+	return r.execute(ctx, pause, events, nil)
+}
+
+func (r *Run) execute(ctx context.Context, pause *PauseGate, events chan<- runmodel.Event, legacy chan<- PipelineEvent) (runmodel.RunResult, error) {
 	r.mu.Lock()
 	if r.state != 0 {
 		r.mu.Unlock()
 		return runmodel.RunResult{}, errors.New("run is already executed or closed")
 	}
 	r.state = 1
+	runCtx, cancel := context.WithCancel(ctx)
+	r.cancel = cancel
+	r.products = newSharedProducts(runCtx)
 	r.events = events
 	r.emitLocked("", "", r.handle.StartedAt, runmodel.RunStarted{Handle: r.handle, Spec: r.Spec()})
 	r.mu.Unlock()
-	err := r.engine.runPipeline(ctx, r.options(pause), nil)
+	err := r.engine.runPipeline(runCtx, r.options(pause), legacy)
 	r.mu.Lock()
 	// Best-effort delivery of any must-keep events (e.g. run.finished) still
 	// queued behind a momentarily full buffer, bounded so a dead consumer cannot
@@ -250,6 +278,22 @@ func (r *Run) Execute(ctx context.Context, pause *PauseGate, events chan<- runmo
 	r.finalFlushLocked()
 	result := r.result
 	err = errors.Join(err, r.eventErr)
+	if r.persistenceErr != nil {
+		err = r.persistenceErr
+		r.result.Outcome = OutcomeError
+		r.result.Error = err.Error()
+		result = r.result
+	}
+	if r.store != nil {
+		closeErr := r.store.Close()
+		r.store = nil
+		if closeErr != nil {
+			err = errors.Join(err, closeErr)
+			result.Outcome = OutcomeError
+			result.Error = err.Error()
+		}
+	}
+	cancel()
 	r.state = 2
 	if r.reservation != "" {
 		preparedOutputs.Delete(r.reservation)
@@ -266,6 +310,17 @@ func (r *Run) Close() error {
 		return errors.New("cannot close an executing run")
 	}
 	r.state = 2
+	if r.store != nil {
+		err := r.store.Close()
+		r.store = nil
+		if err != nil {
+			if r.reservation != "" {
+				preparedOutputs.Delete(r.reservation)
+				r.reservation = ""
+			}
+			return err
+		}
+	}
 	if r.reservation != "" {
 		preparedOutputs.Delete(r.reservation)
 		r.reservation = ""
@@ -277,6 +332,21 @@ func (r *Run) Close() error {
 func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEvent) error {
 	if opts.run != nil {
 		return e.runPipeline(ctx, opts, events)
+	}
+	if opts.Depth == 0 {
+		req := runmodel.RunRequest{Path: opts.Input, Output: opts.Output, Recipe: opts.Recipe, NoSkip: &opts.NoSkip, Exclude: opts.Exclude, ReferencePaths: opts.ReferencePaths, AllowDynamic: &opts.AllowDynamic, Cflow: &opts.Cflow, CodeOnly: &opts.CodeOnly, GameDataOut: opts.GameDataOut}
+		r, err := e.PrepareRun(ctx, req)
+		if err != nil {
+			// Legacy renderers still receive a terminal diagnostic for a rejected
+			// admission. There is no admitted workspace to journal in this case.
+			em := emitter{ch: events}
+			em.emitErr("scan", opts.Input, err)
+			outcome := errorOutcome(err)
+			em.send(PipelineEvent{Phase: outcome, Target: opts.Input, Done: true, RunOutcome: outcome, Error: err, OutputPath: opts.Output})
+			return err
+		}
+		_, err = r.execute(ctx, opts.Pause, nil, events)
+		return err
 	}
 	h, err := runmodel.NewHandle(opts.Output)
 	if err != nil {
@@ -315,10 +385,26 @@ func (r *Run) targetID(opts Options, p string) string {
 }
 
 func (r *Run) emitLocked(id, parent string, ts time.Time, p runmodel.Payload) {
+	if r.persistenceErr != nil {
+		return
+	}
 	ev, err := runmodel.NewEvent(r.handle.ID, r.seq+1, ts, id, parent, p)
 	if err != nil {
 		r.eventErr = errors.Join(r.eventErr, err)
 		return
+	}
+	if r.store != nil {
+		if err := r.store.Append(ev); err != nil {
+			r.failPersistenceLocked(err)
+			return
+		}
+		if ev.Type == runmodel.EventRunFinished {
+			if err := r.store.Close(); err != nil {
+				r.failPersistenceLocked(err)
+				return
+			}
+			r.store = nil
+		}
 	}
 	r.seq++
 	if r.events == nil {
@@ -343,6 +429,14 @@ func (r *Run) emitLocked(id, parent string, ts time.Time, p runmodel.Payload) {
 		if mustKeep(ev.Type) {
 			r.overflow = append(r.overflow, ev)
 		}
+	}
+}
+
+func (r *Run) failPersistenceLocked(err error) {
+	r.persistenceErr = errors.Join(r.persistenceErr, fmt.Errorf("persist workspace: %w", err))
+	r.eventErr = errors.Join(r.eventErr, r.persistenceErr)
+	if r.cancel != nil {
+		r.cancel()
 	}
 }
 
@@ -448,10 +542,26 @@ func (r *Run) announceLocked(t *runTarget) {
 			toolsNeeded = display.DisplayTools()
 		}
 	}
-	r.emitLocked(m.ID, m.ParentTargetID, time.Now().UTC(), runmodel.TargetDiscovered{InputPath: m.InputPath, RelativeInput: m.RelativeInput, Kind: m.Kind, Recipe: m.Recipe, Output: m.Output, SizeBytes: tr.Recon.Size, Compiler: tr.Recon.Compiler, Obfuscator: tr.Recon.Obfuscator, Deobfuscator: resolveDeobfuscator(tr.Recon.Obfuscator), RecipeDesc: desc, ToolsNeeded: toolsNeeded})
+	var sha *string
+	if tr.Recon.SHA256 != "" {
+		value := tr.Recon.SHA256
+		sha = &value
+	}
+	if len(t.inputs) == 0 {
+		status := "pending"
+		if sha != nil {
+			status = "complete"
+		}
+		t.inputs = []runmodel.InputFile{{Role: "primary", Path: m.InputPath, SHA256: sha, SizeBytes: tr.Recon.Size, HashStatus: status}}
+	}
+	startedAt := t.started.UTC()
+	r.emitLocked(m.ID, m.ParentTargetID, time.Now().UTC(), runmodel.TargetDiscovered{SHA256: sha, InputSet: append([]runmodel.InputFile{}, t.inputs...), StartedAt: &startedAt, InputPath: m.InputPath, RelativeInput: m.RelativeInput, Kind: m.Kind, Recipe: m.Recipe, Output: m.Output, SizeBytes: tr.Recon.Size, Compiler: tr.Recon.Compiler, Obfuscator: tr.Recon.Obfuscator, Deobfuscator: resolveDeobfuscator(tr.Recon.Obfuscator), RecipeDesc: desc, ToolsNeeded: toolsNeeded})
 }
 
-func (r *Run) record(opts Options, tr TargetResult) {
+func (r *Run) record(opts Options, tr TargetResult) TargetResult {
+	if err := r.collectProducts(opts, tr); err != nil {
+		tr.Error = errors.Join(tr.Error, err)
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	id := r.discoverLocked(opts, tr)
@@ -464,6 +574,7 @@ func (r *Run) record(opts Options, tr TargetResult) {
 		outcome = OutcomeSkipped
 	}
 	r.finishTargetLocked(t, outcome, errorText(tr.Error), tr.SkipReason)
+	return tr
 }
 func errorText(err error) string {
 	if err != nil {
@@ -481,7 +592,7 @@ func (r *Run) finishTargetLocked(t *runTarget, outcome, errText, reason string) 
 	t.model.Error = errText
 	t.model.SkipReason = reason
 	t.model.DurationMs = time.Since(t.started).Milliseconds()
-	r.emitLocked(t.model.ID, t.model.ParentTargetID, time.Now().UTC(), runmodel.TargetFinished{Outcome: outcome, Recipe: t.model.Recipe, Output: t.model.Output, Error: errText, SkipReason: reason, DurationMs: t.model.DurationMs})
+	r.emitLocked(t.model.ID, t.model.ParentTargetID, time.Now().UTC(), runmodel.TargetFinished{InputSet: append([]runmodel.InputFile{}, t.inputs...), Files: &t.files, Outcome: outcome, Recipe: t.model.Recipe, Output: t.model.Output, Error: errText, SkipReason: reason, DurationMs: t.model.DurationMs})
 }
 
 func (r *Run) legacyResults() []TargetResult {
@@ -574,7 +685,16 @@ func (o *childObserver) Discover(inputPath, output, recipeName string) (string, 
 	}
 	opts := o.opts
 	opts.parentTargetID = o.parent
-	return o.run.discover(opts, TargetResult{Recon: recon.Result{Path: inputPath, Kind: recon.Managed}, Recipe: rec, Output: output}), nil
+	input := hashInput(o.run.products.ctx, "primary", inputPath)
+	reconResult := recon.Result{Path: inputPath, Kind: recon.Managed, Size: input.SizeBytes}
+	if input.SHA256 != nil {
+		reconResult.SHA256 = *input.SHA256
+	}
+	id := o.run.discover(opts, TargetResult{Recon: reconResult, Recipe: rec, Output: output})
+	o.run.mu.Lock()
+	o.run.targets[id].inputs = []runmodel.InputFile{input}
+	o.run.mu.Unlock()
+	return id, nil
 }
 func (o *childObserver) Finish(id, outcome, errText string) error {
 	if outcome != OutcomeSuccess && outcome != OutcomeError && outcome != OutcomeCancelled && outcome != OutcomeSkipped {
@@ -582,11 +702,35 @@ func (o *childObserver) Finish(id, outcome, errText string) error {
 	}
 	r := o.run
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	t := r.targets[id]
 	if t == nil || t.model.ParentTargetID != o.parent {
+		r.mu.Unlock()
 		return errors.New("unknown child target")
 	}
+	if t.finished {
+		r.mu.Unlock()
+		return errors.New("child target already finished")
+	}
+	tr := t.legacy
+	r.mu.Unlock()
+	if outcome == OutcomeError || outcome == OutcomeCancelled {
+		tr.Error = errors.New(errText)
+	}
+	opts := o.opts
+	opts.parentTargetID = o.parent
+	var validationErr error
+	if _, err := os.Stat(tr.Output); err == nil {
+		validationErr = r.collectProducts(opts, tr)
+	} else if outcome == OutcomeSuccess {
+		validationErr = err
+	}
+	if validationErr != nil {
+		outcome = OutcomeError
+		errText = errors.Join(tr.Error, validationErr).Error()
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	t = r.targets[id]
 	if t.finished {
 		return errors.New("child target already finished")
 	}
@@ -598,5 +742,5 @@ func (o *childObserver) Finish(id, outcome, errText string) error {
 	}
 	t.legacy.Skipped = outcome == OutcomeSkipped
 	r.finishTargetLocked(t, outcome, errText, "")
-	return nil
+	return validationErr
 }

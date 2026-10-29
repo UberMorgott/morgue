@@ -176,10 +176,10 @@ func (e *Engine) runPipeline(ctx context.Context, opts Options, events chan<- Pi
 		if ctx.Err() != nil && result.Error != nil {
 			result.Error = errors.Join(result.Error, ctx.Err())
 		}
-		results = append(results, result)
 		if opts.run != nil {
-			opts.run.record(opts, result)
+			result = opts.run.record(opts, result)
 		}
+		results = append(results, result)
 		em.targetResult(result)
 	}
 	var tasks []fileTask
@@ -413,6 +413,11 @@ func (e *Engine) runPipeline(ctx context.Context, opts Options, events chan<- Pi
 		recordResult(tr)
 	}
 
+	// Nested compatibility summaries stay local. The root summary is written
+	// after terminal finalization, including cancellation and pending targets.
+	if opts.Depth == 0 && opts.run != nil {
+		return resultsError(results)
+	}
 	// Write summary.json
 	summaryResults := results
 	if opts.Depth == 0 && opts.run != nil {
@@ -789,6 +794,14 @@ func (e *Engine) executeRecipe(
 	}()
 
 	rctx := &recipe.Context{
+		Inputs: opts.run.inputObserver(ctx, *opts, filePath),
+		Shared: func() recipe.SharedProducts {
+			if opts.run != nil {
+				return opts.run.products
+			}
+			return nil
+		}(),
+		Artifacts:      opts.run.artifactObserver(ctx, *opts, filePath, rec.Name()),
 		Children:       opts.run.children(*opts, filePath),
 		Target:         filePath,
 		Output:         targetOutput,
@@ -809,7 +822,13 @@ func (e *Engine) executeRecipe(
 		CodeOnly:     opts.CodeOnly,
 	}
 
-	execErr := rec.Execute(rctx)
+	var execErr error
+	if opts.run != nil {
+		execErr = opts.run.verifyTargetInputs(ctx, *opts, reconInput{path: filePath, sha: reconResult.SHA256})
+	}
+	if execErr == nil {
+		execErr = invokeRecipe(rec, rctx)
+	}
 	close(progressCh)
 	close(logCh)
 	<-done
@@ -939,6 +958,14 @@ func (e *Engine) executeRecipeWithFilter(
 	}()
 
 	rctx := &recipe.Context{
+		Inputs: opts.run.inputObserver(ctx, *opts, filePath),
+		Shared: func() recipe.SharedProducts {
+			if opts.run != nil {
+				return opts.run.products
+			}
+			return nil
+		}(),
+		Artifacts:      opts.run.artifactObserver(ctx, *opts, filePath, rec.Name()),
 		Children:       opts.run.children(*opts, filePath),
 		Target:         filePath,
 		Output:         targetOutput,
@@ -960,7 +987,13 @@ func (e *Engine) executeRecipeWithFilter(
 		CodeOnly:     opts.CodeOnly,
 	}
 
-	execErr := rec.Execute(rctx)
+	var execErr error
+	if opts.run != nil {
+		execErr = opts.run.verifyTargetInputs(ctx, *opts, reconInput{path: filePath, sha: reconResult.SHA256})
+	}
+	if execErr == nil {
+		execErr = invokeRecipe(rec, rctx)
+	}
 	close(progressCh)
 	close(logCh)
 	<-done

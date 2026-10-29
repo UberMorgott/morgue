@@ -30,6 +30,23 @@ func (em emitter) send(ev PipelineEvent) {
 	}
 	if em.run != nil {
 		em.run.consume(em.opts, ev)
+		em.run.mu.Lock()
+		persistErr := em.run.persistenceErr
+		eventErr := em.run.eventErr
+		em.run.mu.Unlock()
+		if persistErr != nil && !ev.Done {
+			return
+		}
+		if ev.Done && eventErr != nil {
+			ev.Error = eventErr
+			ev.ErrorMsg = eventErr.Error()
+			ev.RunOutcome = errorOutcome(eventErr)
+			ev.Phase = ev.RunOutcome
+			if persistErr != nil {
+				ev.RunOutcome = OutcomeError
+				ev.Phase = OutcomeError
+			}
+		}
 	}
 	if em.ch != nil {
 		em.ch <- ev
