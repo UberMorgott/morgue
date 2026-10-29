@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -50,6 +51,9 @@ type ToolsService struct {
 	installing map[string]struct{}
 }
 
+// ErrInvalidToolRequest rejects a malformed install request before admission.
+var ErrInvalidToolRequest = errors.New("invalid tool request")
+
 // allToolsKey is the admission key for an install-all job.
 const allToolsKey = "*"
 
@@ -58,6 +62,24 @@ const allToolsKey = "*"
 // the same tool, or an install-all job, is already admitted, so concurrent
 // callers cannot start duplicate installs of one tool.
 func (s *ToolsService) StartInstall(name string) error {
+	return s.StartInstallVersion(name, "")
+}
+
+// StartInstallVersion is StartInstall with an optional exact version. A
+// non-empty version records an operator override (pin) on success; an empty
+// version clears an existing override on success. The version requires a name.
+func (s *ToolsService) StartInstallVersion(name, version string) error {
+	if version != "" && name == "" {
+		return fmt.Errorf("%w: version requires a tool name", ErrInvalidToolRequest)
+	}
+	if name != "" {
+		if _, ok := tools.FindByName(name); !ok {
+			return fmt.Errorf("%w: unknown tool %q", ErrInvalidToolRequest, name)
+		}
+		if s.manager != nil && s.manager.Check(name).InUse {
+			return tools.ErrInUse
+		}
+	}
 	key := name
 	if key == "" {
 		key = allToolsKey
@@ -242,6 +264,15 @@ func (s *ToolsService) installCallbacks() *tools.InstallCallbacks {
 // Install downloads and installs a single tool by name. Cancelling ctx aborts
 // an in-flight download.
 func (s *ToolsService) Install(ctx context.Context, name string) error {
+	return s.InstallVersion(ctx, name, "")
+}
+
+// InstallVersion installs name through the same policy as CLI and API: an
+// exact version records an operator override (shown as pinned, honored by the
+// next run's freshness check); an empty version resumes automatic updates.
+// A tool leased by an active run is never swapped (tools.ErrInUse). Success is
+// reported only after activation and installed-lock recording.
+func (s *ToolsService) InstallVersion(ctx context.Context, name, version string) error {
 	//nolint:contextcheck // reaches tools.Manager.RuntimePath -> systemDotNetHasAspNet10, a local
 	// `dotnet --list-runtimes` probe that already bounds itself to 10s (same note as engine.Run).
 	if err := s.ensureRuntimeDeps(name); err != nil {
@@ -251,13 +282,13 @@ func (s *ToolsService) Install(ctx context.Context, name string) error {
 	if app := application.Get(); app != nil {
 		app.Event.Emit("tool:download:start", map[string]string{"tool": name})
 	}
-	version, err := s.manager.Install(ctx, name, s.installCallbacks())
+	id, err := s.manager.InstallVersion(ctx, name, tools.InstallOptions{Version: version}, s.installCallbacks())
 	s.removeOp(name)
 	if app := application.Get(); app != nil {
 		if err != nil {
-			app.Event.Emit("tool:download:complete", map[string]any{"tool": name, "error": err.Error()})
+			app.Event.Emit("tool:download:complete", map[string]any{"tool": name, "error": err.Error(), "inUse": errors.Is(err, tools.ErrInUse)})
 		} else {
-			app.Event.Emit("tool:download:complete", map[string]any{"tool": name, "version": version, "error": nil})
+			app.Event.Emit("tool:download:complete", map[string]any{"tool": name, "version": id.Version, "operatorVersion": version, "error": nil})
 		}
 		app.Event.Emit("tool:installed", name)
 	}
@@ -409,22 +440,9 @@ func (s *ToolsService) StartupAutoUpdate() map[string]any {
 		}
 	}
 
-	// --- Auto-apply tool updates ---
-	if cfg.AutoUpdateTools && len(updatable) > 0 {
-		for i, st := range updatable {
-			emit("startup:progress", map[string]any{
-				"phase": "tool-update",
-				"label": st.Name,
-				"index": i + 1,
-				"total": len(updatable),
-			})
-			if err := s.Install(context.Background(), st.Name); err != nil {
-				log.Printf("startup: auto-update tool %s failed: %v", st.Name, err)
-			} else {
-				result["autoApplied"] = true
-			}
-		}
-	}
-
+	// Tool updates are NOT applied at startup: every run checks freshness of
+	// exactly the tools it uses before first use (tools.RunSelection), the same
+	// policy for GUI, CLI and API runs. A registry-wide startup update would
+	// bypass operator overrides and run leases. The check above is display-only.
 	return result
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/runmodel"
 	"github.com/UberMorgott/morgue/internal/services"
+	"github.com/UberMorgott/morgue/internal/tools"
 )
 
 // --- Pipeline handlers ---
@@ -111,8 +112,11 @@ func (s *Server) handleGetTools(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.tools.GetToolsEnriched())
 }
 
+// toolRequest: optional exact version for install (operator override); an
+// install without version clears an existing override on success.
 type toolRequest struct {
-	Name string `json:"name"`
+	Name    string `json:"name"`
+	Version string `json:"version,omitempty"`
 }
 
 func (s *Server) handleInstallTool(w http.ResponseWriter, r *http.Request) {
@@ -123,8 +127,18 @@ func (s *Server) handleInstallTool(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//nolint:contextcheck // the install job must outlive this request, so it runs detached from r.Context()
-	if err := s.tools.StartInstall(req.Name); errors.Is(err, services.ErrBusy) {
+	switch err := s.tools.StartInstallVersion(req.Name, req.Version); {
+	case errors.Is(err, services.ErrBusy):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "busy"})
+		return
+	case errors.Is(err, tools.ErrInUse):
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "in use"})
+		return
+	case errors.Is(err, services.ErrInvalidToolRequest):
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	case err != nil:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}
 	tool := req.Name
@@ -145,12 +159,18 @@ func (s *Server) handleDeleteTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go func() {
-		if err := s.tools.Delete(req.Name); err != nil {
-			log.Printf("api: delete %s: %v", req.Name, err)
+	// Synchronous so an active run lease is reported (409) instead of being
+	// silently ignored; a leased payload is never evicted.
+	if err := s.tools.Delete(req.Name); err != nil {
+		if errors.Is(err, tools.ErrInUse) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "in use"})
+			return
 		}
-	}()
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deleting", "name": req.Name})
+		log.Printf("api: delete %s: %v", req.Name, err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted", "name": req.Name})
 }
 
 // --- Settings handlers ---
