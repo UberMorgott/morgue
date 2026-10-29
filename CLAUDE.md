@@ -7,9 +7,13 @@
 
 ## Architecture
 - `cmd/morgue/main.go` — entry point (CLI args → Cobra, no args → Wails GUI + HTTP API)
-- `internal/` — core Go packages (api, cli, config, engine, gamedata, instructions, metadata, odin, recipe, recon, scanner, selfupdate, services, skiplist, tools, util, webview2, tui [legacy, only `run --watch`])
+- `internal/` — core Go packages (api, cli, config, engine, gamedata, instructions, metadata, odin, provenance, quality, recipe, recon, runmodel, scanner, selfupdate, services, skiplist, tools, util, webview2, workspace, tui [legacy, only `run --watch`])
 - `internal/api/` — HTTP API server (`127.0.0.1:19876`) for hybrid mode. Handlers, SSE events, AI instructions; per-launch token (`internal/api/apitoken`).
 - `internal/engine/` — pipeline execution engine. Emits `PipelineEvent` (`internal/engine/types.go`): Phase, Target, Message, Tool, Progress, Done, RunOutcome, TargetOutcome, Severity, ReconKind, Compiler, Obfuscator, Deobfuscator, FileSize, RecipeName, RecipeDesc, ToolsNeeded, OutputPath, OutputStats, FilesTotal, FilesProcessed. Go `Error` is not serialized; the wire carries its text as `error`. Run outcome: success | error | cancelled; target outcome adds skipped.
+- `internal/runmodel/` — wire contracts (RunRequest/RunSpec, events v2, Workspace/morgue.json, QualityReport, ProvenanceRecord); schemas in `docs/schemas/`, DTO/schema drift caught by tests
+- `internal/workspace/` — durable run workspace: single writer of `.morgue/journal.ndjson` + `morgue.json` projection, recovery (`morgue inspect`), AGENTS.md/INDEX.md navigation, recent runs
+- `internal/quality/` — per-family collectors (managed, java, native, delphi, ue5, il2cpp, unitydata, container); `CollectTarget` maps recipe → families, engine writes `<target>/quality.json` + `quality.updated`
+- `internal/provenance/` — NDJSON sink; engine binds `<target>/provenance.ndjson` to `recipe.Context.Provenance` (fills targetId/inputSha256)
 - `internal/recipe/` — one file per recipe (dotnet-generic, dotnet-confuserex, unity-mono, unity-il2cpp, native, delphi, ue5, java, nsis); see `AGENTS.md` for the recipe contract
 - `internal/tools/` — tool download/install manager; tools stored in `BaseDir()/tools/<name>/`
 - `frontend/src/` — Svelte SPA (components, pages, lib, stores)

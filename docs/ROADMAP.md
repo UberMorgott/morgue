@@ -16,7 +16,13 @@ Atomic run admission (`409 busy`), `POST /api/stop`, per-launch API token + orig
 keepalive, typed run/target outcomes with wire-safe error strings, API-started runs adopted by the GUI,
 explicit `--ref` dependency paths, tool update/pin fixes, CI on push/PR.
 
-## v0.8 — runs you can trust and reuse
+## v0.8 — runs you can trust and reuse (done)
+
+Shipped: unified RunSpec/run ID across CLI/GUI/API, durable journal + `morgue.json` + `morgue inspect`,
+AGENTS.md/INDEX.md navigation, frozen run tool lock (detector included) with `--version` pins, per-target
+measured `quality.json` (incl. name quality) and `provenance.ndjson`, fidelity labels, portable-only
+runtimes (managed JDK matched to Ghidra `application.java.min`, no system fallback by default), Ghidra
+heap/thread caps.
 
 1. **RunSpec + run ID.** One run description shared by CLI, GUI and API (path, output, recipe, excludes,
    `--ref`, code-only, dynamic, cflow…). Today `/api/run` accepts only `path`/`output`. Every run gets an ID.
@@ -44,7 +50,7 @@ explicit `--ref` dependency paths, tool update/pin fixes, CI on push/PR.
 
 Out of scope for v0.8: job queue, learned ETA, full results browser, automatic resume.
 
-## v0.9 — cheap, safe recipes
+## v0.9 — cheap, safe recipes (next)
 
 - **Recipe manifest**: name, explicit priority (replaces `init()` order + `RegisterFirst`), required/optional
   tools, steps with batch group (replaces `Name()=="native"` and `StepFilter` strings), outputs, capabilities.
@@ -61,8 +67,8 @@ Out of scope for v0.8: job queue, learned ETA, full results browser, automatic r
 |------|-------|
 | HashLink / Haxe support (GH #1, #2) | Detection, `hlbc` tool, `hashlink` recipe, upstream defects: [docs/specs/2026-10-28-hashlink-support.md](specs/2026-10-28-hashlink-support.md) |
 | Runtime CLI | `morgue tools runtimes [--update]`: list/update managed .NET/Java runtimes (no CLI today) |
-| `tools install --version` | Install a specific tool version once; rollback path for broken upstream releases |
 | Free-disk guard | Warn/abort before AssetRipper / Ghidra steps when the output drive is low (`internal/util/disk_windows.go` is only used to pick the default output drive) |
+| Lightweight native mode | Research first: rizin + rz-ghidra (Ghidra decompiler as a native plugin) for small native targets without a JVM — compare output fidelity, function coverage and name quality vs headless Ghidra before adding a recipe |
 | Folder-walk exclusions | Optionally skip save/mod data dirs (`Saves`, `Mods`, `BepInEx/plugins`) under a game root |
 
 ## Removal candidates (not removed in v0.7.10)

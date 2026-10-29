@@ -218,23 +218,61 @@ morgue api settings set <key> <value>  Update a setting
 
 ## Output layout
 
-A run writes one subdirectory per target into the output directory, plus a top-level
-`summary.json`:
+A run writes a self-describing workspace: one subdirectory per target plus run-level
+manifest, journal and navigation files.
 
 ```text
 <output>/
-├── summary.json                # aggregate run result (targets, success/fail/skipped)
+├── AGENTS.md                   # how to read this output (read order, fidelity, quality)
+├── INDEX.md                    # every target: outcome, quality, failures/skips
+├── morgue.json                 # manifest (docs/schemas/morgue-v1.schema.json)
+├── summary.json                # legacy v0.7 summary
+├── .morgue/
+│   ├── journal.ndjson          # ordered events v2 (crash-safe; `morgue inspect <output>`)
+│   └── tools.lock.json         # exact tool/runtime identities (version, payload SHA-256)
 └── <target-name>/
+    ├── INDEX.md                # entry candidates, indexes, quality, reading suggestions
+    ├── quality.json            # measured quality report (docs/schemas/quality-v1.schema.json)
+    ├── provenance.ndjson       # one row per generated file/function/rename
     ├── recon.json              # classification (kind, compiler, obfuscator, recipe)
     ├── original/               # preserved copy of the input binary
-    ├── strings.json            # structured, categorized string extraction
-    └── src/                    # decompiled source
-        └── indexes/            # call-graph / duplicate / name-resolution indexes
+    ├── src/                    # decompiled source / pseudocode / stubs
+    │   └── indexes/            # call-graph / duplicate / name-resolution indexes
+    ├── logs/  evidence/        # raw tool logs and recipe evidence the collectors read
+    └── data/                   # extracted game data (Unity IL2CPP layout)
 ```
 
-The exact contents under `src/` and the indexes vary by recipe (e.g. native/UE5 runs
-produce navigable call-graph and name-resolution indexes; `.NET` runs produce
-decompiled C#).
+The exact contents under `src/` and the indexes vary by recipe.
+
+### Fidelity labels
+
+Every artifact in `morgue.json` has a `kind`: `decompiled-source` (ILSpy/Vineflower —
+readable, not original source), `pseudocode` (Ghidra — approximate control flow),
+`stub` (IL2CPP DummyDll C# — signatures only, no bodies), `metadata`, `asset`,
+`index`, `log`, `original`, `container`. No output is original source code, whatever
+its extension.
+
+### Quality report
+
+Each finished target gets `quality.json` (also `targets[].quality` in `morgue.json`)
+from its recipe's family collector (managed, java, native, delphi, ue5, il2cpp,
+unitydata, container). Status `pass` / `degraded` / `unknown` / `not-applicable`;
+there is no weighted score. Every metric states `measured`, `estimated`, `unknown`
+or `not-applicable` plus its basis — `unknown` is `null`, never 0, and a coverage
+ratio exists only for two measured counts of the same identity universe (e.g. Ghidra
+functions found vs emitted). `names` reports the share of tool-default names
+(Ghidra `FUN_<addr>`) and how many were renamed by inference. Unity targets merge the
+asset-export section (checks prefixed `unitydata/`); the IL2CPP companion
+`global-metadata.dat` and NSIS containers are `not-applicable`. A skipped, cancelled
+or interrupted target has `quality: null` (not collected).
+
+### Provenance
+
+`<target>/provenance.ndjson` (`targets[].provenance`) streams one JSON record per
+generated file, function or rename (docs/schemas/provenance-v1.schema.json): module,
+input SHA-256, token/RVA/address as hex strings, original and recovered name, name
+source (`metadata`, `export`, `single-string-candidate`, ...), confidence and the
+producing tool/version/step. Stream it; do not load it whole.
 
 ## Build from source
 

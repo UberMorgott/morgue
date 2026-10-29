@@ -52,8 +52,35 @@ type Recipe interface {
    tool binaries in unit tests.
 6. **Docs.** Update the recipe table in `README.md`, the recipe list in
    `internal/instructions/instructions.go` (served at `/api/instructions`), and the tools list in
-   `README.md` if a tool was added.
+   `README.md` if a tool was added.. **Quality.** Map the recipe to a quality family and stream provenance (section below).
 
+## Quality and provenance (how a recipe reports them)
+
+- **Family.** Map the recipe to its collector family in `recipeFamilies`
+  (`internal/quality/collector.go`); the engine test `TestEveryRegisteredRecipeHasQualityFamily` fails
+  otherwise. Reuse a family (managed, java, native, delphi, ue5, il2cpp, unitydata, container) or add
+  `internal/quality/<family>.go` with `func init() { Register("<family>", X{}) }`. A secondary family
+  (e.g. unitydata) is merged with checks prefixed `<family>/`.
+- **Collector.** `Collect(ctx, Input{Target, Output})` reads only files under `Input.Output` (the target
+  dir) and returns `runmodel.QualityReport` that passes `Validate()`. Rules: no evidence → `unknown` with a
+  basis (value `null`, never 0); nothing to measure → `not-applicable`; a ratio only for two measured counts
+  of one identity universe; fill `names` (`runmodel.NamesNotApplicable` when names come from metadata).
+  Stable check IDs: `output.present`, `functions.coverage`, `types.coverage`, `decompiler.errors`,
+  `types.unknown-result`, `references.unresolved`, `obfuscation.residual`, `strings.decryption`,
+  `provenance.complete`, `artifact.fidelity`. The engine writes `quality.json` and publishes it; never
+  write it from the recipe.
+- **Evidence.** Persist what the collector needs while executing: raw tool logs (`logs/`), a step sidecar
+  (`quality_evidence.json` / `evidence/*.json`) saying ran / skipped / failed and why, per-function status
+  files. Parser drift must yield `unknown`, not a measured zero.
+- **Provenance.** Write `runmodel.ProvenanceRecord` rows to `ctx.Provenance` (nil in unit tests — guard it)
+  while products are generated: one per file/function/rename, with module, artifact path (target-relative)
+  and kind (`decompiled-source`/`pseudocode`/`stub`/...), token/RVA/address as hex strings, original and
+  recovered name, name source, confidence and `Producer{Tool, Version, StepID, Args}` (version from the run
+  tool lock). Leave `TargetID`/`InputSHA256` empty for the current target — the engine fills them. Use the
+  frozen step IDs in `docs/schemas/quality-provenance.md`.
+- **Artifacts.** Record products via `ctx.Artifacts.Record(path, kind, stepID, tool, shared)` with the
+  honest fidelity kind. The engine already records `original/`, `src/`, `dump/`, `indexes/`, `data/`,
+  `logs/`, `evidence/`, `provenance.ndjson`, `quality.json`.
 ## Verify
 
 ```powershell
