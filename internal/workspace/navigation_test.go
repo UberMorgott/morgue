@@ -119,6 +119,46 @@ func TestWriteNavigationFilesAndLinks(t *testing.T) {
 	}
 }
 
+func TestTargetIndexShowsQualityNamesAndProvenance(t *testing.T) {
+	root, ws := navFixture(t)
+	i64 := func(n int64) *int64 { return &n }
+	f64 := func(n float64) *float64 { return &n }
+	m := func(n int64) runmodel.Metric {
+		return runmodel.Metric{Value: i64(n), Status: "measured", Basis: "b", Evidence: []runmodel.Evidence{}}
+	}
+	q := runmodel.QualityReport{SchemaVersion: 1, Family: "native", Status: "degraded",
+		Functions:        runmodel.Coverage{Found: m(10), Emitted: m(8), Ratio: f64(.8), Comparable: true},
+		Types:            runmodel.Coverage{Found: runmodel.Metric{Status: "not-applicable", Basis: "no type inventory"}, Emitted: runmodel.Metric{Status: "not-applicable", Basis: "no type inventory"}},
+		Names:            runmodel.NameQuality{Total: m(10), AutoNamed: m(6), AutoRatio: f64(.6), Inferred: m(2)},
+		DecompilerErrors: m(2), StringDecryption: runmodel.Coverage{Found: runmodel.Metric{Status: "not-applicable", Basis: "none"}},
+		Warnings: []string{"2 functions failed"},
+		Checks:   []runmodel.QualityCheck{{ID: "functions.coverage", Status: "warn", Message: "8/10"}},
+	}
+	ws.Targets[0].Quality = &q
+	prov := "game/provenance.ndjson"
+	ws.Targets[0].Provenance = &prov
+	if err := os.WriteFile(filepath.Join(root, "game", "provenance.ndjson"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "game", "quality.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteNavigation(ws); err != nil {
+		t.Fatal(err)
+	}
+	assertLinksResolve(t, filepath.Join(root, "game", "INDEX.md"))
+	game, _ := os.ReadFile(filepath.Join(root, "game", "INDEX.md"))
+	for _, want := range []string{"## Quality and fidelity", "Quality: **degraded**", "8 of 10 (80.0%, measured)", "6 of 10 tool-default names (60.0%); 2 renamed by inference", "`decompiled-source` ×1", "provenance.ndjson", "Check `functions.coverage`: **warn**"} {
+		if !strings.Contains(string(game), want) {
+			t.Errorf("game INDEX.md lacks %q", want)
+		}
+	}
+	idx, _ := os.ReadFile(filepath.Join(root, "INDEX.md"))
+	if !strings.Contains(string(idx), "degraded, fn 80.0%") || !strings.Contains(string(idx), "| Quality |") {
+		t.Errorf("root INDEX.md lacks quality column:\n%s", idx)
+	}
+}
+
 func TestTargetIndexContent(t *testing.T) {
 	root, ws := navFixture(t)
 	if err := WriteNavigation(ws); err != nil {
@@ -126,7 +166,7 @@ func TestTargetIndexContent(t *testing.T) {
 	}
 	game, _ := os.ReadFile(filepath.Join(root, "game", "INDEX.md"))
 	g := string(game)
-	for _, want := range []string{"src/Program.cs", "Exported functions", "symbols.json", "functions.ndjson", "do not load", "Quality not yet collected"} {
+	for _, want := range []string{"src/Program.cs", "Exported functions", "symbols.json", "functions.ndjson", "do not load", "Quality not collected"} {
 		if !strings.Contains(g, want) {
 			t.Errorf("game INDEX.md lacks %q", want)
 		}

@@ -628,6 +628,7 @@ func (r *Run) announceLocked(t *runTarget) {
 }
 
 func (r *Run) record(opts Options, tr TargetResult) TargetResult {
+	r.collectQuality(opts, tr)
 	if err := r.collectProducts(opts, tr); err != nil {
 		tr.Error = errors.Join(tr.Error, err)
 	}
@@ -661,7 +662,11 @@ func (r *Run) finishTargetLocked(t *runTarget, outcome, errText, reason string) 
 	t.model.Error = errText
 	t.model.SkipReason = reason
 	t.model.DurationMs = time.Since(t.started).Milliseconds()
-	r.emitLocked(t.model.ID, t.model.ParentTargetID, time.Now().UTC(), runmodel.TargetFinished{InputSet: append([]runmodel.InputFile{}, t.inputs...), Files: &t.files, Outcome: outcome, Recipe: t.model.Recipe, Output: t.model.Output, Error: errText, SkipReason: reason, DurationMs: t.model.DurationMs})
+	prov := ""
+	if t.model.Output != "" {
+		prov = r.provenanceRel(t.model.Output)
+	}
+	r.emitLocked(t.model.ID, t.model.ParentTargetID, time.Now().UTC(), runmodel.TargetFinished{InputSet: append([]runmodel.InputFile{}, t.inputs...), Files: &t.files, Outcome: outcome, Recipe: t.model.Recipe, Output: t.model.Output, Error: errText, SkipReason: reason, DurationMs: t.model.DurationMs, Provenance: prov})
 }
 
 func (r *Run) legacyResults() []TargetResult {
@@ -789,6 +794,12 @@ func (o *childObserver) Finish(id, outcome, errText string) error {
 	opts.parentTargetID = o.parent
 	var validationErr error
 	if _, err := os.Stat(tr.Output); err == nil {
+		qtr := tr
+		qtr.Skipped = outcome == OutcomeSkipped
+		if outcome == OutcomeCancelled {
+			qtr.Error = errors.Join(qtr.Error, context.Canceled)
+		}
+		r.collectQuality(opts, qtr)
 		validationErr = r.collectProducts(opts, tr)
 	} else if outcome == OutcomeSuccess {
 		validationErr = err

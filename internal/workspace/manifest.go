@@ -18,8 +18,6 @@ const (
 	stateRunning  = "running"
 	stateFinished = "finished"
 	statePending  = "pending"
-
-	warnQuality = "quality not yet collected: every target quality is null until v0.8 M4; absence is not a pass"
 )
 
 var (
@@ -245,7 +243,7 @@ func (p *projector) start(ev *runmodel.Event) error {
 		ToolsLock:      runmodel.RunToolsLockPath,
 		Targets:        []runmodel.TargetRecord{},
 		Artifacts:      []runmodel.Artifact{},
-		Warnings:       []string{warnQuality},
+		Warnings:       []string{},
 	}
 	return nil
 }
@@ -319,6 +317,9 @@ func (p *projector) finishTarget(ev *runmodel.Event, d runmodel.TargetFinished) 
 	}
 	if d.Files != nil {
 		t.Files = *d.Files
+	}
+	if d.Provenance != "" {
+		t.Provenance = strPtr(d.Provenance)
 	}
 	p.recount()
 	return nil

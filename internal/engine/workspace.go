@@ -189,9 +189,9 @@ func (o *artifactObserver) Record(path, kind, stepID, tool string, shared bool) 
 	}
 	sum := sha256.Sum256([]byte(identity))
 	id := "a" + hex.EncodeToString(sum[:8])
-	artifact := runmodel.Artifact{ID: id, TargetID: targetID, Path: rel, External: external, Kind: kind, Producer: runmodel.Producer{Recipe: o.recipe, StepID: stepID, Tool: tool, Version: o.run.toolVersion(tool)}, HashStatus: "not-collected", Complete: o.complete, Warning: "exact tool identity/provenance is not collected in M2"}
+	artifact := runmodel.Artifact{ID: id, TargetID: targetID, Path: rel, External: external, Kind: kind, Producer: runmodel.Producer{Recipe: o.recipe, StepID: stepID, Tool: tool, Version: o.run.toolVersion(tool)}, HashStatus: "not-collected", Complete: o.complete}
 	if !o.complete {
-		artifact.Warning += "; target failed and this product may be partial"
+		artifact.Warning = "target failed and this product may be partial"
 	}
 	info, err := os.Stat(path)
 	if err != nil {
@@ -256,7 +256,8 @@ func (r *Run) collectProducts(opts Options, tr TargetResult) error {
 	case "unity-il2cpp":
 		sourceKind = "stub"
 	}
-	for _, product := range []struct{ path, kind string }{{"original", "original"}, {"src", sourceKind}, {"dump", "stub"}, {"indexes", "index"}, {"recon.json", "metadata"}, {"index.json", "index"}} {
+	for _, product := range []struct{ path, kind string }{{"original", "original"}, {"src", sourceKind}, {"dump", "stub"}, {"indexes", "index"}, {"recon.json", "metadata"}, {"index.json", "index"},
+		{"data", "asset"}, {"logs", "log"}, {"evidence", "metadata"}, {"quality_evidence.json", "metadata"}, {"provenance.ndjson", "index"}} {
 		path := filepath.Join(tr.Output, product.path)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			continue

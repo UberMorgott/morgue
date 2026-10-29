@@ -828,6 +828,11 @@ func (e *Engine) executeRecipe(
 		SharedOut:    opts.Output,
 		CodeOnly:     opts.CodeOnly,
 	}
+	prov, perr := opts.run.openProvenance(*opts, filePath, targetOutput, reconResult.SHA256)
+	if perr != nil {
+		em.emitWarn("execute", filePath, "provenance stream not opened: "+perr.Error())
+	}
+	rctx.Provenance = prov.recipeSink()
 
 	var execErr error
 	if opts.run != nil {
@@ -839,6 +844,9 @@ func (e *Engine) executeRecipe(
 	}
 	if execErr == nil {
 		execErr = invokeRecipe(rec, rctx)
+	}
+	if cerr := prov.close(); cerr != nil {
+		em.emitWarn("execute", filePath, "provenance stream incomplete: "+cerr.Error())
 	}
 	close(progressCh)
 	close(logCh)
@@ -997,6 +1005,11 @@ func (e *Engine) executeRecipeWithFilter(
 		SharedOut:    opts.Output,
 		CodeOnly:     opts.CodeOnly,
 	}
+	prov, perr := opts.run.openProvenance(*opts, filePath, targetOutput, reconResult.SHA256)
+	if perr != nil {
+		em.emitWarn("execute", filePath, "provenance stream not opened: "+perr.Error())
+	}
+	rctx.Provenance = prov.recipeSink()
 
 	var execErr error
 	if opts.run != nil {
@@ -1008,6 +1021,9 @@ func (e *Engine) executeRecipeWithFilter(
 	}
 	if execErr == nil {
 		execErr = invokeRecipe(rec, rctx)
+	}
+	if cerr := prov.close(); cerr != nil {
+		em.emitWarn("execute", filePath, "provenance stream incomplete: "+cerr.Error())
 	}
 	close(progressCh)
 	close(logCh)

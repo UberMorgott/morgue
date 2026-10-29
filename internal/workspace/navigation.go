@@ -85,6 +85,7 @@ var navFidelityLabels = []struct{ kind, about string }{
 	{"asset", "extracted game data (textures, meshes, tables)"},
 	{"index", "Morgue-generated lookup files (ndjson/csv/json indexes)"},
 	{"original", "unmodified copy of the input"},
+	{"container", "unpacked installer/archive tree; code inside it is a child target with its own quality"},
 	{"log", "tool or run logs"},
 }
 
@@ -245,7 +246,17 @@ func navRenderAgents(ws runmodel.Workspace) string {
 	navLine(&b, "No output is original source code, whatever its file extension (.cs/.java/.c).")
 	navLine(&b, "")
 	navLine(&b, "## Quality")
-	navLine(&b, "- `targets[].quality` is `null` until quality measurement exists: completeness is then **unknown**. "+
+	navLine(&b, "- Each finished target has a measured quality report: `targets[].quality` in morgue.json and `<target output>/quality.json` "+
+		"(schema `docs/schemas/quality-v1.schema.json`). Status `pass` = every applicable mandatory check passed; `degraded` = a check "+
+		"warned/failed; `unknown` = evidence missing; `not-applicable` = no code to measure (container, companion file, data-only).")
+	navLine(&b, "- Metrics carry `status` measured|estimated|unknown|not-applicable and a `basis`. `unknown` has value `null` — never read it as 0. "+
+		"A coverage `ratio` exists only for two measured counts of the same identity universe (e.g. Ghidra functions found vs emitted).")
+	navLine(&b, "- `names`: how many symbol names are tool defaults (Ghidra `FUN_<addr>`, `autoNamed` / `autoRatio`) and how many were renamed "+
+		"by inference (`inferred`, medium confidence — never an original name). Managed/IL2CPP names come from metadata (not-applicable).")
+	navLine(&b, "- Unity targets combine code and data quality: checks prefixed `unitydata/` describe the asset export, the rest the code.")
+	navLine(&b, "- `<target output>/provenance.ndjson` (`targets[].provenance`): one JSON row per generated file/function/rename with tool, "+
+		"version, step, token/RVA/address and name source. Stream it (`rg -m 20 '\"address\":\"0x1400' provenance.ndjson`).")
+	navLine(&b, "- A target with `quality: null` was skipped, cancelled or interrupted: its completeness is **unknown**. "+
 		"Never infer coverage, a percentage or \"complete decompilation\" from file counts.")
 	navLine(&b, "- `outcome: success` means the pipeline executed, not that the recovered code is perfect. "+
 		"Stubs, partial files and failed optional steps are listed as warnings in the target INDEX.md.")
@@ -299,8 +310,8 @@ func navRenderRootIndex(ws runmodel.Workspace, tree navTree, notes []string) str
 	if len(tree.order) == 0 {
 		navLine(&b, "No targets discovered yet.")
 	} else {
-		navLine(&b, "| ID | Input | Kind | Recipe | Outcome | Files | Index |")
-		navLine(&b, "|---|---|---|---|---|---|---|")
+		navLine(&b, "| ID | Input | Kind | Recipe | Outcome | Quality | Files | Index |")
+		navLine(&b, "|---|---|---|---|---|---|---|---|")
 		for i, n := range tree.order {
 			if i == navMaxIndexTargets {
 				navLine(&b, "")
@@ -312,8 +323,8 @@ func navRenderRootIndex(ws runmodel.Workspace, tree navTree, notes []string) str
 			if _, ok := navTargetDir(ws.Spec.Output, t.Output); ok {
 				link = navMdLink(IndexPath, path.Join(t.Output, IndexPath))
 			}
-			navLine(&b, "| `%s` | %s%s | %s | %s | %s | %d | %s |", t.ID, strings.Repeat("↳ ", n.depth), navCell(t.RelativeInput),
-				navCell(t.Kind), navCell(t.Recipe), navCell(navTargetOutcome(t)), t.Files.Count, link)
+			navLine(&b, "| `%s` | %s%s | %s | %s | %s | %s | %d | %s |", t.ID, strings.Repeat("↳ ", n.depth), navCell(t.RelativeInput),
+				navCell(t.Kind), navCell(t.Recipe), navCell(navTargetOutcome(t)), navCell(navQualityCell(t.Quality)), t.Files.Count, link)
 		}
 	}
 	var bad []runmodel.TargetRecord
@@ -549,6 +560,10 @@ func navRenderTargetIndex(ws runmodel.Workspace, tree navTree, n *navNode, dir s
 	}
 
 	navLine(&b, "")
+	navLine(&b, "## Quality and fidelity")
+	navRenderQuality(&b, t, arts)
+
+	navLine(&b, "")
 	navLine(&b, "## Reading suggestions")
 	for i, s := range navReadingAdvice(t, scan) {
 		navLine(&b, "%d. %s", i+1, s)
@@ -564,6 +579,95 @@ func navRenderTargetIndex(ws runmodel.Workspace, tree navTree, n *navNode, dir s
 		navLine(&b, "- %s", w)
 	}
 	return b.String()
+}
+
+// navQualityCell is the root INDEX quality column: status plus the function
+// coverage ratio when one was measured.
+func navQualityCell(q *runmodel.QualityReport) string {
+	if q == nil {
+		return "not collected"
+	}
+	s := q.Status
+	if q.Functions.Ratio != nil {
+		s += fmt.Sprintf(", fn %.1f%%", *q.Functions.Ratio*100)
+	}
+	return s
+}
+
+func navMetricText(m runmodel.Metric) string {
+	if m.Value != nil {
+		return fmt.Sprintf("%d (%s)", *m.Value, m.Status)
+	}
+	return m.Status + " — " + navEsc(m.Basis)
+}
+
+func navCoverageText(c runmodel.Coverage) string {
+	if c.Ratio != nil && c.Found.Value != nil && c.Emitted.Value != nil {
+		return fmt.Sprintf("%d of %d (%.1f%%, measured)", *c.Emitted.Value, *c.Found.Value, *c.Ratio*100)
+	}
+	if c.Found.Value != nil || c.Emitted.Value != nil {
+		return "found " + navMetricText(c.Found) + "; emitted " + navMetricText(c.Emitted) + "; no comparable ratio"
+	}
+	return navMetricText(c.Found)
+}
+
+func navNamesText(n runmodel.NameQuality) string {
+	if n.AutoNamed.Value != nil && n.Total.Value != nil {
+		s := fmt.Sprintf("%d of %d tool-default names", *n.AutoNamed.Value, *n.Total.Value)
+		if n.AutoRatio != nil {
+			s += fmt.Sprintf(" (%.1f%%)", *n.AutoRatio*100)
+		}
+		if n.Inferred.Value != nil {
+			s += fmt.Sprintf("; %d renamed by inference (medium confidence)", *n.Inferred.Value)
+		}
+		return s
+	}
+	return navMetricText(n.AutoNamed)
+}
+
+// navRenderQuality writes the target's measured quality and the fidelity of
+// its artifacts. Values come from morgue.json; null is shown as unknown.
+func navRenderQuality(b *strings.Builder, t runmodel.TargetRecord, arts []runmodel.Artifact) {
+	kinds := map[string]int{}
+	var order []string
+	for _, a := range arts {
+		if kinds[a.Kind] == 0 {
+			order = append(order, a.Kind)
+		}
+		kinds[a.Kind]++
+	}
+	if len(order) > 0 {
+		parts := make([]string, 0, len(order))
+		for _, k := range order {
+			parts = append(parts, fmt.Sprintf("`%s` ×%d", navEsc(k), kinds[k]))
+		}
+		navLine(b, "- Fidelity (artifact kinds): %s — see AGENTS.md for what each label means.", strings.Join(parts, ", "))
+	} else {
+		navLine(b, "- Fidelity: no artifacts recorded for this target.")
+	}
+	if t.Provenance != nil {
+		navLine(b, "- Provenance: %s (stream it; one row per generated file/function/rename).", navMdLink("provenance.ndjson", path.Base(*t.Provenance)))
+	} else {
+		navLine(b, "- Provenance: none recorded for this target.")
+	}
+	q := t.Quality
+	if q == nil {
+		navLine(b, "- Quality: **not collected** (target skipped, cancelled or interrupted): completeness is unknown.")
+		return
+	}
+	navLine(b, "- Quality: **%s** (family `%s`; %s).", navEsc(q.Status), navEsc(q.Family), navMdLink("quality.json", "quality.json"))
+	navLine(b, "- Functions: %s", navCoverageText(q.Functions))
+	navLine(b, "- Types: %s", navCoverageText(q.Types))
+	navLine(b, "- Names: %s", navNamesText(q.Names))
+	navLine(b, "- Decompiler errors: %s", navMetricText(q.DecompilerErrors))
+	navLine(b, "- String decryption: %s", navCoverageText(q.StringDecryption))
+	for i, c := range q.Checks {
+		if i == navMaxArtifactRows {
+			navLine(b, "- %d more checks; see quality.json.", len(q.Checks)-i)
+			break
+		}
+		navLine(b, "- Check `%s`: **%s** — %s", navEsc(c.ID), navEsc(c.Status), navEsc(c.Message))
+	}
 }
 
 func navReadingAdvice(t runmodel.TargetRecord, scan navTargetScan) []string {
@@ -622,7 +726,7 @@ func navTargetWarnings(t runmodel.TargetRecord, arts []runmodel.Artifact, scan n
 		w = append(w, "Skipped: "+navEsc(t.SkipReason))
 	}
 	if t.Quality == nil {
-		w = append(w, "Quality not yet collected: completeness is unknown.")
+		w = append(w, "Quality not collected: completeness is unknown.")
 	} else {
 		w = append(w, "Quality status: "+navEsc(t.Quality.Status)+" (see morgue.json).")
 		for _, q := range t.Quality.Warnings {
