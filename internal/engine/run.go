@@ -394,8 +394,7 @@ func (r *Run) emitLocked(id, parent string, ts time.Time, p runmodel.Payload) {
 		return
 	}
 	if r.store != nil {
-		if err := r.store.Append(ev); err != nil {
-			r.failPersistenceLocked(err)
+		if !r.appendLocked(&ev, p) {
 			return
 		}
 		if ev.Type == runmodel.EventRunFinished {
@@ -430,6 +429,55 @@ func (r *Run) emitLocked(id, parent string, ts time.Time, p runmodel.Payload) {
 			r.overflow = append(r.overflow, ev)
 		}
 	}
+}
+
+// appendLocked durably records ev and reports whether it was committed. A
+// navigation publisher failure (*workspace.PublishError) is an execution
+// error but leaves the journal usable: a committed record is still delivered,
+// and a refused successful run.finished is rewritten once as an error outcome
+// (journal, manifest and RunResult agree; no durable success survives). Any
+// other failure poisons persistence. Caller holds mu.
+func (r *Run) appendLocked(ev *runmodel.Event, p runmodel.Payload) bool {
+	err := r.store.Append(*ev)
+	if err == nil {
+		return true
+	}
+	var pe *workspace.PublishError
+	if !errors.As(err, &pe) {
+		r.failPersistenceLocked(err)
+		return false
+	}
+	perr := fmt.Errorf("persist workspace: %w", err)
+	r.eventErr = errors.Join(r.eventErr, perr)
+	if pe.Committed {
+		return true
+	}
+	rf, isTerminal := p.(runmodel.RunFinished)
+	if !isTerminal {
+		r.failPersistenceLocked(err)
+		return false
+	}
+	rf.Outcome = OutcomeError
+	rf.Error = errorText(errors.Join(nonEmptyErr(rf.Error), perr))
+	retry, nerr := runmodel.NewEvent(ev.Run, ev.Seq, ev.TS, ev.TargetID, ev.ParentTargetID, rf)
+	if nerr != nil {
+		r.failPersistenceLocked(nerr)
+		return false
+	}
+	r.result.Outcome, r.result.Error = OutcomeError, rf.Error
+	if err := r.store.Append(retry); err != nil && !(errors.As(err, &pe) && pe.Committed) {
+		r.failPersistenceLocked(err)
+		return false
+	}
+	*ev = retry
+	return true
+}
+
+func nonEmptyErr(s string) error {
+	if s == "" {
+		return nil
+	}
+	return errors.New(s)
 }
 
 func (r *Run) failPersistenceLocked(err error) {

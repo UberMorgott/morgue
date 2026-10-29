@@ -337,3 +337,57 @@ func TestJournalFailureNeverNotifiesSuccess(t *testing.T) {
 		}
 	}
 }
+
+// Codex M2 blocker: a navigation publisher failure at the terminal state must
+// not leave a durable success; journal, manifest, notification and RunResult
+// all report the error.
+func TestTerminalPublishFailureRecordsErrorOutcome(t *testing.T) {
+	root := t.TempDir()
+	e := New(config.Default(), t.TempDir())
+	r, err := e.PrepareRun(context.Background(), runmodel.RunRequest{Path: terminalInput(t, "ok.dll"), Output: root, Recipe: terminalRecipeName})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := r.store.(*workspace.Writer)
+	w.SetPublisher(func(ws runmodel.Workspace) error {
+		if ws.Run.Outcome != nil {
+			return errors.New("index disk full")
+		}
+		return workspace.WriteNavigation(ws)
+	})
+	ch := make(chan runmodel.Event, 4096)
+	result, err := r.Execute(context.Background(), nil, ch)
+	close(ch)
+	if err == nil || !errors.Is(err, workspace.ErrPublish) || result.Outcome != "error" || !strings.Contains(result.Error, "index disk full") {
+		t.Fatalf("publish failure hidden: %+v / %v", result, err)
+	}
+	finished := 0
+	for ev := range ch {
+		if ev.Type == runmodel.EventRunFinished {
+			finished++
+			var p runmodel.RunFinished
+			_ = json.Unmarshal(ev.Data, &p)
+			if p.Outcome != "error" || !strings.Contains(p.Error, "index disk full") {
+				t.Fatalf("delivered terminal = %+v", p)
+			}
+		}
+	}
+	if finished != 1 {
+		t.Fatalf("run.finished delivered %d times", finished)
+	}
+	rec, err := workspace.Read(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Interrupted || rec.Workspace.Run.Outcome == nil || *rec.Workspace.Run.Outcome != "error" {
+		t.Fatalf("durable outcome = %+v interrupted=%v", rec.Workspace.Run.Outcome, rec.Interrupted)
+	}
+	disk, err := os.ReadFile(filepath.Join(root, "morgue.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ws runmodel.Workspace
+	if err := json.Unmarshal(disk, &ws); err != nil || ws.Run.Outcome == nil || *ws.Run.Outcome != "error" || ws.LastSeq != rec.LastSeq {
+		t.Fatalf("manifest outcome/lastSeq disagree with journal: %+v vs %d (%v)", ws.Run, rec.LastSeq, err)
+	}
+}

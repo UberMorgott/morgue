@@ -37,10 +37,43 @@ type Writer struct {
 	publisher func(runmodel.Workspace) error
 	timer     *time.Timer
 	failed    error // sticky durability error
+	navErr    error // sticky navigation publisher error (journal/manifest stay valid)
 	closed    bool
 }
 
 var _ Sink = (*Writer)(nil)
+
+// ErrPublish marks a navigation publisher failure (errors.Is target).
+var ErrPublish = errors.New("publish navigation")
+
+// PublishError reports a navigation publisher failure. It does not poison the
+// Writer: journal and manifest stay valid and later records are still accepted,
+// so the run can record an honest error outcome. Committed tells whether the
+// event itself reached the journal and manifest. A successful run.finished is
+// never committed after any publisher failure: navigation for a successful
+// terminal state is published before the record is journaled, so a failure can
+// never leave a durable success behind.
+type PublishError struct {
+	Seq       uint64
+	Committed bool
+	Err       error
+}
+
+func (e *PublishError) Error() string {
+	return fmt.Sprintf("publish navigation (event %d): %v", e.Seq, e.Err)
+}
+
+// Unwrap exposes both ErrPublish and the publisher's own error.
+func (e *PublishError) Unwrap() []error { return []error{ErrPublish, e.Err} }
+
+// successfulTerminal reports whether ev is run.finished with outcome success.
+func successfulTerminal(ev *runmodel.Event) bool {
+	if ev.Type != runmodel.EventRunFinished {
+		return false
+	}
+	var d runmodel.RunFinished
+	return json.Unmarshal(ev.Data, &d) == nil && d.Outcome == runmodel.OutcomeSuccess
+}
 
 // Open admits a fresh workspace at handle.Output: it takes the OS lifetime
 // lock in .morgue/run.lock (ErrLocked wins over the emptiness check), accepts
@@ -167,7 +200,9 @@ func (w *Writer) SetPublisher(fn func(runmodel.Workspace) error) {
 // are synced and published before Append returns; progress/log records are
 // synced and published at most coalesceInterval later. On any error the
 // journal is cut back to its previous boundary where storage permits, the
-// snapshot does not advance and the writer stays failed.
+// snapshot does not advance and the writer stays failed. A navigation
+// publisher failure is the exception: it returns *PublishError (see there)
+// without poisoning the writer.
 func (w *Writer) Append(ev runmodel.Event) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -185,10 +220,24 @@ func (w *Writer) Append(ev runmodel.Event) error {
 		return fmt.Errorf("workspace: encode event %d: %w", ev.Seq, err)
 	}
 	immediate := publishesNow(ev.Type)
+	success := successfulTerminal(&ev)
+	if success && w.navErr != nil {
+		return &PublishError{Seq: ev.Seq, Err: fmt.Errorf("success refused after earlier failure: %w", w.navErr)}
+	}
 	undo := w.proj.checkpoint(&ev, immediate)
 	if err := w.proj.apply(&ev); err != nil {
 		undo()
 		return fmt.Errorf("workspace: %w", err)
+	}
+	if success {
+		// Publish the successful terminal navigation before committing the
+		// record: on failure nothing is journaled and the caller can record an
+		// error outcome instead of a durable success.
+		if err := w.notifyLocked(); err != nil {
+			undo()
+			w.navErr = err
+			return &PublishError{Seq: ev.Seq, Err: err}
+		}
 	}
 	prevSize := w.size
 	rollback := func(cause error) error {
@@ -213,11 +262,14 @@ func (w *Writer) Append(ev runmodel.Event) error {
 			w.size, w.lastSeq, w.syncedSeq = prevSize, ev.Seq-1, ev.Seq-1
 			return rollback(err)
 		}
+		if success {
+			return nil // navigation already published for this exact projection
+		}
 		// The manifest now covers ev; a publisher failure cannot be rolled
 		// back without making the manifest run ahead of the journal.
 		if err := w.notifyLocked(); err != nil {
-			w.fail(err)
-			return fmt.Errorf("workspace: %w", err)
+			w.navErr = err
+			return &PublishError{Seq: ev.Seq, Committed: true, Err: err}
 		}
 		return nil
 	}
@@ -311,10 +363,7 @@ func (w *Writer) notifyLocked() error {
 	if w.publisher == nil {
 		return nil
 	}
-	if err := w.publisher(w.proj.clone()); err != nil {
-		return fmt.Errorf("publish navigation: %w", err)
-	}
-	return nil
+	return w.publisher(w.proj.clone())
 }
 
 // scheduleLocked arranges the coalesced sync+publish of pending progress.
@@ -336,12 +385,14 @@ func (w *Writer) flushTick() {
 	if w.closed || w.failed != nil {
 		return
 	}
-	if err := w.flushLocked(); err != nil {
+	if err := w.flushLocked(); err != nil && !errors.Is(err, ErrPublish) {
 		w.fail(err)
 	}
 }
 
-// flushLocked syncs and publishes records not yet covered by morgue.json.
+// flushLocked syncs and publishes records not yet covered by morgue.json. A
+// publisher failure is returned as a committed *PublishError (navErr recorded,
+// writer not poisoned); sync/manifest failures are durability errors.
 func (w *Writer) flushLocked() error {
 	if w.pubSeq == w.lastSeq {
 		return nil
@@ -352,7 +403,11 @@ func (w *Writer) flushLocked() error {
 	if err := w.writeManifestLocked(); err != nil {
 		return err
 	}
-	return w.notifyLocked()
+	if err := w.notifyLocked(); err != nil {
+		w.navErr = err
+		return &PublishError{Seq: w.pubSeq, Committed: true, Err: err}
+	}
+	return nil
 }
 
 // Snapshot returns the projection through the last appended record, syncing
@@ -390,7 +445,9 @@ func (w *Writer) Close() error {
 	}
 	var err error
 	if w.failed == nil && w.proj.started {
-		if ferr := w.flushLocked(); ferr != nil {
+		if ferr := w.flushLocked(); errors.Is(ferr, ErrPublish) {
+			err = fmt.Errorf("workspace: %w", ferr)
+		} else if ferr != nil {
 			w.fail(ferr)
 		}
 	}

@@ -376,13 +376,93 @@ func TestManifestReplaceFailureKeepsPriorSnapshot(t *testing.T) {
 }
 
 func TestPublisherFailureIsSurfaced(t *testing.T) {
-	w, r, _ := openRun(t, runA)
+	w, r, root := openRun(t, runA)
 	w.SetPublisher(func(runmodel.Workspace) error { return errors.New("navigation disk full") })
-	if err := w.Append(r.started()); err == nil || !strings.Contains(err.Error(), "navigation disk full") {
-		t.Fatalf("publisher error hidden: %v", err)
+	err := w.Append(r.started())
+	var pe *PublishError
+	if !errors.As(err, &pe) || !pe.Committed || !errors.Is(err, ErrPublish) || !strings.Contains(err.Error(), "navigation disk full") {
+		t.Fatalf("publisher error hidden or misclassified: %v", err)
 	}
-	if err := w.Append(r.finished("success", runmodel.Counts{})); err == nil {
-		t.Fatal("success accepted after publisher failure")
+	// A successful terminal is refused and not journaled; the seq stays free.
+	ok := r.finished("success", runmodel.Counts{})
+	if err := w.Append(ok); !errors.As(err, &pe) || pe.Committed {
+		t.Fatalf("success accepted after publisher failure: %v", err)
+	}
+	// The writer is not poisoned: an honest error terminal reuses that seq.
+	r.seq--
+	if err := w.Append(r.finished("error", runmodel.Counts{})); !errors.As(err, &pe) || !pe.Committed {
+		t.Fatalf("error terminal not committed: %v", err)
+	}
+	ws, _ := manifestOnDisk(t, root)
+	if ws.Run.Outcome == nil || *ws.Run.Outcome != "error" || ws.LastSeq != 2 {
+		t.Fatalf("manifest outcome/lastSeq = %v/%d, want error/2", ws.Run.Outcome, ws.LastSeq)
+	}
+	assertJournalOutcome(t, root, 2, "error")
+}
+
+// A publisher that fails only for the terminal success state must leave no
+// durable success: nothing is journaled and the run can record an error.
+func TestTerminalPublisherFailureLeavesNoDurableSuccess(t *testing.T) {
+	w, r, root := openRun(t, runA)
+	failTerminal := false
+	w.SetPublisher(func(ws runmodel.Workspace) error {
+		if failTerminal {
+			return errors.New("index write failed")
+		}
+		return nil
+	})
+	c := runmodel.Counts{Total: 1, Success: 1}
+	mustAppend(t, w, r.started(), r.discovered("t1", "", "game"), r.targetDone("t1", "", "success"))
+	failTerminal = true
+	var pe *PublishError
+	if err := w.Append(r.finished("success", c)); !errors.As(err, &pe) || pe.Committed {
+		t.Fatalf("terminal publisher failure: %v", err)
+	}
+	ws, _ := manifestOnDisk(t, root)
+	if ws.Run.Outcome != nil || ws.LastSeq != 3 {
+		t.Fatalf("manifest advanced to outcome %v seq %d after refused success", ws.Run.Outcome, ws.LastSeq)
+	}
+	assertJournalOutcome(t, root, 3, "")
+	r.seq--
+	if err := w.Append(r.finished("error", c)); !errors.As(err, &pe) || !pe.Committed {
+		t.Fatalf("error terminal: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close after committed error terminal: %v", err)
+	}
+	ws, _ = manifestOnDisk(t, root)
+	if ws.Run.Outcome == nil || *ws.Run.Outcome != "error" || ws.Run.State != "finished" {
+		t.Fatalf("manifest run = %+v", ws.Run)
+	}
+	assertJournalOutcome(t, root, 4, "error")
+}
+
+// assertJournalOutcome checks the journal has exactly n lines and that the
+// last run.finished (if want != "") carries outcome want; want "" = none.
+func assertJournalOutcome(t *testing.T, root string, n int, want string) {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(runmodel.JournalPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+	if len(lines) != n {
+		t.Fatalf("journal lines = %d, want %d", len(lines), n)
+	}
+	got := ""
+	for _, l := range lines {
+		var ev runmodel.Event
+		if err := json.Unmarshal([]byte(l), &ev); err != nil {
+			t.Fatal(err)
+		}
+		if ev.Type == runmodel.EventRunFinished {
+			var d runmodel.RunFinished
+			_ = json.Unmarshal(ev.Data, &d)
+			got = d.Outcome
+		}
+	}
+	if got != want {
+		t.Fatalf("journal terminal outcome = %q, want %q", got, want)
 	}
 }
 
