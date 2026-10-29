@@ -63,7 +63,9 @@ func TestGhidraProvenanceStreamsFunctionsAndRenames(t *testing.T) {
 		fn.Producer.Version != "12.2" || fn.Producer.StepID != "native.decompile" {
 		t.Fatalf("default-name function record: %+v", fn)
 	}
-	if e := byID["game.exe:fn:0x140001000"]; e.OriginalName == nil || *e.OriginalName != "entry" || e.NameSource != "export" {
+	// Not in a PE export table (no such file) and no PDB: a binary symbol, not proven export.
+	if e := byID["game.exe:fn:0x140001000"]; e.OriginalName == nil || *e.OriginalName != "entry" ||
+		e.NameSource != "debug-symbol" || e.Confidence != "medium" {
 		t.Fatalf("imported name: %+v", e)
 	}
 	if th := byID["game.exe:fn:0x140001020"]; th.NameSource != "metadata" || th.ArtifactPath != "src/functions/001/001_01.c" {

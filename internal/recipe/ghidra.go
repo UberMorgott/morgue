@@ -21,6 +21,7 @@ import (
 	"github.com/UberMorgott/morgue/internal/runmodel"
 	"github.com/UberMorgott/morgue/internal/tools"
 	"github.com/UberMorgott/morgue/internal/util"
+	peparser "github.com/saferwall/pe"
 )
 
 // resolveGhidraJava returns the Java executable Ghidra should use, preferring
@@ -745,6 +746,7 @@ func ghidraProvenance(sink provenance.Sink, out, srcDir, binary, fallbackVersion
 		pdbLoaded = first.PDBLoaded
 		first, ok = nextStatus()
 	}
+	exports := peExportRVAs(binary)
 	producer := runmodel.ProvenanceProducer{Tool: "ghidra", Version: version, StepID: "native.decompile",
 		Args: []string{"analyzeHeadless", "-import", module, "-postScript", "MorgueExport.java"}}
 	strp := func(s string) *string { return &s }
@@ -835,10 +837,15 @@ func ghidraProvenance(sink provenance.Sink, out, srcDir, binary, fallbackVersion
 			switch {
 			case g.Thunk:
 				r.NameSource, r.Confidence = "metadata", "high" // import table thunk
+			case r.RVA != nil && exports[*r.RVA]:
+				r.NameSource, r.Confidence = "export", "high"
 			case pdbLoaded:
 				r.NameSource, r.Confidence = "debug-symbol", "high"
 			default:
-				r.NameSource, r.Confidence = "export", "high"
+				// COFF/Go symbol table, entry label or similar: carried in the
+				// binary, but not proven to be an exported name.
+				r.NameSource, r.Confidence = "debug-symbol", "medium"
+				r.Evidence[0].Detail += "; not in the PE export table, no PDB: binary symbol table or loader label"
 			}
 		case "USER_DEFINED":
 			r.RecoveredName = strp(name)
@@ -909,4 +916,25 @@ func ghidraVersion(ctx *Context) string {
 		return v
 	}
 	return ""
+}
+
+// peExportRVAs returns the PE export table function RVAs of binary as
+// normalized 0x-hex strings (bounded by the export count). Empty for a
+// non-PE, unreadable or export-less file.
+func peExportRVAs(binary string) map[string]bool {
+	set := map[string]bool{}
+	f, err := peparser.New(util.LongPath(binary), nil)
+	if err != nil {
+		return set
+	}
+	defer func() { _ = f.Close() }()
+	if f.Parse() != nil {
+		return set
+	}
+	for _, fn := range f.Export.Functions {
+		if fn.FunctionRVA != 0 && fn.Forwarder == "" {
+			set["0x"+strconv.FormatUint(uint64(fn.FunctionRVA), 16)] = true
+		}
+	}
+	return set
 }
