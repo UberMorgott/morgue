@@ -275,6 +275,14 @@ func extractZip(archivePath, destDir string) error {
 		if copyErr != nil {
 			return fmt.Errorf("extract %s: %w", f.Name, copyErr)
 		}
+		// Keep archive mtimes: tools compare them (Ghidra recompiles a .sla
+		// that looks older than its .slaspec/.sinc and so mutates its own
+		// payload after the run froze its identity).
+		if !f.Modified.IsZero() {
+			if err := os.Chtimes(target, f.Modified, f.Modified); err != nil {
+				return fmt.Errorf("set mtime %s: %w", target, err)
+			}
+		}
 	}
 	return nil
 }

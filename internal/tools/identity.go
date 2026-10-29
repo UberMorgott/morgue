@@ -13,10 +13,11 @@ import (
 	"strings"
 )
 
-const inventoryScope = "payload-inventory-v1"
+const inventoryScope = "payload-inventory-v2"
 
 // inventoryHash covers executable plus DLLs/JARs/plugins, never just a launcher.
-// Only known mutable directory names and root .version are excluded.
+// Only known mutable directory names, root .version and Ghidra *.sla.lock
+// sentinels are excluded (v2 added the sentinels).
 func inventoryHash(ctx context.Context, root string) (string, error) {
 	var entries []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -37,6 +38,11 @@ func inventoryHash(ctx context.Context, root string) (string, error) {
 			}
 		}
 		if rel == ".version" {
+			return nil
+		}
+		// Ghidra creates <lang>.sla.lock sentinels next to SLEIGH files on
+		// launch; runtime state, not payload.
+		if !d.IsDir() && strings.HasSuffix(strings.ToLower(d.Name()), ".sla.lock") {
 			return nil
 		}
 		info, err := d.Info()

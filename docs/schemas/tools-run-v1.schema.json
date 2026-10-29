@@ -23,10 +23,10 @@
         "runtimeVersion": { "type": "string" },
         "runtimeSha256": { "type": "string", "pattern": "^([a-f0-9]{64})?$" },
         "managed": { "type": "boolean" },
-        "hashScope": { "enum": ["payload-inventory-v1", "not-collected"] }
+        "hashScope": { "enum": ["payload-inventory-v1", "payload-inventory-v2", "not-collected"] }
       },
       "allOf": [{
-        "if": { "properties": { "hashScope": { "const": "payload-inventory-v1" } } },
+        "if": { "properties": { "hashScope": { "enum": ["payload-inventory-v1", "payload-inventory-v2"] } } },
         "then": { "properties": { "payloadSha256": { "pattern": "^[a-f0-9]{64}$" } } }
       }]
     }
