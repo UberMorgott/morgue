@@ -164,3 +164,59 @@ func TestRunSelectsEachToolOnceAndSealsLock(t *testing.T) {
 		t.Fatalf("delete after run: %v", err)
 	}
 }
+
+// A failed freshness check keeps the working install and is reported as a
+// tool-scoped warn record before that tool's ready event.
+func TestFreshnessWarningNamesToolBeforeReady(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+	orig := tools.Registry
+	tools.Registry = []tools.ToolDef{
+		{Name: "m3fake", Method: tools.MethodDirectURL, URL: srv.URL + "/tool.exe", Binary: "tool.exe"},
+		{Name: "m3optional", Method: tools.MethodDirectURL, URL: srv.URL + "/optional.exe", Binary: "optional.exe", Optional: true},
+	}
+	t.Cleanup(func() { tools.Registry = orig })
+
+	toolBase := t.TempDir()
+	dir := filepath.Join(toolBase, "m3fake")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tool.exe"), []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := &toolSelectionProbe
+	p.Lock()
+	p.toolBase, p.invocations, p.errs = toolBase, 0, nil
+	p.Unlock()
+
+	e := New(config.Default(), toolBase)
+	ch := make(chan PipelineEvent, 256)
+	var order []string
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for ev := range ch {
+			if ev.Tool != "m3fake" {
+				continue
+			}
+			switch {
+			case ev.Severity == "warn" && ev.ToolStage == "":
+				order = append(order, "warn")
+			case ev.ToolStage == "ready":
+				order = append(order, "ready")
+			}
+		}
+	}()
+	err := e.Run(context.Background(), Options{Input: terminalInput(t, "a.dll"), Output: t.TempDir(), Recipe: toolSelectionRecipeName}, ch)
+	close(ch)
+	<-done
+	if err != nil {
+		t.Fatalf("run must continue with the installed tool: %v", err)
+	}
+	if len(order) != 2 || order[0] != "warn" || order[1] != "ready" {
+		t.Fatalf("m3fake events = %v, want [warn ready]", order)
+	}
+}

@@ -47,7 +47,10 @@ func (e *Engine) ensureSelectedTools(ctx context.Context, filePath string, names
 			case "checking":
 				em.send(PipelineEvent{Phase: "tools", Tool: st.Name, ToolStage: "check", Target: filePath, Message: fmt.Sprintf("Checking %s for updates...", st.Name)})
 			case "warning":
-				em.emitWarn("tools", filePath, fmt.Sprintf("%s: %s", st.Name, st.Warning))
+				// Tool-scoped log record (level=warn, tool=<name>), emitted
+				// inside Ensure, i.e. before this tool's "ready" event, so the
+				// UI attaches the freshness warning to the right tool.
+				em.send(PipelineEvent{Phase: "tools", Tool: st.Name, Target: filePath, Severity: "warn", Message: fmt.Sprintf("%s: %s", st.Name, st.Warning)})
 			}
 		},
 	}
