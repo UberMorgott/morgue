@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -51,7 +52,75 @@ type InspectReport struct {
 	Limit        int                     `json:"limit"`
 	HasMore      bool                    `json:"hasMore"`
 	TargetPage   []runmodel.TargetRecord `json:"targetPage"`
-	Workspace    *runmodel.Workspace     `json:"-"`
+	// Quality summarizes each TargetPage row (same order): status, key
+	// metrics and the code fidelity of its recorded artifacts.
+	Quality   []TargetQuality     `json:"quality"`
+	Workspace *runmodel.Workspace `json:"-"`
+}
+
+// TargetQuality is the compact per-target quality view. Null metrics were not
+// measured; Status "not-collected" means the target has no quality report.
+type TargetQuality struct {
+	ID               string         `json:"id"`
+	Status           string         `json:"status"`
+	Family           string         `json:"family"`
+	FunctionsRatio   *float64       `json:"functionsRatio"`
+	TypesRatio       *float64       `json:"typesRatio"`
+	DecompilerErrors *int64         `json:"decompilerErrors"`
+	NamesAutoRatio   *float64       `json:"namesAutoRatio"`
+	Fidelity         map[string]int `json:"fidelity"`
+}
+
+// codeFidelity lists the artifact kinds that describe recovered code, in
+// display order (most to least faithful).
+var codeFidelity = []string{runmodel.FidelitySource, runmodel.FidelityDecompiled, runmodel.FidelityPseudocode, runmodel.FidelityStub}
+
+func targetQuality(t runmodel.TargetRecord, arts []runmodel.Artifact) TargetQuality {
+	tq := TargetQuality{ID: t.ID, Status: "not-collected", Fidelity: map[string]int{}}
+	for _, a := range arts {
+		if a.TargetID != nil && *a.TargetID == t.ID && slices.Contains(codeFidelity, a.Kind) {
+			tq.Fidelity[a.Kind]++
+		}
+	}
+	q := t.Quality
+	if q == nil {
+		return tq
+	}
+	tq.Status, tq.Family = q.Status, q.Family
+	tq.FunctionsRatio, tq.TypesRatio, tq.NamesAutoRatio = q.Functions.Ratio, q.Types.Ratio, q.Names.AutoRatio
+	if q.DecompilerErrors.Status == "measured" || q.DecompilerErrors.Status == "estimated" {
+		tq.DecompilerErrors = q.DecompilerErrors.Value
+	}
+	return tq
+}
+
+func qualityLine(q TargetQuality) string {
+	parts := []string{q.Status}
+	if q.Family != "" {
+		parts[0] += " (" + q.Family + ")"
+	}
+	pct := func(label string, v *float64) {
+		if v != nil {
+			parts = append(parts, fmt.Sprintf("%s %.1f%%", label, *v*100))
+		}
+	}
+	pct("functions", q.FunctionsRatio)
+	pct("types", q.TypesRatio)
+	if q.DecompilerErrors != nil {
+		parts = append(parts, fmt.Sprintf("decompiler errors %d", *q.DecompilerErrors))
+	}
+	pct("auto names", q.NamesAutoRatio)
+	var fid []string
+	for _, k := range codeFidelity {
+		if n := q.Fidelity[k]; n > 0 {
+			fid = append(fid, fmt.Sprintf("%s x%d", k, n))
+		}
+	}
+	if len(fid) == 0 {
+		fid = []string{"none"}
+	}
+	parts = append(parts, "fidelity "+strings.Join(fid, ", "))
+	return strings.Join(parts, " | ")
 }
 
 // ErrWorkspaceCorrupt marks a journal that could only be read up to a prefix.
@@ -114,7 +183,7 @@ func buildInspectReport(opts InspectOptions, rec workspace.Recovery, rerr error)
 		Diagnostics: nonNil(rec.Diagnostics), Warnings: nonNil(ws.Warnings),
 		Targets: ws.Run.Targets, LeafTargets: ws.Run.LeafTargets,
 		TargetsTotal: len(ws.Targets), Offset: opts.Offset, Limit: opts.Limit,
-		TargetPage: []runmodel.TargetRecord{}, Workspace: &ws,
+		TargetPage: []runmodel.TargetRecord{}, Quality: []TargetQuality{}, Workspace: &ws,
 	}
 	switch {
 	case rerr != nil:
@@ -130,6 +199,9 @@ func buildInspectReport(opts InspectOptions, rec workspace.Recovery, rerr error)
 		end := min(opts.Offset+opts.Limit, len(ws.Targets))
 		rep.TargetPage = ws.Targets[opts.Offset:end]
 		rep.HasMore = end < len(ws.Targets)
+		for _, t := range rep.TargetPage {
+			rep.Quality = append(rep.Quality, targetQuality(t, ws.Artifacts))
+		}
 	}
 	return rep
 }
@@ -179,7 +251,7 @@ func printInspectText(w io.Writer, r InspectReport) {
 	}
 	end := r.Offset + len(r.TargetPage)
 	fmt.Fprintf(w, "targets %d-%d of %d (id | outcome | recipe | input -> index):\n", min(r.Offset+1, end), end, r.TargetsTotal)
-	for _, t := range r.TargetPage {
+	for i, t := range r.TargetPage {
 		state := t.State
 		if t.Outcome != nil {
 			state = *t.Outcome
@@ -193,6 +265,9 @@ func printInspectText(w io.Writer, r InspectReport) {
 			fmt.Fprintf(w, "    error: %s\n", oneLine(t.Error))
 		} else if t.SkipReason != "" {
 			fmt.Fprintf(w, "    skipped: %s\n", oneLine(t.SkipReason))
+		}
+		if i < len(r.Quality) {
+			fmt.Fprintf(w, "    quality: %s\n", oneLine(qualityLine(r.Quality[i])))
 		}
 	}
 	if r.HasMore {

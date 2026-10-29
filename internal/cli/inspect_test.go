@@ -69,6 +69,51 @@ func TestInspectJSONCorruptReturnsPrefixAndError(t *testing.T) {
 	}
 }
 
+func TestInspectPerTargetQuality(t *testing.T) {
+	rec := inspectRecovery(2)
+	ratio, auto := 0.5, 0.25
+	two, zero, eight := int64(2), int64(0), int64(8)
+	m := func(v *int64) runmodel.Metric { return runmodel.Metric{Value: v, Status: "measured"} }
+	rec.Workspace.Targets[0].Quality = &runmodel.QualityReport{
+		Status: "degraded", Family: "native",
+		Functions:        runmodel.Coverage{Found: m(&two), Emitted: m(&two), Ratio: &ratio},
+		DecompilerErrors: m(&zero),
+		Names:            runmodel.NameQuality{Total: m(&eight), AutoNamed: m(&two), AutoRatio: &auto},
+	}
+	id0 := rec.Workspace.Targets[0].ID
+	rec.Workspace.Artifacts = []runmodel.Artifact{
+		{TargetID: &id0, Kind: runmodel.FidelityPseudocode}, {TargetID: &id0, Kind: runmodel.FidelityPseudocode},
+		{TargetID: &id0, Kind: "metadata"},
+	}
+	read := func(string) (workspace.Recovery, error) { return rec, nil }
+
+	var out bytes.Buffer
+	if err := Inspect(InspectOptions{Root: t.TempDir(), Out: &out, Read: read}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"quality: degraded (native) | functions 50.0% | decompiler errors 0 | auto names 25.0% | fidelity pseudocode x2",
+		"quality: not-collected | fidelity none",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("missing %q in\n%s", want, out.String())
+		}
+	}
+
+	out.Reset()
+	if err := Inspect(InspectOptions{Root: t.TempDir(), Out: &out, JSON: true, Read: read}); err != nil {
+		t.Fatal(err)
+	}
+	var rep InspectReport
+	if err := json.Unmarshal(out.Bytes(), &rep); err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Quality) != 2 || rep.Quality[0].Status != "degraded" || rep.Quality[0].Fidelity[runmodel.FidelityPseudocode] != 2 ||
+		rep.Quality[0].NamesAutoRatio == nil || *rep.Quality[0].NamesAutoRatio != 0.25 || rep.Quality[1].Status != "not-collected" {
+		t.Fatalf("quality %+v", rep.Quality)
+	}
+}
+
 func TestInspectRebuildUsesRebuilder(t *testing.T) {
 	root := t.TempDir()
 	called := ""
