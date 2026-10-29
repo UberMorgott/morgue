@@ -94,7 +94,7 @@
   {#each runtimeDeps as dep (dep.kind)}
     <div class="runtime-dep-row">
       <span class="dep-branch">&nbsp;</span>
-      <span class="dep-name">{dep.kind === 'dotnet' ? '.NET SDK' : dep.kind === 'java' ? 'Java JRE' : dep.kind}</span>
+      <span class="dep-name">{dep.kind === 'dotnet' ? '.NET SDK' : dep.kind === 'java' ? 'Java JDK' : dep.kind}</span>
       {#if dep.available}
         <span class="dep-indicator dep-ok"></span>
         <span class="dep-version">{dep.version || '—'}</span>

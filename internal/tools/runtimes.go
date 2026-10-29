@@ -126,6 +126,8 @@ func (m *Manager) CheckRuntimes() []RuntimeStatus {
 			st.Path = localBin
 			st.Local = true
 			st.Version = detectRuntimeVersion(kind, localBin)
+			// Too old for managed Java tools: shown, but not available.
+			st.Available = kind != RuntimeJava || javaMajor(st.Version) >= managedJavaFeature
 			statuses = append(statuses, st)
 			continue
 		}
@@ -137,6 +139,7 @@ func (m *Manager) CheckRuntimes() []RuntimeStatus {
 			st.Path = sysPath
 			st.Local = false
 			st.Version = detectRuntimeVersion(kind, sysPath)
+			st.Available = kind != RuntimeJava || javaMajor(st.Version) >= managedJavaFeature
 		}
 
 		statuses = append(statuses, st)
@@ -221,16 +224,55 @@ func (m *Manager) RuntimePath(kind RuntimeKind) (string, error) {
 func (m *Manager) runtimePathUnbound(kind RuntimeKind) (string, error) {
 	localBin := m.localRuntimeBin(kind)
 	if _, err := os.Stat(localBin); err == nil {
-		return localBin, nil
+		// An older managed JDK (e.g. the former JRE 21) is treated as missing
+		// so selection reinstalls the current managed JDK.
+		if kind != RuntimeJava || javaRuntimeSupported(localBin) {
+			return localBin, nil
+		}
 	}
 	sysName := runtimeSystemName(kind)
 	if sysPath, err := exec.LookPath(sysName); err == nil {
 		if kind == RuntimeAspNet && !systemDotNetHasAspNet10(sysPath) {
 			return "", fmt.Errorf("runtime %s not found — system dotnet lacks .NET 10 ASP.NET Core", kind)
 		}
+		if kind == RuntimeJava && !javaRuntimeSupported(sysPath) {
+			return "", fmt.Errorf("runtime %s not found — system java is older than JDK %d", kind, managedJavaFeature)
+		}
 		return sysPath, nil
 	}
 	return "", fmt.Errorf("runtime %s not found — install via Tools page", kind)
+}
+
+// managedJavaFeature is the Java feature release Morgue installs and the
+// minimum it accepts from PATH. Ghidra 12.2 requires JDK 25
+// (application.java.min=25) and its headless launcher demands a JDK, not a
+// JRE; an older system Java would be selected, frozen for the run and then
+// rejected by Ghidra after an automatic update.
+const managedJavaFeature = 25
+
+// javaVersionOf is the Java version probe (a seam for tests).
+var javaVersionOf = func(bin string) string { return detectRuntimeVersion(RuntimeJava, bin) }
+
+// javaRuntimeSupported reports whether the java binary is at least
+// managedJavaFeature.
+func javaRuntimeSupported(bin string) bool {
+	return javaMajor(javaVersionOf(bin)) >= managedJavaFeature
+}
+
+// javaMajor returns the feature release of a `java -version` string:
+// "21.0.10" -> 21, "25" -> 25, legacy "1.8.0_402" -> 8; 0 when unparsable.
+func javaMajor(v string) int {
+	v = strings.TrimSpace(v)
+	v = strings.TrimPrefix(v, "1.")
+	end := 0
+	for end < len(v) && v[end] >= '0' && v[end] <= '9' {
+		end++
+	}
+	n, err := strconv.Atoi(v[:end])
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // systemDotNetHasAspNet10 reports whether the dotnet at dotnetPath hosts an
@@ -300,7 +342,7 @@ func (m *Manager) installRuntimeInto(ctx context.Context, kind RuntimeKind, cb *
 	case RuntimeDotnet:
 		return m.installDotnetSDK(ctx, cb)
 	case RuntimeJava:
-		return m.installJavaJRE(ctx, cb)
+		return m.installJavaJDK(ctx, cb)
 	case RuntimeAspNet:
 		return m.installAspNetRuntime(ctx, cb)
 	default:
@@ -397,15 +439,16 @@ type adoptiumAsset struct {
 	} `json:"binary"`
 }
 
-// installJavaJRE downloads Adoptium Temurin JRE 21.
-func (m *Manager) installJavaJRE(ctx context.Context, cb *InstallCallbacks) error {
+// installJavaJDK downloads Adoptium Temurin JDK managedJavaFeature (a JDK:
+// Ghidra's headless launcher rejects a JRE, and Native AOT recompiles need javac).
+func (m *Manager) installJavaJDK(ctx context.Context, cb *InstallCallbacks) error {
 	destDir := m.localRuntimeDir(RuntimeJava)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return fmt.Errorf("create java dir: %w", err)
 	}
 
 	// Query Adoptium API for download URL
-	apiURL := "https://api.adoptium.net/v3/assets/latest/21/hotspot?os=windows&architecture=x64&image_type=jre"
+	apiURL := fmt.Sprintf("https://api.adoptium.net/v3/assets/latest/%d/hotspot?os=windows&architecture=x64&image_type=jdk", managedJavaFeature)
 	requestCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
@@ -447,12 +490,12 @@ func (m *Manager) installJavaJRE(ctx context.Context, cb *InstallCallbacks) erro
 	var progressCb func(bytesDown, bytesTotal int64)
 	if cb != nil && cb.OnProgress != nil {
 		progressCb = func(bytesDown, bytesTotal int64) {
-			cb.OnProgress("java-jre", bytesDown, bytesTotal)
+			cb.OnProgress("java-jdk", bytesDown, bytesTotal)
 		}
 	}
 
 	if err := downloadFile(ctx, downloadURL, zipPath, progressCb); err != nil {
-		return fmt.Errorf("download Java JRE: %w", err)
+		return fmt.Errorf("download Java JDK: %w", err)
 	}
 	defer func() { _ = os.Remove(zipPath) }()
 
@@ -465,10 +508,10 @@ func (m *Manager) installJavaJRE(ctx context.Context, cb *InstallCallbacks) erro
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	if err := extractZip(zipPath, tmpDir); err != nil {
-		return fmt.Errorf("extract Java JRE: %w", err)
+		return fmt.Errorf("extract Java JDK: %w", err)
 	}
 
-	// Find the top-level extracted directory (e.g. jdk-21.0.3+9-jre)
+	// Find the top-level extracted directory (e.g. jdk-25.0.1+8)
 	entries, err := os.ReadDir(tmpDir)
 	if err != nil {
 		return fmt.Errorf("read java tmp dir: %w", err)
@@ -482,19 +525,19 @@ func (m *Manager) installJavaJRE(ctx context.Context, cb *InstallCallbacks) erro
 		}
 	}
 	if topDir == "" {
-		return fmt.Errorf("no directory found in Java JRE archive")
+		return fmt.Errorf("no directory found in Java JDK archive")
 	}
 
 	// Move contents to destDir
 	_ = os.RemoveAll(destDir)
 	if err := os.Rename(topDir, destDir); err != nil {
-		return fmt.Errorf("move java JRE: %w", err)
+		return fmt.Errorf("move java JDK: %w", err)
 	}
 
 	// Verify
 	bin := m.localRuntimeBin(RuntimeJava)
 	if _, err := os.Stat(bin); err != nil {
-		return fmt.Errorf("java JRE binary not found after extraction: %s", bin)
+		return fmt.Errorf("java JDK binary not found after extraction: %s", bin)
 	}
 	return nil
 }

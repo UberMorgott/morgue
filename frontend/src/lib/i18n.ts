@@ -217,7 +217,7 @@ const translations: Record<string, Record<Lang, string>> = {
   // Runtimes
   'runtimes.title': { en: 'Runtimes', ru: 'Рантаймы' },
   'runtimes.dotnet': { en: '.NET SDK', ru: '.NET SDK' },
-  'runtimes.java': { en: 'Java JRE', ru: 'Java JRE' },
+  'runtimes.java': { en: 'Java JDK', ru: 'Java JDK' },
   'runtimes.available': { en: 'Available', ru: 'Доступен' },
   'runtimes.missing': { en: 'Not installed', ru: 'Не установлен' },
   'runtimes.local': { en: 'Portable', ru: 'Портативный' },

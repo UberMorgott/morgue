@@ -483,6 +483,7 @@ func TestPreseededHeadlessGhidraSurvivesBoundSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = os.WriteFile(m.localRuntimeBin(RuntimeJava), []byte("fake-java"), 0755)
+	stubJavaVersion(t, "25.0.1")
 	s, _ := m.NewRunSelection(t.Context())
 	defer s.Close()
 	path, err := s.Bind().Resolve("ghidra")
