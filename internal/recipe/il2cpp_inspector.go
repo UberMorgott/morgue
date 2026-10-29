@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/UberMorgott/morgue/internal/quality"
 	"github.com/UberMorgott/morgue/internal/tools"
 	"github.com/UberMorgott/morgue/internal/util"
 )
@@ -123,16 +124,39 @@ func runDumpWithOrder(ctx context.Context, order []string, run func(ctx context.
 // On success it returns the tool name that produced output. If every candidate
 // tool is missing or fails, it returns an aggregated error naming the detected
 // version, every tool tried, and each tool's error — never a silent failure.
-func runDumpStage(ctx *Context, metadataPath, metaDir, dummyDllDir string, version int32, logTool func(tool, msg string)) (string, error) {
+func runDumpStage(ctx *Context, metadataPath, metaDir, dummyDllDir string, version int32, logTool func(tool, msg string)) (string, []quality.DumperAttempt, error) {
 	_, inspectorErr := ctx.Tools.Resolve("il2cppinspector")
 	inspectorAvailable := inspectorErr == nil
 
 	order := dumperOrder(version, inspectorAvailable)
+	var attempts []quality.DumperAttempt
 
 	// runOne executes a single dumper and verifies it produced assemblies. The
 	// success criterion is output presence (Il2CppDumper crashes on a trailing
 	// Console.ReadKey() despite finishing its work, so the exit code is unreliable).
 	runOne := func(c context.Context, tool string) error {
+		err := runOneDump(ctx, tool, metadataPath, metaDir, dummyDllDir, logTool)
+		a := quality.DumperAttempt{Tool: tool, Version: unityToolVersion(ctx, tool)}
+		if err != nil {
+			a.Error = err.Error()
+		}
+		attempts = append(attempts, a)
+		return err
+	}
+
+	used, err := runDumpWithOrder(ctx.Ctx, order, runOne)
+	if err != nil {
+		return "", attempts, fmt.Errorf(
+			"no IL2CPP dumper succeeded for metadata version %d; tried [%s]: %w",
+			version, strings.Join(order, ", "), err,
+		)
+	}
+	return used, attempts, nil
+}
+
+// runOneDump executes a single dumper and verifies it produced assemblies.
+func runOneDump(ctx *Context, tool, metadataPath, metaDir, dummyDllDir string, logTool func(tool, msg string)) error {
+	{
 		var runErr error
 		switch tool {
 		case "il2cppinspector":
@@ -156,15 +180,6 @@ func runDumpStage(ctx *Context, metadataPath, metaDir, dummyDllDir string, versi
 		}
 		return nil
 	}
-
-	used, err := runDumpWithOrder(ctx.Ctx, order, runOne)
-	if err != nil {
-		return "", fmt.Errorf(
-			"no IL2CPP dumper succeeded for metadata version %d; tried [%s]: %w",
-			version, strings.Join(order, ", "), err,
-		)
-	}
-	return used, nil
 }
 
 // runInspectorDump resolves and runs Il2CppInspectorRedux, writing DummyDLLs into
@@ -275,6 +290,18 @@ func runLegacyDump(ctx *Context, metadataPath, metaDir, dummyDllDir string, logT
 	// already lands there; otherwise (the structured dump/dll layout) mirror the
 	// produced DLLs into dummyDllDir so the success check + downstream ilspycmd see
 	// them in one place.
+	// Keep Il2CppDumper's dump.cs (TypeDefIndex/RVA declarations) as a product:
+	// metaDir is transient, and the quality collector reads the image headers.
+	if src := filepath.Join(metaDir, "dump.cs"); fileNonEmpty(src) {
+		csDir := filepath.Join(filepath.Dir(dummyDllDir), "cs")
+		if err := os.MkdirAll(csDir, 0755); err != nil {
+			return err
+		}
+		if err := copyFile(src, filepath.Join(csDir, "dump.cs")); err != nil {
+			return fmt.Errorf("keep Il2CppDumper dump.cs: %w", err)
+		}
+	}
+
 	producedDir := filepath.Join(metaDir, "DummyDll")
 	if filepath.Clean(producedDir) != filepath.Clean(dummyDllDir) {
 		if _, statErr := os.Stat(producedDir); statErr == nil {

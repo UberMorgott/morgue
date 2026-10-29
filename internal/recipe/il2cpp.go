@@ -9,6 +9,7 @@ import (
 
 	"github.com/UberMorgott/morgue/internal/metadata"
 	"github.com/UberMorgott/morgue/internal/odin"
+	"github.com/UberMorgott/morgue/internal/quality"
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/util"
 )
@@ -156,19 +157,40 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 	legacyMetaDir := filepath.Join(layout.TmpDir, "legacy-dump")
 	dummyDllDir := layout.DllDir
 
+	evidence := quality.IL2CPPEvidence{
+		SchemaVersion: 1,
+		Binary:        "original/" + filepath.Base(ctx.Target),
+		Metadata:      "original/" + filepath.Base(metadataPath),
+		Attempts:      []quality.DumperAttempt{},
+		Assemblies:    []quality.AssemblyResult{},
+		Decompiler:    "ilspycmd",
+	}
 	metaVersion, verErr := metadata.ReadVersion(metadataPath)
 	if verErr != nil {
 		// Non-fatal: an unreadable header just means we can't route on version;
 		// dumperOrder still picks a tool based on InspectorRedux availability.
+		evidence.MetadataVersionError = verErr.Error()
 		logTool("il2cpp", fmt.Sprintf("Could not read metadata version (%v); proceeding with dumper auto-selection", verErr))
 	} else {
+		v := int64(metaVersion)
+		evidence.MetadataVersion = &v
 		logTool("il2cpp", fmt.Sprintf("Detected IL2CPP metadata version %d", metaVersion))
 	}
 
-	toolUsed, derr := runDumpStage(ctx, metadataPath, legacyMetaDir, dummyDllDir, metaVersion, logTool)
+	toolUsed, attempts, derr := runDumpStage(ctx, metadataPath, legacyMetaDir, dummyDllDir, metaVersion, logTool)
+	evidence.Attempts = append(evidence.Attempts, attempts...)
 	if derr != nil {
+		_ = unityWriteEvidence(ctx.Output, quality.IL2CPPEvidenceFile, evidence)
 		report(1, Failed, time.Since(start), derr, toolUsed)
 		return derr
+	}
+	evidence.Dumper = toolUsed
+	evidence.DumperVersion = unityToolVersion(ctx, toolUsed)
+	for _, c := range []string{"il2cpp.cs", "dump.cs"} {
+		if fileNonEmpty(filepath.Join(layout.CsDir, c)) {
+			evidence.DumpCS = "dump/cs/" + c
+			break
+		}
 	}
 
 	// Count outputs for logging
@@ -200,9 +222,13 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		return errMsg
 	}
 
+	evidence.DecompilerVersion = unityToolVersion(ctx, "ilspycmd")
+	// Raw decompiler diagnostics are persisted before the collector parses them.
+	var ilspyLog strings.Builder
 	succeeded := 0
 	failed := 0
 	skipped := 0
+	partial := 0
 	// Pre-count non-system DLLs for progress reporting
 	totalUserDlls := 0
 	for _, dll := range dlls {
@@ -214,6 +240,7 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		dllName := filepath.Base(dll)
 		if isSystemDll(dllName) {
 			skipped++
+			evidence.Assemblies = append(evidence.Assemblies, quality.AssemblyResult{Name: dllName, Status: "system-skipped"})
 			continue
 		}
 
@@ -238,7 +265,19 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 			ec = res.ExitCode
 		}
 
-		if runErr != nil || ec != 0 {
+		mode := "project"
+		result := quality.AssemblyResult{Name: dllName, Status: "decompiled"}
+		if partialErrs, ok := ilspyPartialErrors(res, runErr, outDir); ok {
+			// ILSpy finished the project but replaced some members with error text.
+			// The rest is usable: keep it, labeled partial, instead of discarding it
+			// for a flat retry that aborts on the same malformed DummyDLL types.
+			fmt.Fprintf(&ilspyLog, "== %s project mode exit %d (partial, %d errors kept in output)\n%s\n", dllName, ec, partialErrs, ilspyStderr(res, runErr))
+			logTool("ilspycmd", fmt.Sprintf("  %s decompiled partially: %d member error(s) replaced by error text", dllName, partialErrs))
+			result = quality.AssemblyResult{Name: dllName, Status: "partial", Mode: mode, Errors: partialErrs, Error: fmt.Sprintf("exit %d", ec)}
+			partial++
+		} else if runErr != nil || ec != 0 {
+			mode = "flat"
+			fmt.Fprintf(&ilspyLog, "== %s project mode exit %d\n%s\n", dllName, ec, ilspyStderr(res, runErr))
 			// Retry without project mode
 			_ = os.RemoveAll(outDir)
 			_ = os.MkdirAll(outDir, 0755)
@@ -255,10 +294,22 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 					msg += "\n" + strings.TrimSpace(res.Stderr)
 				}
 				logTool("ilspycmd", msg)
+				fmt.Fprintf(&ilspyLog, "== %s flat mode exit %d\n%s\n", dllName, ec, ilspyStderr(res, runErr))
+				evidence.Assemblies = append(evidence.Assemblies, quality.AssemblyResult{Name: dllName, Status: "failed", Mode: mode, Error: fmt.Sprintf("exit %d", ec)})
 				failed++
 				continue
 			}
 		}
+		result.Mode = mode
+		if !hasNonEmptySource(outDir) {
+			// Exit 0 with no non-empty source is not a decompilation.
+			logTool("ilspycmd", fmt.Sprintf("  %s produced no non-empty source (exit %d)", dllName, ec))
+			fmt.Fprintf(&ilspyLog, "== %s %s mode exit %d produced no non-empty .cs\n", dllName, mode, ec)
+			evidence.Assemblies = append(evidence.Assemblies, quality.AssemblyResult{Name: dllName, Status: "failed", Mode: mode, Error: "empty output"})
+			failed++
+			continue
+		}
+		evidence.Assemblies = append(evidence.Assemblies, result)
 		succeeded++
 		if ctx.Progress != nil {
 			ctx.Progress <- StepProgress{
@@ -270,7 +321,13 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		logTool("ilspycmd", fmt.Sprintf("Decompiled %d/%d assemblies", succeeded, len(dlls)-skipped))
 	}
 
-	logTool("ilspycmd", fmt.Sprintf("Decompiled %d assemblies (%d failed, %d system skipped)", succeeded, failed, skipped))
+	logTool("ilspycmd", fmt.Sprintf("Decompiled %d assemblies (%d partial, %d failed, %d system skipped)", succeeded, partial, failed, skipped))
+	if err := os.WriteFile(filepath.Join(layout.LogDir, "ilspycmd.log"), []byte(ilspyLog.String()), 0644); err != nil {
+		logTool("ilspycmd", fmt.Sprintf("write ilspycmd.log: %v", err))
+	}
+	if err := unityWriteEvidence(ctx.Output, quality.IL2CPPEvidenceFile, evidence); err != nil {
+		logTool("il2cpp", fmt.Sprintf("write quality evidence: %v", err))
+	}
 
 	if succeeded == 0 && failed > 0 {
 		errMsg := fmt.Errorf("all %d assembly decompilations failed", failed)
@@ -279,19 +336,48 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 	}
 	reportCount(2, time.Since(start), "ilspycmd", succeeded, "assemblies")
 
+	// Provenance is streamed before any optional step can clean up: one row per
+	// stub type/method with its metadata token and native RVA/VA. A sink error is
+	// surfaced in the log; the stub products themselves stay intact.
+	if ctx.Provenance != nil {
+		inputSHA, herr := util.SHA256File(ctx.Target)
+		if herr != nil {
+			logTool("il2cpp", fmt.Sprintf("provenance: hash %s: %v", filepath.Base(ctx.Target), herr))
+		}
+		_ = unityArtifactProv(ctx, inputSHA, evidence.Binary, "original", filepath.Base(ctx.Target), "", "", nil, "copied input binary")
+		_ = unityArtifactProv(ctx, inputSHA, evidence.Metadata, "original", filepath.Base(metadataPath), "", "", nil, "copied companion metadata")
+		rows, perr := emitIL2CPPProvenance(ctx, layout, srcDir, inputSHA, toolUsed, evidence.DumpCS)
+		if perr != nil {
+			if ctx.Ctx.Err() != nil {
+				return ctx.Ctx.Err()
+			}
+			logTool("il2cpp", fmt.Sprintf("provenance incomplete after %d stub rows: %v", rows, perr))
+		} else {
+			logTool("il2cpp", fmt.Sprintf("provenance: %d stub type/method rows with token/RVA", rows))
+		}
+	}
+
 	// Step 3: Extract data layer (AssetRipper config-only export). Non-fatal: the
 	// IL2CPP code dump is the primary deliverable, so a missing tool / data dir or
 	// an export failure logs + reports but never aborts the run.
 	report(3, Running, 0, nil, "assetripper")
 	start = time.Now()
 	gameDataDir := findGameDataDir(ctx.Target)
+	assetEv := newUnityDataEvidence(ctx, i.Name(), gameDataDir, layout.DataDir, false)
+	if ctx.Config != nil && ctx.Config.IL2CPPFullExport {
+		assetEv.Mode = "unity-project"
+	}
+	defer func() { writeUnityDataEvidence(ctx, &assetEv, logTool) }()
 	if ctx.SkipAssets() {
+		assetEv.State, assetEv.Reason = quality.UnityAssetsDisabled, "--code-only or UnityExtractAssets=false"
 		logTool("assetripper", "asset extraction disabled (--code-only / UnityExtractAssets), skipping data layer")
 		report(3, Skipped, time.Since(start), nil, "assetripper")
 	} else if ripperPath, rErr := ctx.Tools.Resolve("assetripper"); rErr != nil {
+		assetEv.State, assetEv.Reason = quality.UnityAssetsToolMissing, rErr.Error()
 		logTool("assetripper", fmt.Sprintf("assetripper unavailable, skipping data layer: %v", rErr))
 		report(3, Skipped, time.Since(start), nil, "assetripper")
 	} else if gameDataDir == "" {
+		assetEv.State, assetEv.Reason = quality.UnityAssetsNoDataDir, "no *_Data directory beside "+filepath.Base(ctx.Target)
 		logTool("assetripper", "could not locate *_Data dir, skipping data layer")
 		report(3, Skipped, time.Since(start), nil, "assetripper")
 	} else {
@@ -303,7 +389,7 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 		}
 		logTool("assetripper", fmt.Sprintf("Exporting %s (full=%v)", gameDataDir, full))
 		rLastLog := time.Now().Add(-2 * time.Second)
-		_, rerr := runSharedProduct(ctx, sharedProductKey(ctx, gameDataDir, "il2cpp-assets", fmt.Sprint(full), layout.DataDir), layout.DataDir, "asset", "extract-data", "assetripper", func() error {
+		reused, rerr := runSharedProduct(ctx, sharedProductKey(ctx, gameDataDir, "il2cpp-assets", fmt.Sprint(full), layout.DataDir), layout.DataDir, "asset", "extract-data", "assetripper", func() error {
 			return RunAssetRipperExport(ctx.Ctx, ripperPath, gameDataDir, layout.DataDir, layout.TmpDir, full, func(line string) {
 				if time.Since(rLastLog) >= time.Second && strings.TrimSpace(line) != "" {
 					logTool("assetripper", strings.TrimSpace(line))
@@ -312,9 +398,15 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 			})
 		})
 		if rerr != nil {
+			assetEv.State, assetEv.Reason = quality.UnityAssetsFailed, rerr.Error()
 			logTool("assetripper", fmt.Sprintf("AssetRipper export failed (non-fatal): %v", rerr))
 			report(3, Failed, time.Since(start), rerr, "assetripper")
 		} else {
+			assetEv.State = quality.UnityAssetsExported
+			if reused {
+				assetEv.State = quality.UnityAssetsReused
+			}
+			countUnityExport(&assetEv, layout.DataDir)
 			reportCount(3, time.Since(start), "assetripper", countAssetFiles(layout.DataDir), "assets")
 		}
 	}
@@ -327,15 +419,22 @@ func (i *IL2CPP) Execute(ctx *Context) error {
 	assetFiles := collectAssetFiles(layout.DataDir)
 	if len(assetFiles) == 0 {
 		logTool("odin", "no .asset files to decode, skipping Odin decode")
+		assetEv.Decode = &quality.UnityStep{State: "skipped", Reason: "no .asset files", Unit: "configs"}
 		report(4, Skipped, time.Since(start), nil, "odin")
 	} else {
 		decoded := 0
+		var decodeFailed int64
+		defer func() {
+			d := int64(decoded)
+			assetEv.Decode = &quality.UnityStep{State: "done", Output: "data/odin-decoded.txt", Count: &d, Failed: &decodeFailed, Unit: "configs"}
+		}()
 		var outBuf strings.Builder
 		rule := strings.Repeat("#", 60)
 		for _, af := range assetFiles {
 			text, n, derr := decodeAssetSafe(af)
 			if derr != nil {
 				logTool("odin", fmt.Sprintf("Odin decode skipped %s: %v", filepath.Base(af), derr))
+				decodeFailed++
 				continue
 			}
 			outBuf.WriteString("\n" + rule + "\n")

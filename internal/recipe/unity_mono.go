@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/UberMorgott/morgue/internal/gamedata"
+	"github.com/UberMorgott/morgue/internal/quality"
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/util"
 )
@@ -181,6 +182,21 @@ func (u *UnityMono) Execute(ctx *Context) error {
 	}
 	csCount := countFilesWithExt(srcDir, ".cs")
 	reportCount(2, time.Since(start), "ilspycmd", csCount, "types")
+	if ctx.Provenance != nil {
+		module := filepath.Base(ctx.Target)
+		inputSHA, herr := util.SHA256File(ctx.Target)
+		if herr != nil {
+			logTool("ilspycmd", fmt.Sprintf("provenance: hash %s: %v", module, herr))
+		}
+		for _, row := range []struct{ rel, kind, tool, step, detail string }{
+			{"original/" + module, "original", "", "", "copied input assembly"},
+			{"src", "decompiled-source", "ilspycmd", unityStepManagedDecomp, "ILSpy decompilation of managed IL; readable, not original source"},
+		} {
+			if perr := unityArtifactProv(ctx, inputSHA, row.rel, row.kind, module, row.tool, row.step, nil, row.detail); perr != nil {
+				logTool("ilspycmd", fmt.Sprintf("provenance: %v", perr))
+			}
+		}
+	}
 
 	// Step 3: Build indexes
 	report(3, Running, 0, nil, "")
@@ -211,13 +227,19 @@ func (u *UnityMono) Execute(ctx *Context) error {
 	assetRoot := sharedAssetDir(ctx, gameDataDir)
 	rawExportDir := filepath.Join(assetRoot, "raw-export")
 	tmpDir := filepath.Join(assetRoot, ".tmp")
+	assetEv := newUnityDataEvidence(ctx, u.Name(), gameDataDir, rawExportDir, assetRoot != ctx.Output)
+	assetEv.Mode = "unity-project"
+	defer func() { writeUnityDataEvidence(ctx, &assetEv, logTool) }()
 	if ctx.SkipAssets() {
+		assetEv.State, assetEv.Reason = quality.UnityAssetsDisabled, "--code-only or UnityExtractAssets=false"
 		logTool("assetripper", "asset extraction disabled (--code-only / UnityExtractAssets), skipping game-asset export")
 		report(4, Skipped, time.Since(start), nil, "assetripper")
 	} else if ripperPath, rErr := ctx.Tools.Resolve("assetripper"); rErr != nil {
+		assetEv.State, assetEv.Reason = quality.UnityAssetsToolMissing, rErr.Error()
 		logTool("assetripper", fmt.Sprintf("assetripper unavailable, skipping game-asset export: %v", rErr))
 		report(4, Skipped, time.Since(start), nil, "assetripper")
 	} else if gameDataDir == "" {
+		assetEv.State, assetEv.Reason = quality.UnityAssetsNoDataDir, "no Unity *_Data directory two levels above "+filepath.Base(ctx.Target)
 		logTool("assetripper", "could not locate Unity *_Data dir, skipping game-asset export")
 		report(4, Skipped, time.Since(start), nil, "assetripper")
 	} else {
@@ -237,12 +259,16 @@ func (u *UnityMono) Execute(ctx *Context) error {
 			})
 		})
 		if rerr != nil {
+			assetEv.State, assetEv.Reason = quality.UnityAssetsFailed, rerr.Error()
 			logTool("assetripper", fmt.Sprintf("AssetRipper export failed (non-fatal): %v", rerr))
 			report(4, Failed, time.Since(start), rerr, "assetripper")
 		} else {
+			assetEv.State = quality.UnityAssetsExported
 			if reused {
+				assetEv.State = quality.UnityAssetsReused
 				logTool("assetripper", "reused completed export from this live run")
 			}
+			countUnityExport(&assetEv, rawExportDir)
 			reportCount(4, time.Since(start), "assetripper", countAssetFiles(rawExportDir), "assets")
 		}
 	}
@@ -254,6 +280,7 @@ func (u *UnityMono) Execute(ctx *Context) error {
 	exportAssets := filepath.Join(rawExportDir, "ExportedProject", "Assets")
 	if _, statErr := os.Stat(exportAssets); statErr != nil {
 		logTool("gamedata", "no AssetRipper export found, skipping game-data organize")
+		assetEv.Organize = &quality.UnityStep{State: "skipped", Reason: "no AssetRipper export", Unit: "defs"}
 		report(5, Skipped, time.Since(start), nil, "gamedata")
 	} else {
 		gameDataOut := ctx.GameDataOut
@@ -296,10 +323,23 @@ func (u *UnityMono) Execute(ctx *Context) error {
 			}
 			return gerr
 		})
+		org := &quality.UnityStep{Output: unityRelSlash(ctx.Output, gameDataOut), External: ctx.GameDataOut != "", Unit: "defs"}
+		if org.External {
+			org.Output = filepath.ToSlash(gameDataOut)
+		}
+		assetEv.Organize = org
 		if gerr != nil {
+			org.State, org.Reason = "failed", gerr.Error()
 			logTool("gamedata", fmt.Sprintf("Organize failed (non-fatal): %v", gerr))
 			report(5, Failed, time.Since(start), gerr, "gamedata")
 		} else {
+			org.State = "done"
+			if reused {
+				org.State = "reused"
+			} else {
+				d := int64(defTotal)
+				org.Count = &d
+			}
 			if reused {
 				logTool("gamedata", "reused organized data from this live run")
 			} else {
