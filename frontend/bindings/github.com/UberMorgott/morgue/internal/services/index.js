@@ -8,19 +8,23 @@ import * as PipelineService from "./pipelineservice.js";
 import * as ReconService from "./reconservice.js";
 import * as ToolsService from "./toolsservice.js";
 import * as UpdateService from "./updateservice.js";
+import * as WorkspaceService from "./workspaceservice.js";
 export {
     ConfigService,
     InstructionsService,
     PipelineService,
     ReconService,
     ToolsService,
-    UpdateService
+    UpdateService,
+    WorkspaceService
 };
 
 export {
+    CurrentRun,
     EnrichedToolStatus,
     EnrichedToolsResponse,
     PipelineStatus,
+    RecentRun,
     ScanTarget,
     UpdateStatus
 } from "./models.js";

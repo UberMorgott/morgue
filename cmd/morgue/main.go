@@ -14,10 +14,12 @@ import (
 	morgue "github.com/UberMorgott/morgue"
 	"github.com/UberMorgott/morgue/internal/api"
 	"github.com/UberMorgott/morgue/internal/cli"
+	"github.com/UberMorgott/morgue/internal/runmodel"
 	"github.com/UberMorgott/morgue/internal/selfupdate"
 	"github.com/UberMorgott/morgue/internal/services"
 	"github.com/UberMorgott/morgue/internal/util"
 	"github.com/UberMorgott/morgue/internal/webview2"
+	"github.com/UberMorgott/morgue/internal/workspace"
 )
 
 //go:embed appicon.png
@@ -53,6 +55,9 @@ func main() {
 	// cannot delete a running .exe, so the swap leaves <exe>.old behind for the
 	// next start to clean up.
 	selfupdate.CleanupOld()
+
+	// Every run workspace manifest (CLI, API and GUI runs) records this build.
+	workspace.SetAppInfo(Version, Commit)
 
 	// If CLI args provided → cobra
 	if len(os.Args) > 1 {
@@ -149,6 +154,11 @@ func runGUI() {
 	reconSvc := &services.ReconService{}
 	updateSvc := &services.UpdateService{Version: Version, Commit: Commit}
 	instructionsSvc := &services.InstructionsService{}
+	// Read-only run workspace snapshots, bounded replay and recent runs, shared
+	// by Wails and the HTTP API. It tracks the current run from delivered
+	// events next to the SSE hook the API server adds (fan-out, not chaining).
+	workspaceSvc := services.NewWorkspaceService(services.WorkspaceReader{}, nil)
+	services.AddEventHook(pipelineSvc, func(ev runmodel.Event) { services.ObserveWorkspaceEvent(workspaceSvc, ev) })
 
 	// Declare apiSrv early so OnShutdown closure can capture it
 	var apiSrv *api.Server
@@ -163,6 +173,7 @@ func runGUI() {
 			application.NewService(configSvc),
 			application.NewService(updateSvc),
 			application.NewService(instructionsSvc),
+			application.NewService(workspaceSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(morgue.Assets),
@@ -184,7 +195,7 @@ func runGUI() {
 	})
 
 	// HTTP API for hybrid mode
-	apiSrv = api.NewServer(pipelineSvc, toolsSvc, configSvc, reconSvc)
+	apiSrv = api.NewServer(pipelineSvc, toolsSvc, configSvc, reconSvc, workspaceSvc)
 	apiSrv.HookEvents(app)
 	if err := apiSrv.Start(); err != nil {
 		log.Printf("api server: %v", err)
@@ -262,6 +273,7 @@ The user sees all changes in the application window in real-time.`,
 	root.AddCommand(versionCmd())
 	root.AddCommand(selfUpdateCmd())
 	root.AddCommand(apiCmd())
+	root.AddCommand(cli.NewInspectCmd(nil, nil))
 
 	if err := root.Execute(); err != nil {
 		return 1

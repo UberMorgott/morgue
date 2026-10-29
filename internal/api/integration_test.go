@@ -19,7 +19,7 @@ func TestIntegrationFullWorkflow(t *testing.T) {
 	recon := &services.ReconService{}
 
 	t.Setenv(apitoken.EnvPath, filepath.Join(t.TempDir(), "api-token"))
-	srv := NewServer(pipeline, tools, cfg, recon)
+	srv := NewServer(pipeline, tools, cfg, recon, nil)
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error: %v", err)
 	}

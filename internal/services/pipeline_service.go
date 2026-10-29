@@ -60,8 +60,9 @@ type PipelineService struct {
 	prepare PrepareFunc
 	// onFinish receives the terminal error of runs started via Start/StartSpec.
 	onFinish func(error)
-	// onEvent receives every events v2 record in delivery order (SSE transport).
-	onEvent func(runmodel.Event)
+	// onEvent receives every events v2 record in delivery order, fanned out
+	// to each registered hook (SSE transport, workspace tracking).
+	onEvent []func(runmodel.Event)
 }
 
 // NewPipelineService creates a PipelineService backed by the engine.
@@ -184,11 +185,16 @@ func SetRunFinishedHook(s *PipelineService, fn func(error)) {
 	s.mu.Unlock()
 }
 
-// SetEventHook registers fn to receive every events v2 record of every run in
-// delivery order (the HTTP SSE transport). fn must not block.
-func SetEventHook(s *PipelineService, fn func(runmodel.Event)) {
+// AddEventHook registers fn to receive every events v2 record of every run in
+// delivery order, alongside previously added hooks (HTTP SSE transport,
+// WorkspaceService current-run tracking). Hooks run in registration order on
+// the delivery goroutine; fn must not block. Nil fn is ignored.
+func AddEventHook(s *PipelineService, fn func(runmodel.Event)) {
+	if fn == nil {
+		return
+	}
 	s.mu.Lock()
-	s.onEvent = fn
+	s.onEvent = append(s.onEvent, fn)
 	s.mu.Unlock()
 }
 
@@ -265,10 +271,10 @@ func (s *PipelineService) forward(ev runmodel.Event) {
 		s.status.LastSeq = ev.Seq
 	}
 	applyEvent(&s.status, ev)
-	hook := s.onEvent
+	hooks := s.onEvent
 	s.mu.Unlock()
 
-	if hook != nil {
+	for _, hook := range hooks {
 		hook(ev)
 	}
 	if app := application.Get(); app != nil {

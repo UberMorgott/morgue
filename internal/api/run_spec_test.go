@@ -18,7 +18,7 @@ import (
 func newSpecServer(t *testing.T, last *runmodel.RunRequest) (*Server, *httptest.Server, chan error) {
 	t.Helper()
 	pipeline := services.NewPipelineServiceWithPrepare(fakePrepare(func(context.Context) error { return nil }, last))
-	s := NewServer(pipeline, services.NewToolsService(""), &services.ConfigService{}, &services.ReconService{})
+	s := NewServer(pipeline, services.NewToolsService(""), &services.ConfigService{}, &services.ReconService{}, nil)
 	done := make(chan error, 4)
 	// NewServer installed its own hook; chain ours for test synchronisation.
 	services.SetRunFinishedHook(pipeline, func(err error) { done <- err })
@@ -127,7 +127,7 @@ func TestRunEngineValidationIs400(t *testing.T) {
 
 func TestSSERelaysEventsV2WithID(t *testing.T) {
 	s, _, _ := newSpecServer(t, nil)
-	ch := make(chan string, 8)
+	ch := make(chan sseMsg, 8)
 	s.events.mu.Lock()
 	s.events.clients[ch] = struct{}{}
 	s.events.mu.Unlock()
@@ -144,7 +144,7 @@ func TestSSERelaysEventsV2WithID(t *testing.T) {
 	msg := <-ch
 	data, _ := json.Marshal(ev)
 	want := "event: pipeline:event:v2\nid: " + h.ID + ":7\ndata: " + string(data) + "\n\n"
-	if msg != want {
-		t.Fatalf("sse frame:\n%q\nwant\n%q", msg, want)
+	if msg.text != want || msg.run != h.ID || msg.seq != 7 {
+		t.Fatalf("sse frame:\n%q\nwant\n%q", msg.text, want)
 	}
 }

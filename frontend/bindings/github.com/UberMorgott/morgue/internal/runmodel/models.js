@@ -6,6 +6,805 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as json$0 from "../../../../../encoding/json/models.js";
+
+export class AppInfo {
+    /**
+     * Creates a new AppInfo instance.
+     * @param {Partial<AppInfo>} [$$source = {}] - The source object to create the AppInfo.
+     */
+    constructor($$source = {}) {
+        if (!("version" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["version"] = "";
+        }
+        if (!("commit" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["commit"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AppInfo instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {AppInfo}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AppInfo(/** @type {Partial<AppInfo>} */($$parsedSource));
+    }
+}
+
+/**
+ * Reserved payloads are typed now; M2/M4 will start producing them.
+ */
+export class Artifact {
+    /**
+     * Creates a new Artifact instance.
+     * @param {Partial<Artifact>} [$$source = {}] - The source object to create the Artifact.
+     */
+    constructor($$source = {}) {
+        if (!("id" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["id"] = "";
+        }
+        if (!("targetId" in $$source)) {
+            /**
+             * @member
+             * @type {string | null}
+             */
+            this["targetId"] = null;
+        }
+        if (!("path" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["path"] = "";
+        }
+        if (!("external" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["external"] = false;
+        }
+        if (!("kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["kind"] = "";
+        }
+        if (!("producer" in $$source)) {
+            /**
+             * @member
+             * @type {Producer}
+             */
+            this["producer"] = (new Producer());
+        }
+        if (!("sha256" in $$source)) {
+            /**
+             * @member
+             * @type {string | null}
+             */
+            this["sha256"] = null;
+        }
+        if (!("hashStatus" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["hashStatus"] = "";
+        }
+        if (!("complete" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["complete"] = false;
+        }
+        if (!("warning" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["warning"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Artifact instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {Artifact}
+     */
+    static createFrom($$source = {}) {
+        const $$createField5_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("producer" in $$parsedSource) {
+            $$parsedSource["producer"] = $$createField5_0($$parsedSource["producer"]);
+        }
+        return new Artifact(/** @type {Partial<Artifact>} */($$parsedSource));
+    }
+}
+
+export class Counts {
+    /**
+     * Creates a new Counts instance.
+     * @param {Partial<Counts>} [$$source = {}] - The source object to create the Counts.
+     */
+    constructor($$source = {}) {
+        if (!("total" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["total"] = 0;
+        }
+        if (!("pending" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["pending"] = 0;
+        }
+        if (!("running" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["running"] = 0;
+        }
+        if (!("success" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["success"] = 0;
+        }
+        if (!("error" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["error"] = 0;
+        }
+        if (!("cancelled" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["cancelled"] = 0;
+        }
+        if (!("skipped" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["skipped"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Counts instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {Counts}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Counts(/** @type {Partial<Counts>} */($$parsedSource));
+    }
+}
+
+export class Coverage {
+    /**
+     * Creates a new Coverage instance.
+     * @param {Partial<Coverage>} [$$source = {}] - The source object to create the Coverage.
+     */
+    constructor($$source = {}) {
+        if (!("found" in $$source)) {
+            /**
+             * @member
+             * @type {Metric}
+             */
+            this["found"] = (new Metric());
+        }
+        if (!("emitted" in $$source)) {
+            /**
+             * @member
+             * @type {Metric}
+             */
+            this["emitted"] = (new Metric());
+        }
+        if (!("ratio" in $$source)) {
+            /**
+             * @member
+             * @type {number | null}
+             */
+            this["ratio"] = null;
+        }
+        if (!("comparable" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["comparable"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Coverage instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {Coverage}
+     */
+    static createFrom($$source = {}) {
+        const $$createField0_0 = $$createType1;
+        const $$createField1_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("found" in $$parsedSource) {
+            $$parsedSource["found"] = $$createField0_0($$parsedSource["found"]);
+        }
+        if ("emitted" in $$parsedSource) {
+            $$parsedSource["emitted"] = $$createField1_0($$parsedSource["emitted"]);
+        }
+        return new Coverage(/** @type {Partial<Coverage>} */($$parsedSource));
+    }
+}
+
+export class Event {
+    /**
+     * Creates a new Event instance.
+     * @param {Partial<Event>} [$$source = {}] - The source object to create the Event.
+     */
+    constructor($$source = {}) {
+        if (!("v" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["v"] = 0;
+        }
+        if (!("ts" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["ts"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("seq" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["seq"] = 0;
+        }
+        if (!("run" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["run"] = "";
+        }
+        if (!("type" in $$source)) {
+            /**
+             * @member
+             * @type {EventType}
+             */
+            this["type"] = EventType.$zero;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["targetId"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["parentTargetId"] = undefined;
+        }
+        if (!("data" in $$source)) {
+            /**
+             * @member
+             * @type {json$0.RawMessage}
+             */
+            this["data"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Event instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {Event}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Event(/** @type {Partial<Event>} */($$parsedSource));
+    }
+}
+
+/**
+ * @readonly
+ * @enum {string}
+ */
+export const EventType = {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero: "",
+
+    EventRunStarted: "run.started",
+    EventScanCompleted: "scan.completed",
+    EventTargetDiscovered: "target.discovered",
+    EventTargetFinished: "target.finished",
+    EventStepProgress: "step.progress",
+    EventToolProgress: "tool.progress",
+    EventArtifactWritten: "artifact.written",
+    EventQualityUpdated: "quality.updated",
+    EventLog: "log",
+    EventRunFinished: "run.finished",
+};
+
+export class Evidence {
+    /**
+     * Creates a new Evidence instance.
+     * @param {Partial<Evidence>} [$$source = {}] - The source object to create the Evidence.
+     */
+    constructor($$source = {}) {
+        if (!("path" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["path"] = "";
+        }
+        if (!("line" in $$source)) {
+            /**
+             * @member
+             * @type {number | null}
+             */
+            this["line"] = null;
+        }
+        if (!("detail" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["detail"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Evidence instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {Evidence}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Evidence(/** @type {Partial<Evidence>} */($$parsedSource));
+    }
+}
+
+export class FileCounts {
+    /**
+     * Creates a new FileCounts instance.
+     * @param {Partial<FileCounts>} [$$source = {}] - The source object to create the FileCounts.
+     */
+    constructor($$source = {}) {
+        if (!("count" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["count"] = 0;
+        }
+        if (!("bytes" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["bytes"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FileCounts instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {FileCounts}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new FileCounts(/** @type {Partial<FileCounts>} */($$parsedSource));
+    }
+}
+
+export class InputFile {
+    /**
+     * Creates a new InputFile instance.
+     * @param {Partial<InputFile>} [$$source = {}] - The source object to create the InputFile.
+     */
+    constructor($$source = {}) {
+        if (!("role" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["role"] = "";
+        }
+        if (!("path" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["path"] = "";
+        }
+        if (!("sha256" in $$source)) {
+            /**
+             * @member
+             * @type {string | null}
+             */
+            this["sha256"] = null;
+        }
+        if (!("sizeBytes" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["sizeBytes"] = 0;
+        }
+        if (!("hashStatus" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["hashStatus"] = "";
+        }
+        if (!("error" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["error"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new InputFile instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {InputFile}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new InputFile(/** @type {Partial<InputFile>} */($$parsedSource));
+    }
+}
+
+export class Metric {
+    /**
+     * Creates a new Metric instance.
+     * @param {Partial<Metric>} [$$source = {}] - The source object to create the Metric.
+     */
+    constructor($$source = {}) {
+        if (!("value" in $$source)) {
+            /**
+             * @member
+             * @type {number | null}
+             */
+            this["value"] = null;
+        }
+        if (!("status" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+        if (!("basis" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["basis"] = "";
+        }
+        if (!("evidence" in $$source)) {
+            /**
+             * @member
+             * @type {Evidence[]}
+             */
+            this["evidence"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Metric instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {Metric}
+     */
+    static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("evidence" in $$parsedSource) {
+            $$parsedSource["evidence"] = $$createField3_0($$parsedSource["evidence"]);
+        }
+        return new Metric(/** @type {Partial<Metric>} */($$parsedSource));
+    }
+}
+
+export class Producer {
+    /**
+     * Creates a new Producer instance.
+     * @param {Partial<Producer>} [$$source = {}] - The source object to create the Producer.
+     */
+    constructor($$source = {}) {
+        if (!("recipe" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["recipe"] = "";
+        }
+        if (!("stepId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["stepId"] = "";
+        }
+        if (!("tool" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["tool"] = "";
+        }
+        if (!("version" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["version"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Producer instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {Producer}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Producer(/** @type {Partial<Producer>} */($$parsedSource));
+    }
+}
+
+export class QualityCheck {
+    /**
+     * Creates a new QualityCheck instance.
+     * @param {Partial<QualityCheck>} [$$source = {}] - The source object to create the QualityCheck.
+     */
+    constructor($$source = {}) {
+        if (!("id" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["id"] = "";
+        }
+        if (!("status" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+        if (!("message" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["message"] = "";
+        }
+        if (!("evidence" in $$source)) {
+            /**
+             * @member
+             * @type {Evidence[]}
+             */
+            this["evidence"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new QualityCheck instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {QualityCheck}
+     */
+    static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("evidence" in $$parsedSource) {
+            $$parsedSource["evidence"] = $$createField3_0($$parsedSource["evidence"]);
+        }
+        return new QualityCheck(/** @type {Partial<QualityCheck>} */($$parsedSource));
+    }
+}
+
+export class QualityReport {
+    /**
+     * Creates a new QualityReport instance.
+     * @param {Partial<QualityReport>} [$$source = {}] - The source object to create the QualityReport.
+     */
+    constructor($$source = {}) {
+        if (!("schemaVersion" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["schemaVersion"] = 0;
+        }
+        if (!("family" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["family"] = "";
+        }
+        if (!("status" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+        if (!("functions" in $$source)) {
+            /**
+             * @member
+             * @type {Coverage}
+             */
+            this["functions"] = (new Coverage());
+        }
+        if (!("types" in $$source)) {
+            /**
+             * @member
+             * @type {Coverage}
+             */
+            this["types"] = (new Coverage());
+        }
+        if (!("decompilerErrors" in $$source)) {
+            /**
+             * @member
+             * @type {Metric}
+             */
+            this["decompilerErrors"] = (new Metric());
+        }
+        if (!("unknownResultTypes" in $$source)) {
+            /**
+             * @member
+             * @type {Metric}
+             */
+            this["unknownResultTypes"] = (new Metric());
+        }
+        if (!("unresolvedReferences" in $$source)) {
+            /**
+             * @member
+             * @type {Metric}
+             */
+            this["unresolvedReferences"] = (new Metric());
+        }
+        if (!("residualObfuscation" in $$source)) {
+            /**
+             * @member
+             * @type {Metric}
+             */
+            this["residualObfuscation"] = (new Metric());
+        }
+        if (!("stringDecryption" in $$source)) {
+            /**
+             * @member
+             * @type {Coverage}
+             */
+            this["stringDecryption"] = (new Coverage());
+        }
+        if (!("warnings" in $$source)) {
+            /**
+             * @member
+             * @type {string[]}
+             */
+            this["warnings"] = [];
+        }
+        if (!("checks" in $$source)) {
+            /**
+             * @member
+             * @type {QualityCheck[]}
+             */
+            this["checks"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new QualityReport instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {QualityReport}
+     */
+    static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType4;
+        const $$createField4_0 = $$createType4;
+        const $$createField5_0 = $$createType1;
+        const $$createField6_0 = $$createType1;
+        const $$createField7_0 = $$createType1;
+        const $$createField8_0 = $$createType1;
+        const $$createField9_0 = $$createType4;
+        const $$createField10_0 = $$createType5;
+        const $$createField11_0 = $$createType7;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("functions" in $$parsedSource) {
+            $$parsedSource["functions"] = $$createField3_0($$parsedSource["functions"]);
+        }
+        if ("types" in $$parsedSource) {
+            $$parsedSource["types"] = $$createField4_0($$parsedSource["types"]);
+        }
+        if ("decompilerErrors" in $$parsedSource) {
+            $$parsedSource["decompilerErrors"] = $$createField5_0($$parsedSource["decompilerErrors"]);
+        }
+        if ("unknownResultTypes" in $$parsedSource) {
+            $$parsedSource["unknownResultTypes"] = $$createField6_0($$parsedSource["unknownResultTypes"]);
+        }
+        if ("unresolvedReferences" in $$parsedSource) {
+            $$parsedSource["unresolvedReferences"] = $$createField7_0($$parsedSource["unresolvedReferences"]);
+        }
+        if ("residualObfuscation" in $$parsedSource) {
+            $$parsedSource["residualObfuscation"] = $$createField8_0($$parsedSource["residualObfuscation"]);
+        }
+        if ("stringDecryption" in $$parsedSource) {
+            $$parsedSource["stringDecryption"] = $$createField9_0($$parsedSource["stringDecryption"]);
+        }
+        if ("warnings" in $$parsedSource) {
+            $$parsedSource["warnings"] = $$createField10_0($$parsedSource["warnings"]);
+        }
+        if ("checks" in $$parsedSource) {
+            $$parsedSource["checks"] = $$createField11_0($$parsedSource["checks"]);
+        }
+        return new QualityReport(/** @type {Partial<QualityReport>} */($$parsedSource));
+    }
+}
+
 export class RunHandle {
     /**
      * Creates a new RunHandle instance.
@@ -45,6 +844,98 @@ export class RunHandle {
     static createFrom($$source = {}) {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new RunHandle(/** @type {Partial<RunHandle>} */($$parsedSource));
+    }
+}
+
+export class RunRecord {
+    /**
+     * Creates a new RunRecord instance.
+     * @param {Partial<RunRecord>} [$$source = {}] - The source object to create the RunRecord.
+     */
+    constructor($$source = {}) {
+        if (!("id" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["id"] = "";
+        }
+        if (!("startedAt" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["startedAt"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("finishedAt" in $$source)) {
+            /**
+             * @member
+             * @type {string | null}
+             */
+            this["finishedAt"] = null;
+        }
+        if (!("durationMs" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["durationMs"] = 0;
+        }
+        if (!("state" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["state"] = "";
+        }
+        if (!("outcome" in $$source)) {
+            /**
+             * @member
+             * @type {string | null}
+             */
+            this["outcome"] = null;
+        }
+        if (!("error" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["error"] = "";
+        }
+        if (!("targets" in $$source)) {
+            /**
+             * @member
+             * @type {Counts}
+             */
+            this["targets"] = (new Counts());
+        }
+        if (!("leafTargets" in $$source)) {
+            /**
+             * @member
+             * @type {Counts}
+             */
+            this["leafTargets"] = (new Counts());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RunRecord instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {RunRecord}
+     */
+    static createFrom($$source = {}) {
+        const $$createField7_0 = $$createType8;
+        const $$createField8_0 = $$createType8;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("targets" in $$parsedSource) {
+            $$parsedSource["targets"] = $$createField7_0($$parsedSource["targets"]);
+        }
+        if ("leafTargets" in $$parsedSource) {
+            $$parsedSource["leafTargets"] = $$createField8_0($$parsedSource["leafTargets"]);
+        }
+        return new RunRecord(/** @type {Partial<RunRecord>} */($$parsedSource));
     }
 }
 
@@ -144,8 +1035,8 @@ export class RunRequest {
      * @returns {RunRequest}
      */
     static createFrom($$source = {}) {
-        const $$createField4_0 = $$createType0;
-        const $$createField5_0 = $$createType0;
+        const $$createField4_0 = $$createType5;
+        const $$createField5_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("exclude" in $$parsedSource) {
             $$parsedSource["exclude"] = $$createField4_0($$parsedSource["exclude"]);
@@ -157,5 +1048,443 @@ export class RunRequest {
     }
 }
 
+/**
+ * RunSpec is the resolved immutable description. It never contains credentials.
+ */
+export class RunSpec {
+    /**
+     * Creates a new RunSpec instance.
+     * @param {Partial<RunSpec>} [$$source = {}] - The source object to create the RunSpec.
+     */
+    constructor($$source = {}) {
+        if (!("version" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["version"] = 0;
+        }
+        if (!("path" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["path"] = "";
+        }
+        if (!("output" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["output"] = "";
+        }
+        if (!("recipe" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["recipe"] = "";
+        }
+        if (!("noSkip" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["noSkip"] = false;
+        }
+        if (!("exclude" in $$source)) {
+            /**
+             * @member
+             * @type {string[]}
+             */
+            this["exclude"] = [];
+        }
+        if (!("referencePaths" in $$source)) {
+            /**
+             * @member
+             * @type {string[]}
+             */
+            this["referencePaths"] = [];
+        }
+        if (!("allowDynamic" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["allowDynamic"] = false;
+        }
+        if (!("cflow" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["cflow"] = false;
+        }
+        if (!("codeOnly" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["codeOnly"] = false;
+        }
+        if (!("extractAssets" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["extractAssets"] = false;
+        }
+        if (!("gameDataOut" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["gameDataOut"] = "";
+        }
+        if (!("toolsMirror" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["toolsMirror"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RunSpec instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {RunSpec}
+     */
+    static createFrom($$source = {}) {
+        const $$createField5_0 = $$createType5;
+        const $$createField6_0 = $$createType5;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("exclude" in $$parsedSource) {
+            $$parsedSource["exclude"] = $$createField5_0($$parsedSource["exclude"]);
+        }
+        if ("referencePaths" in $$parsedSource) {
+            $$parsedSource["referencePaths"] = $$createField6_0($$parsedSource["referencePaths"]);
+        }
+        return new RunSpec(/** @type {Partial<RunSpec>} */($$parsedSource));
+    }
+}
+
+export class TargetRecord {
+    /**
+     * Creates a new TargetRecord instance.
+     * @param {Partial<TargetRecord>} [$$source = {}] - The source object to create the TargetRecord.
+     */
+    constructor($$source = {}) {
+        if (!("id" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["id"] = "";
+        }
+        if (!("parentTargetId" in $$source)) {
+            /**
+             * @member
+             * @type {string | null}
+             */
+            this["parentTargetId"] = null;
+        }
+        if (!("inputPath" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["inputPath"] = "";
+        }
+        if (!("relativeInput" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["relativeInput"] = "";
+        }
+        if (!("sha256" in $$source)) {
+            /**
+             * @member
+             * @type {string | null}
+             */
+            this["sha256"] = null;
+        }
+        if (!("inputSet" in $$source)) {
+            /**
+             * @member
+             * @type {InputFile[]}
+             */
+            this["inputSet"] = [];
+        }
+        if (!("kind" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["kind"] = "";
+        }
+        if (!("recipe" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["recipe"] = "";
+        }
+        if (!("state" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["state"] = "";
+        }
+        if (!("outcome" in $$source)) {
+            /**
+             * @member
+             * @type {string | null}
+             */
+            this["outcome"] = null;
+        }
+        if (!("skipReason" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["skipReason"] = "";
+        }
+        if (!("error" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["error"] = "";
+        }
+        if (!("output" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["output"] = "";
+        }
+        if (!("startedAt" in $$source)) {
+            /**
+             * @member
+             * @type {string | null}
+             */
+            this["startedAt"] = null;
+        }
+        if (!("finishedAt" in $$source)) {
+            /**
+             * @member
+             * @type {string | null}
+             */
+            this["finishedAt"] = null;
+        }
+        if (!("durationMs" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["durationMs"] = 0;
+        }
+        if (!("files" in $$source)) {
+            /**
+             * @member
+             * @type {FileCounts}
+             */
+            this["files"] = (new FileCounts());
+        }
+        if (!("quality" in $$source)) {
+            /**
+             * @member
+             * @type {QualityReport | null}
+             */
+            this["quality"] = null;
+        }
+        if (!("provenance" in $$source)) {
+            /**
+             * @member
+             * @type {string | null}
+             */
+            this["provenance"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TargetRecord instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {TargetRecord}
+     */
+    static createFrom($$source = {}) {
+        const $$createField5_0 = $$createType10;
+        const $$createField16_0 = $$createType11;
+        const $$createField17_0 = $$createType13;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("inputSet" in $$parsedSource) {
+            $$parsedSource["inputSet"] = $$createField5_0($$parsedSource["inputSet"]);
+        }
+        if ("files" in $$parsedSource) {
+            $$parsedSource["files"] = $$createField16_0($$parsedSource["files"]);
+        }
+        if ("quality" in $$parsedSource) {
+            $$parsedSource["quality"] = $$createField17_0($$parsedSource["quality"]);
+        }
+        return new TargetRecord(/** @type {Partial<TargetRecord>} */($$parsedSource));
+    }
+}
+
+export class Workspace {
+    /**
+     * Creates a new Workspace instance.
+     * @param {Partial<Workspace>} [$$source = {}] - The source object to create the Workspace.
+     */
+    constructor($$source = {}) {
+        if (!("schemaVersion" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["schemaVersion"] = 0;
+        }
+        if (!("journalVersion" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["journalVersion"] = 0;
+        }
+        if (!("eventVersion" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["eventVersion"] = 0;
+        }
+        if (!("app" in $$source)) {
+            /**
+             * @member
+             * @type {AppInfo}
+             */
+            this["app"] = (new AppInfo());
+        }
+        if (!("run" in $$source)) {
+            /**
+             * @member
+             * @type {RunRecord}
+             */
+            this["run"] = (new RunRecord());
+        }
+        if (!("spec" in $$source)) {
+            /**
+             * @member
+             * @type {RunSpec}
+             */
+            this["spec"] = (new RunSpec());
+        }
+        if (!("lastSeq" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["lastSeq"] = 0;
+        }
+        if (!("journal" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["journal"] = "";
+        }
+        if (!("toolsLock" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["toolsLock"] = "";
+        }
+        if (!("targets" in $$source)) {
+            /**
+             * @member
+             * @type {TargetRecord[]}
+             */
+            this["targets"] = [];
+        }
+        if (!("artifacts" in $$source)) {
+            /**
+             * @member
+             * @type {Artifact[]}
+             */
+            this["artifacts"] = [];
+        }
+        if (!("warnings" in $$source)) {
+            /**
+             * @member
+             * @type {string[]}
+             */
+            this["warnings"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Workspace instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {Workspace}
+     */
+    static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType14;
+        const $$createField4_0 = $$createType15;
+        const $$createField5_0 = $$createType16;
+        const $$createField9_0 = $$createType18;
+        const $$createField10_0 = $$createType20;
+        const $$createField11_0 = $$createType5;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("app" in $$parsedSource) {
+            $$parsedSource["app"] = $$createField3_0($$parsedSource["app"]);
+        }
+        if ("run" in $$parsedSource) {
+            $$parsedSource["run"] = $$createField4_0($$parsedSource["run"]);
+        }
+        if ("spec" in $$parsedSource) {
+            $$parsedSource["spec"] = $$createField5_0($$parsedSource["spec"]);
+        }
+        if ("targets" in $$parsedSource) {
+            $$parsedSource["targets"] = $$createField9_0($$parsedSource["targets"]);
+        }
+        if ("artifacts" in $$parsedSource) {
+            $$parsedSource["artifacts"] = $$createField10_0($$parsedSource["artifacts"]);
+        }
+        if ("warnings" in $$parsedSource) {
+            $$parsedSource["warnings"] = $$createField11_0($$parsedSource["warnings"]);
+        }
+        return new Workspace(/** @type {Partial<Workspace>} */($$parsedSource));
+    }
+}
+
 // Private type creation functions
-const $$createType0 = $Create.Array($Create.Any);
+const $$createType0 = Producer.createFrom;
+const $$createType1 = Metric.createFrom;
+const $$createType2 = Evidence.createFrom;
+const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = Coverage.createFrom;
+const $$createType5 = $Create.Array($Create.Any);
+const $$createType6 = QualityCheck.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = Counts.createFrom;
+const $$createType9 = InputFile.createFrom;
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = FileCounts.createFrom;
+const $$createType12 = QualityReport.createFrom;
+const $$createType13 = $Create.Nullable($$createType12);
+const $$createType14 = AppInfo.createFrom;
+const $$createType15 = RunRecord.createFrom;
+const $$createType16 = RunSpec.createFrom;
+const $$createType17 = TargetRecord.createFrom;
+const $$createType18 = $Create.Array($$createType17);
+const $$createType19 = Artifact.createFrom;
+const $$createType20 = $Create.Array($$createType19);

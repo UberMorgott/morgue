@@ -137,7 +137,10 @@ func TestEventHookAndStatusSeq(t *testing.T) {
 	s := NewPipelineServiceWithPrepare(stubPrepare(func(context.Context) error { return nil }, nil))
 	var seen []runmodel.Event
 	var mu sync.Mutex
-	SetEventHook(s, func(ev runmodel.Event) { mu.Lock(); seen = append(seen, ev); mu.Unlock() })
+	var second []runmodel.Event
+	AddEventHook(s, func(ev runmodel.Event) { mu.Lock(); seen = append(seen, ev); mu.Unlock() })
+	AddEventHook(s, nil)
+	AddEventHook(s, func(ev runmodel.Event) { mu.Lock(); second = append(second, ev); mu.Unlock() })
 	h, err := s.RunSpec(runmodel.RunRequest{Path: "x"})
 	if err != nil {
 		t.Fatal(err)
@@ -146,6 +149,9 @@ func TestEventHookAndStatusSeq(t *testing.T) {
 	defer mu.Unlock()
 	if len(seen) != 1 || seen[0].Run != h.ID || seen[0].Type != runmodel.EventRunStarted {
 		t.Fatalf("events %+v", seen)
+	}
+	if len(second) != 1 || second[0].Seq != seen[0].Seq {
+		t.Fatalf("second hook did not receive the fan-out: %+v", second)
 	}
 	if st := s.GetStatus(); st.LastSeq != 1 || !st.StartedAt.Equal(h.StartedAt) {
 		t.Fatalf("status %+v", st)

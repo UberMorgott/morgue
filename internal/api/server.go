@@ -29,6 +29,7 @@ type Server struct {
 	config   *services.ConfigService
 	recon    *services.ReconService
 	events   *EventBroadcaster
+	history  *HistoryHandlers
 	http     *http.Server
 	app      *application.App
 
@@ -38,8 +39,12 @@ type Server struct {
 	tokenPath string
 }
 
-// NewServer creates a Server wired to the given services.
-func NewServer(pipeline *services.PipelineService, tools *services.ToolsService, cfg *services.ConfigService, recon *services.ReconService) *Server {
+// NewServer creates a Server wired to the given services. ws (optional) backs
+// the read-only current-run snapshot/replay routes and SSE Last-Event-ID
+// resume; the caller feeds it events (services.AddEventHook +
+// services.ObserveWorkspaceEvent). With nil ws those routes are absent and
+// /api/events streams live only.
+func NewServer(pipeline *services.PipelineService, tools *services.ToolsService, cfg *services.ConfigService, recon *services.ReconService, ws *services.WorkspaceService) *Server {
 	s := &Server{
 		pipeline: pipeline,
 		tools:    tools,
@@ -54,11 +59,17 @@ func NewServer(pipeline *services.PipelineService, tools *services.ToolsService,
 			s.events.Broadcast("pipeline:error", marshalJSON(map[string]string{"error": runErr.Error()}))
 		}
 	})
-	services.SetEventHook(pipeline, s.broadcastRunEvent)
+	services.AddEventHook(pipeline, s.broadcastRunEvent)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/status", s.handleStatus)
-	mux.HandleFunc("GET /api/events", s.events.HandleSSE)
+	mux.HandleFunc("GET /api/events", s.handleEvents)
+
+	// Run workspace (read-only): current snapshot and bounded journal replay.
+	if ws != nil {
+		s.history = NewHistoryHandlers(ws)
+		s.history.Register(mux)
+	}
 
 	// Pipeline
 	mux.HandleFunc("POST /api/run", s.handleRun)

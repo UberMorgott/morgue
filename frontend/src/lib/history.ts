@@ -2,7 +2,7 @@
 // BaseDir()/state/recent-runs.json. Status always comes from disk via
 // WorkspaceService; nothing here is a source of truth for outcomes.
 
-import { Call } from '@wailsio/runtime';
+import { WorkspaceService } from '../../bindings/github.com/UberMorgott/morgue/internal/services/index.js';
 
 export type RecentStatus = 'running' | 'finished' | 'interrupted' | 'corrupt' | 'legacy' | 'unavailable';
 
@@ -27,15 +27,13 @@ export const LEGACY_HISTORY_KEY = 'morgue-history';
 export const LEGACY_IMPORTED_KEY = 'morgue-history-imported';
 export const MAX_RECENT = 20;
 
-const SERVICE = 'github.com/UberMorgott/morgue/internal/services.WorkspaceService';
-
-/** Default backend: the Wails WorkspaceService (no SSE inside the webview). */
+/** Default backend: the generated Wails WorkspaceService bindings (no SSE inside the webview). */
 export const wailsHistoryBackend: HistoryBackend = {
   async recent() {
-    return normalizeRecent(await Call.ByName(`${SERVICE}.Recent`));
+    return normalizeRecent(await WorkspaceService.Recent());
   },
   async importLegacy(paths) {
-    const n = await Call.ByName(`${SERVICE}.ImportLegacy`, paths);
+    const n = await WorkspaceService.ImportLegacy(paths);
     return typeof n === 'number' ? n : 0;
   },
 };

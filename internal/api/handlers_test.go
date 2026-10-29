@@ -20,7 +20,7 @@ func newTestServer() *Server {
 	tools := services.NewToolsService("")
 	cfg := &services.ConfigService{}
 	recon := &services.ReconService{}
-	return NewServer(pipeline, tools, cfg, recon)
+	return NewServer(pipeline, tools, cfg, recon, nil)
 }
 
 func TestHandleGetTools(t *testing.T) {

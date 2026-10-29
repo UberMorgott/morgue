@@ -9,6 +9,58 @@ import { Create as $Create } from "@wailsio/runtime";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as tools$0 from "../tools/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as workspace$0 from "../workspace/models.js";
+
+/**
+ * CurrentRun is the snapshot of the run admitted most recently in this process.
+ */
+export class CurrentRun {
+    /**
+     * Creates a new CurrentRun instance.
+     * @param {Partial<CurrentRun>} [$$source = {}] - The source object to create the CurrentRun.
+     */
+    constructor($$source = {}) {
+        if (!("runId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["runId"] = "";
+        }
+        if (!("root" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["root"] = "";
+        }
+        if (!("recovery" in $$source)) {
+            /**
+             * @member
+             * @type {workspace$0.Recovery}
+             */
+            this["recovery"] = (new workspace$0.Recovery());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CurrentRun instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {CurrentRun}
+     */
+    static createFrom($$source = {}) {
+        const $$createField2_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("recovery" in $$parsedSource) {
+            $$parsedSource["recovery"] = $$createField2_0($$parsedSource["recovery"]);
+        }
+        return new CurrentRun(/** @type {Partial<CurrentRun>} */($$parsedSource));
+    }
+}
 
 /**
  * EnrichedToolStatus extends ToolStatus with operation state.
@@ -120,7 +172,7 @@ export class EnrichedToolStatus {
      * @returns {EnrichedToolStatus}
      */
     static createFrom($$source = {}) {
-        const $$createField9_0 = $$createType0;
+        const $$createField9_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("RuntimeDeps" in $$parsedSource) {
             $$parsedSource["RuntimeDeps"] = $$createField9_0($$parsedSource["RuntimeDeps"]);
@@ -169,7 +221,7 @@ export class EnrichedToolsResponse {
      * @returns {EnrichedToolsResponse}
      */
     static createFrom($$source = {}) {
-        const $$createField0_0 = $$createType2;
+        const $$createField0_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tools" in $$parsedSource) {
             $$parsedSource["tools"] = $$createField0_0($$parsedSource["tools"]);
@@ -306,6 +358,94 @@ export class PipelineStatus {
 }
 
 /**
+ * RecentRun is one recent workspace reference with status resolved from disk.
+ */
+export class RecentRun {
+    /**
+     * Creates a new RecentRun instance.
+     * @param {Partial<RecentRun>} [$$source = {}] - The source object to create the RecentRun.
+     */
+    constructor($$source = {}) {
+        if (!("path" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["path"] = "";
+        }
+        if (!("input" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["input"] = "";
+        }
+        if (!("runId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["runId"] = "";
+        }
+        if (!("status" in $$source)) {
+            /**
+             * running|finished|interrupted|corrupt|legacy|unavailable
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+        if (!("outcome" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["outcome"] = "";
+        }
+        if (!("startedAt" in $$source)) {
+            /**
+             * @member
+             * @type {string | null}
+             */
+            this["startedAt"] = null;
+        }
+        if (!("targets" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["targets"] = 0;
+        }
+        if (!("failed" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["failed"] = 0;
+        }
+        if (!("error" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["error"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RecentRun instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {RecentRun}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RecentRun(/** @type {Partial<RecentRun>} */($$parsedSource));
+    }
+}
+
+/**
  * ScanTarget is a frontend-friendly representation of a scan result.
  */
 export class ScanTarget {
@@ -389,6 +529,7 @@ export class UpdateStatus {
 }
 
 // Private type creation functions
-const $$createType0 = $Create.Array($Create.Any);
-const $$createType1 = EnrichedToolStatus.createFrom;
-const $$createType2 = $Create.Array($$createType1);
+const $$createType0 = workspace$0.Recovery.createFrom;
+const $$createType1 = $Create.Array($Create.Any);
+const $$createType2 = EnrichedToolStatus.createFrom;
+const $$createType3 = $Create.Array($$createType2);

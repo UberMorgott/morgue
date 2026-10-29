@@ -99,7 +99,7 @@ func (c *int32Counter) get() int {
 func newGuardedServer(t *testing.T, runner func(context.Context) error) (*Server, *httptest.Server) {
 	t.Helper()
 	pipeline := services.NewPipelineServiceWithPrepare(fakePrepare(runner, nil))
-	s := NewServer(pipeline, services.NewToolsService(""), &services.ConfigService{}, &services.ReconService{})
+	s := NewServer(pipeline, services.NewToolsService(""), &services.ConfigService{}, &services.ReconService{}, nil)
 	ts := httptest.NewServer(s.http.Handler)
 	t.Cleanup(ts.Close)
 	return s, ts
