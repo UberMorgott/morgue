@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
@@ -595,11 +596,18 @@ func (d *DotnetConfuserEx) runToolStep(
 }
 
 // resolveDotnetSDK returns a path to a `dotnet` executable that has at least one
-// SDK installed. On this machine the PATH `dotnet` may be an x86 stub without an
-// SDK, so we probe `dotnet --list-sdks` and fall back to the canonical install at
-// C:\Program Files\dotnet\dotnet.exe. Returns "" if no SDK is found anywhere.
+// SDK installed. The run-selected .NET runtime (ctx.Tools.RuntimePath, frozen
+// in the run tool lock; the managed runtimes/dotnet payload is a full SDK) is
+// preferred, so helpers build with exactly the recorded runtime. Only when that
+// selection has no SDK (e.g. a runtime-only system dotnet) do we probe the PATH
+// `dotnet` (may be an x86 stub) and the canonical C:\Program Files\dotnet
+// install; buildDotnetTool then notes the mismatch. Returns "" if none found.
 func (d *DotnetConfuserEx) resolveDotnetSDK(ctx *Context) string {
-	candidates := []string{"dotnet"}
+	var candidates []string
+	if selected := selectedDotnet(ctx); selected != "" {
+		candidates = append(candidates, selected)
+	}
+	candidates = append(candidates, "dotnet")
 	if pf := os.Getenv("ProgramFiles"); pf != "" {
 		candidates = append(candidates, filepath.Join(pf, "dotnet", "dotnet.exe"))
 	}
@@ -629,6 +637,36 @@ func (d *DotnetConfuserEx) resolveDotnetSDK(ctx *Context) string {
 		}
 	}
 	return ""
+}
+
+// selectedDotnet returns the run-selected .NET runtime binary, or "" when no
+// tool manager is bound or no runtime is available.
+func selectedDotnet(ctx *Context) string {
+	if ctx == nil || ctx.Tools == nil {
+		return ""
+	}
+	p, err := ctx.Tools.RuntimePath(tools.RuntimeDotnet)
+	if err != nil {
+		return ""
+	}
+	return p
+}
+
+// samePath reports whether two dotnet executables are the same file; a bare
+// command name is resolved through PATH first.
+func samePath(a, b string) bool {
+	abs := func(p string) string {
+		if !filepath.IsAbs(p) {
+			if lp, err := exec.LookPath(p); err == nil {
+				p = lp
+			}
+		}
+		if ap, err := filepath.Abs(p); err == nil {
+			p = ap
+		}
+		return filepath.Clean(p)
+	}
+	return strings.EqualFold(abs(a), abs(b))
 }
 
 // buildExtractor builds (cached) the cfxextract embedded-assembly extractor and
@@ -671,11 +709,18 @@ func buildDotnetTool(ctx *Context, dotnet string, logTool func(string, string),
 	// Bound run manager: the SDK runtime is selected first, then cache
 	// validation/build/publication run under the exclusive helper lock and the
 	// result is frozen (payload + source/SDK digest) in the run tool lock.
-	if _, err := ctx.Tools.RuntimePath(tools.RuntimeDotnet); err != nil {
+	selected, err := ctx.Tools.RuntimePath(tools.RuntimeDotnet)
+	if err != nil {
 		return "", fmt.Errorf("select .NET runtime for %s: %w", tool, err)
 	}
+	if !samePath(selected, dotnet) {
+		// Honest record: the run lock's runtime:dotnet identity is the selected
+		// runtime, which has no SDK; the SDK actually used (path + version) is
+		// part of the helper's source digest (its recorded version).
+		logTool(tool, fmt.Sprintf("selected .NET runtime %s has no SDK; building with SDK %s (SDK identity recorded in the helper source digest, not as runtime:dotnet)", selected, dotnet))
+	}
 	var dll string
-	_, err := ctx.Tools.WithHelper(ctx.Ctx, tool, func() (string, string, error) {
+	_, err = ctx.Tools.WithHelper(ctx.Ctx, tool, func() (string, string, error) {
 		path, digest, err := buildHelperCached(ctx, dotnet, logTool, tool, csproj, dllName, assets, assetPrefix, srcFiles, buildMsg)
 		dll = path
 		return path, digest, err
