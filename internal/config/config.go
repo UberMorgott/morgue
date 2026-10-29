@@ -70,6 +70,12 @@ type Config struct {
 
 	// Native pipeline step toggles
 	NativeGhidraDecompile bool `json:"NativeGhidraDecompile" yaml:"native_ghidra_decompile"`
+	// GhidraMaxMemGB caps the analyzeHeadless JVM heap; 0 = auto
+	// (min(8, 25% of physical RAM), at least 2). GhidraMaxCPU caps its analysis
+	// threads (-max-cpu); 0 = auto (half the logical CPUs, at least 1).
+	// Env GHIDRA_HEADLESS_MAXMEM / GHIDRA_MAXMEM still override the heap.
+	GhidraMaxMemGB int `json:"GhidraMaxMemGB" yaml:"ghidra_max_mem_gb"`
+	GhidraMaxCPU   int `json:"GhidraMaxCPU" yaml:"ghidra_max_cpu"`
 
 	// Delphi pipeline step toggles
 	DelphiIDRAnalysis     bool `json:"DelphiIDRAnalysis" yaml:"delphi_idr_analysis"`

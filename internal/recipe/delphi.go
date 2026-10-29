@@ -157,7 +157,7 @@ func (d *Delphi) Execute(ctx *Context) error {
 			ev.Decompile = step("ghidra", quality.StepUnavailable, err.Error(), "src")
 		} else {
 			srcDir := filepath.Join(ctx.Output, "src")
-			funcCount, runErr := runGhidra(ctx.Ctx, ghidraPath, resolveGhidraJava(ctx.Tools), ctx.Target, srcDir,
+			funcCount, runErr := runGhidra(ctx.Ctx, ghidraPath, resolveGhidraJava(ctx.Tools), ctx.Target, srcDir, ghidraLimitsFrom(ctx.Config),
 				func(msg string) { logTool("ghidra", msg) },
 				func(name string, count int) {
 					if ctx.Progress != nil {

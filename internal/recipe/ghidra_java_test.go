@@ -82,3 +82,24 @@ func TestCheckGhidraJava(t *testing.T) {
 		t.Fatalf("unknown requirement must defer to Ghidra, got %v", err)
 	}
 }
+
+func TestGhidraResources(t *testing.T) {
+	cases := []struct {
+		l             ghidraLimits
+		ram, cpus     int
+		heap, wantCPU int
+	}{
+		{ghidraLimits{}, 64, 16, 8, 8}, // auto: capped at 8G, half the CPUs
+		{ghidraLimits{}, 16, 8, 4, 4},  // auto: 25% RAM
+		{ghidraLimits{}, 4, 1, 2, 1},   // auto: Ghidra's 2G floor, at least 1 CPU
+		{ghidraLimits{}, 0, 0, 2, 1},   // RAM unknown
+		{ghidraLimits{MaxMemGB: 24, MaxCPU: 4}, 64, 16, 24, 4},
+		{ghidraLimits{MaxMemGB: 99, MaxCPU: 99}, 16, 8, 14, 8}, // clamped to RAM-2 / CPUs
+	}
+	for _, c := range cases {
+		h, n := ghidraResources(c.l, c.ram, c.cpus)
+		if h != c.heap || n != c.wantCPU {
+			t.Errorf("ghidraResources(%+v, %d, %d) = %d, %d; want %d, %d", c.l, c.ram, c.cpus, h, n, c.heap, c.wantCPU)
+		}
+	}
+}

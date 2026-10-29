@@ -234,7 +234,7 @@ func (n *Native) Execute(ctx *Context) error {
 			}
 			srcDir := filepath.Join(ctx.Output, "src")
 			ghidraRun := func(pre ...ghidraScript) (int, error) {
-				return runGhidra(ctx.Ctx, ghidraPath, javaPath, ctx.Target, srcDir,
+				return runGhidra(ctx.Ctx, ghidraPath, javaPath, ctx.Target, srcDir, ghidraLimitsFrom(ctx.Config),
 					func(msg string) { logTool("ghidra", msg) },
 					func(name string, count int) {
 						if ctx.Progress != nil {

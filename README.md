@@ -82,7 +82,7 @@ NuGet, or direct URLs). Inspect and manage them with `morgue tools check` /
 - **diec** — Detect It Easy (console detector)
 - **ilspycmd** — ILSpy command-line .NET decompiler (run via .NET)
 - **de4dot-cex** — de4dot fork for ConfuserEx
-- **ghidra** — NSA Ghidra (native decompilation, headless)
+- **ghidra** — NSA Ghidra (native decompilation, headless). Needs the JDK version its `application.java.min` declares (fails clearly otherwise). Resource caps: JVM heap `ghidra_max_mem_gb` (default min(8, 25% RAM), at least 2) and analysis threads `ghidra_max_cpu` (default half the CPUs) in `morgue.yaml`; `GHIDRA_HEADLESS_MAXMEM` env overrides the heap. Output is labelled pseudocode, never original source.
 - **ghidra-nativeaot** — Ghidra extension for .NET NativeAOT metadata recovery
 - **il2cppinspector** — Il2CppInspectorRedux (IL2CPP metadata v16–v106)
 - **il2cppdumper** — Unity IL2CPP metadata extractor (fallback)

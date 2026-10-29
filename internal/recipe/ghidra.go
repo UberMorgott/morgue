@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/UberMorgott/morgue/internal/config"
 	"github.com/UberMorgott/morgue/internal/provenance"
 	"github.com/UberMorgott/morgue/internal/quality"
 	"github.com/UberMorgott/morgue/internal/runmodel"
@@ -291,6 +292,7 @@ public class MorgueExport extends GhidraScript {
 func runGhidra(
 	ctx context.Context,
 	ghidraToolPath, javaPath, binaryPath, outDir string,
+	limits ghidraLimits,
 	onLog func(msg string),
 	onPhase func(name string, count int),
 	preScripts ...ghidraScript,
@@ -316,17 +318,18 @@ func runGhidra(
 		log(fmt.Sprintf("Using Java at %s (JAVA_HOME=%s)", javaPath, javaHome))
 	}
 
-	// Ghidra's headless launcher forces a 2G heap, which OOMs on large binaries
-	// (a ~278MB binary needs tens of GB just for auto-analysis). When the user
-	// has not set a heap override, scale one to ~70% of physical RAM, leaving
-	// headroom for the OS and flooring at the 2G default.
+	// Bound the JVM so one decompile cannot starve the machine: heap defaults to
+	// min(8G, 25% RAM) (floor 2G, Ghidra's own default) and analysis threads to
+	// half the CPUs; both configurable (ghidra_max_mem_gb / ghidra_max_cpu).
+	// An explicit GHIDRA_HEADLESS_MAXMEM / GHIDRA_MAXMEM env still wins.
+	totalGB := 0
+	if totalBytes := util.TotalPhysicalMemoryBytes(); totalBytes > 0 {
+		totalGB = int(totalBytes / (1024 * 1024 * 1024)) //nolint:gosec // G115: physical RAM in GB is far below MaxInt on any machine that can run Ghidra
+	}
+	heapGB, maxCPU := ghidraResources(limits, totalGB, runtime.NumCPU())
 	if os.Getenv("GHIDRA_HEADLESS_MAXMEM") == "" && os.Getenv("GHIDRA_MAXMEM") == "" {
-		if totalBytes := util.TotalPhysicalMemoryBytes(); totalBytes > 0 {
-			totalGB := int(totalBytes / (1024 * 1024 * 1024)) //nolint:gosec // G115: physical RAM in GB is far below MaxInt on any machine that can run Ghidra
-			heapGB := max(min(totalGB*70/100, totalGB-3), 2)
-			ghidraEnv = append(ghidraEnv, fmt.Sprintf("GHIDRA_HEADLESS_MAXMEM=%dG", heapGB))
-			log(fmt.Sprintf("Ghidra heap set to %dG (of %dG physical RAM)", heapGB, totalGB))
-		}
+		ghidraEnv = append(ghidraEnv, fmt.Sprintf("GHIDRA_HEADLESS_MAXMEM=%dG", heapGB))
+		log(fmt.Sprintf("Ghidra heap capped at %dG (of %dG physical RAM), %d analysis threads", heapGB, totalGB, maxCPU))
 	}
 
 	// ghidraToolPath points to ghidraRun.bat; we need support/analyzeHeadless
@@ -411,6 +414,7 @@ func runGhidra(
 	// breakaway the JVM OOM-crashes on the large binaries we target.
 	args := append([]string{projDir, "MorgueProject", "-import", runBinary}, preArgs...)
 	args = append(args,
+		"-max-cpu", strconv.Itoa(maxCPU),
 		"-postScript", scriptPath, runOutput, runStatus,
 		"-scriptPath", filepath.Dir(scriptPath),
 		"-deleteProject",
@@ -937,4 +941,41 @@ func peExportRVAs(binary string) map[string]bool {
 		}
 	}
 	return set
+}
+
+// ghidraLimits are the configured analyzeHeadless resource caps (0 = auto).
+type ghidraLimits struct {
+	MaxMemGB int
+	MaxCPU   int
+}
+
+// ghidraLimitsFrom reads the caps from the run config (nil = auto).
+func ghidraLimitsFrom(cfg *config.Config) ghidraLimits {
+	if cfg == nil {
+		return ghidraLimits{}
+	}
+	return ghidraLimits{MaxMemGB: cfg.GhidraMaxMemGB, MaxCPU: cfg.GhidraMaxCPU}
+}
+
+// ghidraResources resolves the JVM heap (GB) and -max-cpu for analyzeHeadless.
+// Auto heap = min(8, 25% of totalGB), floor 2 (Ghidra's default); an explicit
+// cap is honoured but floored at 1 and never above totalGB-2 when RAM is known.
+// Auto CPU = half the logical CPUs, at least 1; explicit is clamped to [1,cpus].
+func ghidraResources(l ghidraLimits, totalGB, cpus int) (heapGB, maxCPU int) {
+	if l.MaxMemGB > 0 {
+		heapGB = l.MaxMemGB
+		if totalGB > 3 {
+			heapGB = min(heapGB, totalGB-2)
+		}
+		heapGB = max(heapGB, 1)
+	} else {
+		heapGB = max(min(8, totalGB/4), 2)
+	}
+	cpus = max(cpus, 1)
+	if l.MaxCPU > 0 {
+		maxCPU = min(l.MaxCPU, cpus)
+	} else {
+		maxCPU = max(cpus/2, 1)
+	}
+	return heapGB, maxCPU
 }
