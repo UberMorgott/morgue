@@ -5,7 +5,7 @@ import goldenRaw from '../../../internal/runmodel/testdata/run-started.json?raw'
 import { parseEventV2, type EventV2 } from './events';
 import {
   pipelineState, resetPipeline, startPipeline, applyEventV2, updateFromEvent,
-  elapsedMs, formatElapsed, targetTree,
+  elapsedMs, formatElapsed, targetTree, primaryFidelity,
 } from './pipeline';
 
 const goldenRunStarted = goldenRaw.trim();
@@ -190,5 +190,33 @@ describe('events v2 reducer', () => {
     expect(st.reconResults.filter(r => r.file === 'setup.exe')).toHaveLength(2);
     expect(st.reconResults.find(r => r.targetId === 't0000000000000002')?.kind).toBe('Skipped');
     expect(st.leafCounts?.error).toBe(1);
+  });
+});
+
+describe('per-target quality and fidelity', () => {
+  beforeEach(() => resetPipeline());
+
+  it('projects quality.updated and code-fidelity artifacts onto known targets only', () => {
+    const tid = 't0000000000000009';
+    const m = (value: number | null, status = 'measured') => ({ value, status, basis: '' });
+    applyEventV2(ev(1, 'run.started', { handle: { runId: RUN, startedAt: T0, output: 'out' }, spec: { path: 'in' } }));
+    applyEventV2(ev(2, 'target.discovered', { inputPath: 'C:/g/a.dll', relativeInput: 'a.dll', kind: 'Native', recipe: 'native', output: 'a', sizeBytes: 1 }, { targetId: tid }));
+    expect(applyEventV2(ev(3, 'artifact.written', { artifact: { id: 'x', targetId: tid, path: 'a/x.c', kind: 'pseudocode' } }, { targetId: tid }))).toBe('applied');
+    expect(applyEventV2(ev(4, 'artifact.written', { artifact: { id: 'y', targetId: tid, path: 'a/quality.json', kind: 'metadata' } }, { targetId: tid }))).toBe('ignored');
+    expect(applyEventV2(ev(5, 'quality.updated', { quality: {
+      schemaVersion: 1, family: 'native', status: 'degraded',
+      functions: { found: m(4), emitted: m(2), ratio: 0.5, comparable: true },
+      types: { found: m(null, 'unknown'), emitted: m(null, 'unknown'), ratio: null, comparable: false },
+      names: { total: m(4), autoNamed: m(1), autoRatio: 0.25, inferred: m(0) },
+      decompilerErrors: m(null, 'unknown'),
+    } }, { targetId: tid }))).toBe('applied');
+    expect(applyEventV2(ev(6, 'quality.updated', { quality: { status: 'pass' } }, { targetId: 'tffffffffffffffff' }))).toBe('ignored');
+    const s = get(pipelineState);
+    expect(s.targets).toHaveLength(1);
+    expect(s.targets[0].fidelity).toEqual({ pseudocode: 1 });
+    expect(primaryFidelity(s.targets[0])).toBe('pseudocode');
+    expect(s.targets[0].quality).toEqual({
+      status: 'degraded', family: 'native', functionsRatio: 0.5, typesRatio: null, decompilerErrors: null, namesAutoRatio: 0.25,
+    });
   });
 });

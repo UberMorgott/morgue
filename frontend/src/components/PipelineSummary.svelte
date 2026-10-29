@@ -1,12 +1,34 @@
 <script lang="ts">
   import { t, type Lang } from '../lib/i18n';
-  import type { PipelineState } from '../lib/pipeline';
+  import { primaryFidelity, targetTree, type PipelineState, type TargetQuality } from '../lib/pipeline';
 
   let { lang = 'en' as Lang, state, elapsed = '' }: {
     lang?: Lang;
     state: PipelineState;
     elapsed?: string;
   } = $props();
+
+  const qualityRows = $derived(targetTree(state.targets).filter(r => r.target.quality || primaryFidelity(r.target)));
+
+  const statusTag: Record<string, string> = { pass: 'tag-success', degraded: 'tag-accent' };
+  const pct = (v: number | null) => (v === null ? '' : `${(v * 100).toFixed(1)}%`);
+
+  function metrics(q: TargetQuality | undefined): string[] {
+    if (!q) return [];
+    const out: string[] = [];
+    if (q.functionsRatio !== null) out.push(`${t(lang, 'home.summary.quality.functions')} ${pct(q.functionsRatio)}`);
+    else if (q.typesRatio !== null) out.push(`${t(lang, 'home.summary.quality.types')} ${pct(q.typesRatio)}`);
+    if (q.namesAutoRatio !== null) out.push(`${t(lang, 'home.summary.quality.autoNames')} ${pct(q.namesAutoRatio)}`);
+    if (q.decompilerErrors !== null) out.push(`${t(lang, 'home.summary.quality.decompErrors')} ${q.decompilerErrors}`);
+    return out.slice(0, 3);
+  }
+
+  function statusLabel(q: TargetQuality | undefined): string {
+    if (!q) return t(lang, 'home.summary.quality.notCollected');
+    const key = `home.summary.quality.${q.status}`;
+    const s = t(lang, key);
+    return s === key ? q.status : s;
+  }
 </script>
 
 <div class="acc-section acc-section-summary row-separator">
@@ -36,6 +58,25 @@
       <span class="stat-label">{t(lang, 'home.summary.skipped')}</span>
     </div>
   </div>
+
+  {#if qualityRows.length > 0}
+    <div class="quality-list card-sm">
+      <span class="section-label">{t(lang, 'home.summary.quality')}</span>
+      {#each qualityRows as { target, depth } (target.id ?? target.path)}
+        {@const fid = primaryFidelity(target)}
+        <div class="quality-row row-separator" style:padding-left="{depth * 14}px">
+          <span class="quality-name font-mono text-sm selectable" title={target.path}>{target.relativeInput || target.path}</span>
+          <span class="tag {statusTag[target.quality?.status ?? ''] ?? 'tag-muted'}">{statusLabel(target.quality)}</span>
+          {#each metrics(target.quality) as m (m)}
+            <span class="quality-metric text-xs font-accent">{m}</span>
+          {/each}
+          {#if fid}
+            <span class="tag tag-muted">{t(lang, `home.summary.fidelity.${fid}`)}</span>
+          {/if}
+        </div>
+      {/each}
+    </div>
+  {/if}
 
   {#if state.outputStats.length > 0}
     <div class="output-stats card-sm font-mono">
@@ -121,6 +162,29 @@
     color: var(--text-primary);
     font-weight: 600;
     margin-bottom: 2px;
+  }
+  .quality-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .quality-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 6px;
+  }
+  .quality-name {
+    flex: 1 1 200px;
+    min-width: 0;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .quality-metric {
+    color: var(--text-secondary);
   }
   .summary-output {
     display: flex;

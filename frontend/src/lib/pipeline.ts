@@ -3,8 +3,22 @@ import { loadRecent, wailsHistoryBackend, type HistoryBackend, type RecentRun } 
 import { reduceRunTools, type RunToolInfo } from './tool-policy';
 import type {
   EventV2, RunStarted, ScanCompleted, TargetDiscovered, TargetFinished, StepProgress,
-  ToolProgress, LogRecord, RunFinished, RunOutcome, Counts,
+  ToolProgress, LogRecord, RunFinished, RunOutcome, Counts, QualityUpdated, ArtifactWritten,
 } from './events';
+
+/** Artifact kinds that describe recovered code, most to least faithful. */
+export const CODE_FIDELITY = ['source', 'decompiled-source', 'pseudocode', 'stub'] as const;
+export type CodeFidelity = typeof CODE_FIDELITY[number];
+
+/** Compact per-target view of quality.updated (null = not measured). */
+export interface TargetQuality {
+  status: string;
+  family: string;
+  functionsRatio: number | null;
+  typesRatio: number | null;
+  decompilerErrors: number | null;
+  namesAutoRatio: number | null;
+}
 
 
 export type PipelinePhase = 'idle' | 'analysis' | 'tools' | 'execute' | 'done' | 'error' | 'cancelled';
@@ -23,6 +37,14 @@ export interface PipelineTarget {
   sizeBytes?: number;
   skipReason?: string;
   durationMs?: number;
+  quality?: TargetQuality;
+  /** code-fidelity artifact counts from artifact.written */
+  fidelity?: Partial<Record<CodeFidelity, number>>;
+}
+
+/** Most faithful code fidelity a target produced, or '' when none. */
+export function primaryFidelity(t: PipelineTarget): CodeFidelity | '' {
+  return CODE_FIDELITY.find(k => (t.fidelity?.[k] ?? 0) > 0) ?? '';
 }
 
 export interface PipelineState {
@@ -354,9 +376,30 @@ export function reduceEventV2(s: PipelineState, ev: EventV2): { state: PipelineS
       next.execCounters = fin;
       break;
     }
+    case 'quality.updated': {
+      const q = (ev.data as QualityUpdated)?.quality;
+      if (!tid || !q || !next.targets.some(t => t.id === tid)) return { state: next, result: 'ignored' };
+      const measured = (m: { value: number | null; status: string } | undefined) =>
+        m && (m.status === 'measured' || m.status === 'estimated') ? m.value : null;
+      next.targets = upsertTarget(next.targets, tid, { quality: {
+        status: q.status, family: q.family || '',
+        functionsRatio: q.functions?.ratio ?? null, typesRatio: q.types?.ratio ?? null,
+        decompilerErrors: measured(q.decompilerErrors), namesAutoRatio: q.names?.autoRatio ?? null,
+      } });
+      break;
+    }
+    case 'artifact.written': {
+      const a = (ev.data as ArtifactWritten)?.artifact;
+      const owner = a?.targetId || tid;
+      const kind = a?.kind as CodeFidelity;
+      const owned = owner ? next.targets.find(t => t.id === owner) : undefined;
+      if (!owned || !CODE_FIDELITY.includes(kind)) return { state: next, result: 'ignored' };
+      const prev = owned.fidelity ?? {};
+      next.targets = upsertTarget(next.targets, owner, { fidelity: { ...prev, [kind]: (prev[kind] ?? 0) + 1 } });
+      break;
+    }
     default:
-      // artifact.written / quality.updated / unknown types: retained by the
-      // journal, nothing to project in the M1 UI.
+      // unknown types: retained by the journal, nothing to project.
       return { state: next, result: 'ignored' };
   }
   return { state: next, result: 'applied' };

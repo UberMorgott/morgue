@@ -74,6 +74,18 @@ export interface ToolProgress {
 }
 /** phase: optional legacy-display context, never a progress counter. */
 export interface LogRecord { level: 'info' | 'warn' | 'error'; tool: string; message: string; phase?: string }
+/** runmodel.Metric: value is null unless status is measured|estimated. */
+export interface QualityMetric { value: number | null; status: string; basis: string }
+export interface QualityCoverage { found: QualityMetric; emitted: QualityMetric; ratio: number | null; comparable: boolean }
+/** Subset of runmodel.QualityReport the UI reads. */
+export interface QualityReport {
+  schemaVersion: number; family: string; status: 'pass' | 'degraded' | 'unknown' | 'not-applicable' | string;
+  functions: QualityCoverage; types: QualityCoverage;
+  names: { total: QualityMetric; autoNamed: QualityMetric; autoRatio: number | null; inferred: QualityMetric };
+  decompilerErrors: QualityMetric;
+}
+export interface QualityUpdated { quality: QualityReport }
+export interface ArtifactWritten { artifact: { id: string; targetId: string | null; path: string; kind: string } }
 export interface RunFinished {
   outcome: RunOutcome; finishedAt: string; durationMs: number; error: string; targets: Counts; leafTargets: Counts;
 }
