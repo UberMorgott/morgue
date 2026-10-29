@@ -75,16 +75,20 @@ type ToolDef struct {
 
 // ToolStatus holds the installed state of a tool.
 type ToolStatus struct {
-	Name            string        `json:"Name"`
-	Installed       bool          `json:"Installed"`
-	Path            string        `json:"Path"`
-	Version         string        `json:"Version"`
-	LatestVersion   string        `json:"LatestVersion"`
-	UpdateAvailable bool          `json:"UpdateAvailable"`
-	Category        string        `json:"Category"`
-	Description     string        `json:"Description"`
-	Optional        bool          `json:"Optional"`
-	RuntimeDeps     []RuntimeKind `json:"RuntimeDeps,omitempty"`
+	Name             string        `json:"Name"`
+	Installed        bool          `json:"Installed"`
+	Path             string        `json:"Path"`
+	Version          string        `json:"Version"`
+	LatestVersion    string        `json:"LatestVersion"`
+	UpdateAvailable  bool          `json:"UpdateAvailable"`
+	Category         string        `json:"Category"`
+	Description      string        `json:"Description"`
+	Optional         bool          `json:"Optional"`
+	RuntimeDeps      []RuntimeKind `json:"RuntimeDeps,omitempty"`
+	Freshness        string        `json:"Freshness"`
+	FreshnessWarning string        `json:"FreshnessWarning,omitempty"`
+	OperatorVersion  string        `json:"OperatorVersion,omitempty"`
+	InUse            bool          `json:"InUse"`
 
 	// system marks a tool resolved from PATH (prefer_system_tools); Morgue
 	// does not manage or update it.

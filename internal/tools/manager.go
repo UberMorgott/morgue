@@ -21,6 +21,7 @@ const updateCheckInterval = 6 * time.Hour
 type InstallCallbacks struct {
 	OnProgress func(tool string, bytesDown, bytesTotal int64)
 	OnExtract  func(tool string)
+	OnStatus   func(ToolPolicyStatus)
 }
 
 // Manager handles tool installation and resolution.
