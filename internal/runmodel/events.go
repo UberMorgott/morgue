@@ -157,43 +157,6 @@ type ArtifactWritten struct {
 
 func (ArtifactWritten) eventType() EventType { return EventArtifactWritten }
 
-type Evidence struct {
-	Path   string `json:"path"`
-	Line   *int64 `json:"line"`
-	Detail string `json:"detail"`
-}
-type Metric struct {
-	Value    *int64     `json:"value"`
-	Status   string     `json:"status"`
-	Basis    string     `json:"basis"`
-	Evidence []Evidence `json:"evidence"`
-}
-type Coverage struct {
-	Found      Metric   `json:"found"`
-	Emitted    Metric   `json:"emitted"`
-	Ratio      *float64 `json:"ratio"`
-	Comparable bool     `json:"comparable"`
-}
-type QualityCheck struct {
-	ID       string     `json:"id"`
-	Status   string     `json:"status"`
-	Message  string     `json:"message"`
-	Evidence []Evidence `json:"evidence"`
-}
-type QualityReport struct {
-	SchemaVersion        int            `json:"schemaVersion"`
-	Family               string         `json:"family"`
-	Status               string         `json:"status"`
-	Functions            Coverage       `json:"functions"`
-	Types                Coverage       `json:"types"`
-	DecompilerErrors     Metric         `json:"decompilerErrors"`
-	UnknownResultTypes   Metric         `json:"unknownResultTypes"`
-	UnresolvedReferences Metric         `json:"unresolvedReferences"`
-	ResidualObfuscation  Metric         `json:"residualObfuscation"`
-	StringDecryption     Coverage       `json:"stringDecryption"`
-	Warnings             []string       `json:"warnings"`
-	Checks               []QualityCheck `json:"checks"`
-}
 type QualityUpdated struct {
 	Quality QualityReport `json:"quality"`
 }

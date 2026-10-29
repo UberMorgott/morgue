@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "provenance-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "targetId",
+    "inputSha256",
+    "artifactPath",
+    "artifactKind",
+    "module",
+    "nameSource",
+    "confidence",
+    "schemaVersion",
+    "token",
+    "rva",
+    "address",
+    "originalName",
+    "recoveredName",
+    "evidence",
+    "producer"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "targetId": {
+      "type": "string"
+    },
+    "inputSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "artifactPath": {
+      "type": "string"
+    },
+    "artifactKind": {
+      "enum": [
+        "source",
+        "decompiled-source",
+        "pseudocode",
+        "stub",
+        "metadata",
+        "asset",
+        "index",
+        "log",
+        "original",
+        "container"
+      ]
+    },
+    "module": {
+      "type": "string"
+    },
+    "nameSource": {
+      "enum": [
+        "original",
+        "metadata",
+        "debug-symbol",
+        "export",
+        "single-string-candidate",
+        "heuristic",
+        "unknown"
+      ]
+    },
+    "confidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low",
+        "unknown"
+      ]
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "token": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^0x[0-9a-f]+$"
+    },
+    "rva": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^0x[0-9a-f]+$"
+    },
+    "address": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^0x[0-9a-f]+$"
+    },
+    "originalName": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "recoveredName": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "quality-v1.schema.json#/$defs/Evidence"
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool",
+        "version",
+        "stepId",
+        "args"
+      ],
+      "properties": {
+        "tool": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "stepId": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

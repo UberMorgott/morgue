@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quality-v1.schema.json",
+  "$ref": "#/$defs/QualityReport",
+  "$defs": {
+    "QualityReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "family",
+        "status",
+        "functions",
+        "types",
+        "decompilerErrors",
+        "unknownResultTypes",
+        "unresolvedReferences",
+        "residualObfuscation",
+        "stringDecryption",
+        "warnings",
+        "checks"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "family": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "degraded",
+            "unknown",
+            "not-applicable"
+          ]
+        },
+        "functions": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "types": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "decompilerErrors": {
+          "$ref": "#/$defs/Metric"
+        },
+        "unknownResultTypes": {
+          "$ref": "#/$defs/Metric"
+        },
+        "unresolvedReferences": {
+          "$ref": "#/$defs/Metric"
+        },
+        "residualObfuscation": {
+          "$ref": "#/$defs/Metric"
+        },
+        "stringDecryption": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/QualityCheck"
+          }
+        }
+      }
+    },
+    "Metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "status",
+        "basis",
+        "evidence"
+      ],
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "measured",
+            "estimated",
+            "unknown",
+            "not-applicable"
+          ]
+        },
+        "basis": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "measured",
+                  "estimated"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "value": {
+                "type": "null"
+              },
+              "basis": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "found",
+        "emitted",
+        "ratio",
+        "comparable"
+      ],
+      "properties": {
+        "found": {
+          "$ref": "#/$defs/Metric"
+        },
+        "emitted": {
+          "$ref": "#/$defs/Metric"
+        },
+        "ratio": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "comparable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "line",
+        "detail"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "QualityCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "status",
+        "message",
+        "evidence"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "warn",
+            "fail",
+            "unknown",
+            "not-applicable"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          }
+        }
+      }
+    }
+  }
+}

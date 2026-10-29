@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/UberMorgott/morgue/internal/config"
+	"github.com/UberMorgott/morgue/internal/provenance"
 	"github.com/UberMorgott/morgue/internal/recon"
 	"github.com/UberMorgott/morgue/internal/tools"
 )
@@ -109,18 +110,19 @@ type SharedProducts interface {
 
 // Context provides everything a recipe needs to execute.
 type Context struct {
-	Artifacts ArtifactObserver
-	Inputs    InputObserver
-	Shared    SharedProducts
-	Children  ChildObserver
-	Target    string
-	Output    string
-	Progress  chan StepProgress
-	Log       chan string
-	Tools     *tools.Manager
-	Ctx       context.Context
-	Config    *config.Config
-	Pause     PauseChecker
+	Provenance provenance.Sink
+	Artifacts  ArtifactObserver
+	Inputs     InputObserver
+	Shared     SharedProducts
+	Children   ChildObserver
+	Target     string
+	Output     string
+	Progress   chan StepProgress
+	Log        chan string
+	Tools      *tools.Manager
+	Ctx        context.Context
+	Config     *config.Config
+	Pause      PauseChecker
 	// ReferencePaths adds dependency search directories for managed decompilers.
 	ReferencePaths []string
 	// Obfuscator is the recon-detected obfuscator name (e.g. "ConfuserEx" or
