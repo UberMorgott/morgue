@@ -7,7 +7,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,6 +30,80 @@ func resolveGhidraJava(m *tools.Manager) string {
 		return ""
 	}
 	return javaPath
+}
+
+// ghidraJavaMin reads application.java.min from <ghidraHome>/Ghidra/application.properties.
+// Returns 0 when the file or key is missing or not an integer.
+func ghidraJavaMin(ghidraHome string) int {
+	v := readProperty(filepath.Join(ghidraHome, "Ghidra", "application.properties"), "application.java.min")
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// javaVersionOutput runs `java -version` (the version banner goes to stderr).
+// A var so tests can substitute it without a real JVM.
+var javaVersionOutput = func(ctx context.Context, javaPath string) (string, error) {
+	res, err := util.RunCmd(ctx, javaPath, []string{"-version"}, "")
+	if res == nil {
+		return "", err
+	}
+	return res.Stderr + "\n" + res.Stdout, err
+}
+
+// reJavaVersion matches the quoted version in `java -version` output, e.g.
+// `openjdk version "25.0.1" 2025-10-21` or `java version "1.8.0_431"`.
+var reJavaVersion = regexp.MustCompile(`version "([0-9]+)(?:\.([0-9]+))?`)
+
+// parseJavaMajor returns the feature release of a `java -version` banner
+// (1.8 -> 8, 25.0.1 -> 25), or 0 when it cannot be parsed.
+func parseJavaMajor(out string) int {
+	m := reJavaVersion.FindStringSubmatch(out)
+	if m == nil {
+		return 0
+	}
+	major, _ := strconv.Atoi(m[1])
+	if major == 1 && m[2] != "" {
+		major, _ = strconv.Atoi(m[2])
+	}
+	return major
+}
+
+// checkGhidraJava enforces the JDK Ghidra itself declares: application.java.min
+// from its application.properties, and a JDK (javac next to java) because the
+// headless launcher refuses a bare JRE. The selected runtime is frozen for the
+// run, so a mismatch is reported up front instead of letting analyzeHeadless
+// fail with an opaque launcher error.
+func checkGhidraJava(ctx context.Context, ghidraHome, javaPath string) error {
+	minMajor := ghidraJavaMin(ghidraHome)
+	if minMajor == 0 {
+		return nil // unknown requirement: let Ghidra's own launcher decide
+	}
+	if javaPath == "" {
+		return fmt.Errorf("ghidra requires JDK %d+ (application.java.min=%d) but no Java runtime was selected for this run; "+
+			"install the managed Java runtime (Tools page or `morgue tools install java`) or put JDK %d+ on PATH", minMajor, minMajor, minMajor)
+	}
+	out, err := javaVersionOutput(ctx, javaPath)
+	major := parseJavaMajor(out)
+	if major == 0 {
+		return fmt.Errorf("ghidra requires JDK %d+ but the version of %s could not be determined: %v", minMajor, javaPath, err)
+	}
+	if major < minMajor {
+		return fmt.Errorf("ghidra requires JDK %d+ (application.java.min=%d) but the selected Java %s is version %d", minMajor, minMajor, javaPath, major)
+	}
+	if _, jerr := os.Stat(filepath.Join(filepath.Dir(javaPath), javacName())); jerr != nil {
+		return fmt.Errorf("ghidra requires a JDK %d+ but the selected Java %s (version %d) is a JRE without javac", minMajor, javaPath, major)
+	}
+	return nil
+}
+
+func javacName() string {
+	if runtime.GOOS == "windows" {
+		return "javac.exe"
+	}
+	return "javac"
 }
 
 // ghidraExportScript is a Java GhidraScript that decompiles all functions to C.
@@ -172,6 +248,10 @@ func runGhidra(
 
 	// ghidraToolPath points to ghidraRun.bat; we need support/analyzeHeadless
 	ghidraDir := filepath.Dir(ghidraToolPath)
+	if jerr := checkGhidraJava(ctx, ghidraDir, javaPath); jerr != nil {
+		log(jerr.Error())
+		return 0, jerr
+	}
 	analyzeHeadless := filepath.Join(ghidraDir, "support", "analyzeHeadless")
 	if runtime.GOOS == "windows" {
 		analyzeHeadless += ".bat"
