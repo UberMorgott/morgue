@@ -54,28 +54,33 @@ type ScanCompleted struct {
 func (ScanCompleted) eventType() EventType { return EventScanCompleted }
 
 type TargetDiscovered struct {
-	InputPath     string   `json:"inputPath"`
-	RelativeInput string   `json:"relativeInput"`
-	Kind          string   `json:"kind"`
-	Recipe        string   `json:"recipe"`
-	Output        string   `json:"output"`
-	SizeBytes     int64    `json:"sizeBytes"`
-	Compiler      string   `json:"compiler,omitempty"`
-	Obfuscator    string   `json:"obfuscator,omitempty"`
-	Deobfuscator  string   `json:"deobfuscator,omitempty"`
-	RecipeDesc    string   `json:"recipeDesc,omitempty"`
-	ToolsNeeded   []string `json:"toolsNeeded,omitempty"`
+	SHA256        *string     `json:"sha256,omitempty"`
+	InputSet      []InputFile `json:"inputSet,omitempty"`
+	StartedAt     *time.Time  `json:"startedAt,omitempty"`
+	InputPath     string      `json:"inputPath"`
+	RelativeInput string      `json:"relativeInput"`
+	Kind          string      `json:"kind"`
+	Recipe        string      `json:"recipe"`
+	Output        string      `json:"output"`
+	SizeBytes     int64       `json:"sizeBytes"`
+	Compiler      string      `json:"compiler,omitempty"`
+	Obfuscator    string      `json:"obfuscator,omitempty"`
+	Deobfuscator  string      `json:"deobfuscator,omitempty"`
+	RecipeDesc    string      `json:"recipeDesc,omitempty"`
+	ToolsNeeded   []string    `json:"toolsNeeded,omitempty"`
 }
 
 func (TargetDiscovered) eventType() EventType { return EventTargetDiscovered }
 
 type TargetFinished struct {
-	Outcome    string `json:"outcome"`
-	Recipe     string `json:"recipe"`
-	Output     string `json:"output"`
-	Error      string `json:"error"`
-	SkipReason string `json:"skipReason"`
-	DurationMs int64  `json:"durationMs"`
+	InputSet   []InputFile `json:"inputSet,omitempty"`
+	Files      *FileCounts `json:"files,omitempty"`
+	Outcome    string      `json:"outcome"`
+	Recipe     string      `json:"recipe"`
+	Output     string      `json:"output"`
+	Error      string      `json:"error"`
+	SkipReason string      `json:"skipReason"`
+	DurationMs int64       `json:"durationMs"`
 }
 
 func (TargetFinished) eventType() EventType { return EventTargetFinished }

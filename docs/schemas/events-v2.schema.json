@@ -89,6 +89,34 @@
         "sizeBytes"
       ],
       "properties": {
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputSet": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InputFile"
+          }
+        },
+        "startedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "inputPath": {
           "type": "string"
         },
@@ -140,6 +168,22 @@
         "durationMs"
       ],
       "properties": {
+        "inputSet": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InputFile"
+          }
+        },
+        "files": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FileCounts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "outcome": {
           "type": "string",
           "enum": [
@@ -925,6 +969,376 @@
         },
         "toolsMirror": {
           "type": "string"
+        }
+      }
+    },
+    "AppInfo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "commit"
+      ],
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        }
+      }
+    },
+    "Workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "journalVersion",
+        "eventVersion",
+        "app",
+        "run",
+        "spec",
+        "lastSeq",
+        "journal",
+        "toolsLock",
+        "targets",
+        "artifacts",
+        "warnings"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "journalVersion": {
+          "const": 1
+        },
+        "eventVersion": {
+          "const": 2
+        },
+        "app": {
+          "$ref": "#/$defs/AppInfo"
+        },
+        "run": {
+          "$ref": "#/$defs/RunRecord"
+        },
+        "spec": {
+          "$ref": "#/$defs/RunSpec"
+        },
+        "lastSeq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "journal": {
+          "const": ".morgue/journal.ndjson"
+        },
+        "toolsLock": {
+          "const": ".morgue/tools.lock.json"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TargetRecord"
+          }
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Artifact"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "RunRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "startedAt",
+        "finishedAt",
+        "durationMs",
+        "state",
+        "outcome",
+        "error",
+        "targets",
+        "leafTargets"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finishedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "running",
+            "finished"
+          ]
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "enum": [
+            null,
+            "success",
+            "error",
+            "cancelled"
+          ]
+        },
+        "error": {
+          "type": "string"
+        },
+        "targets": {
+          "$ref": "#/$defs/Counts"
+        },
+        "leafTargets": {
+          "$ref": "#/$defs/Counts"
+        }
+      }
+    },
+    "FileCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "count",
+        "bytes"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "InputFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "path",
+        "sha256",
+        "sizeBytes",
+        "hashStatus",
+        "error"
+      ],
+      "properties": {
+        "role": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hashStatus": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "pending",
+            "error"
+          ]
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "TargetRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "parentTargetId",
+        "inputPath",
+        "relativeInput",
+        "sha256",
+        "inputSet",
+        "kind",
+        "recipe",
+        "state",
+        "outcome",
+        "skipReason",
+        "error",
+        "output",
+        "startedAt",
+        "finishedAt",
+        "durationMs",
+        "files",
+        "quality",
+        "provenance"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "parentTargetId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputPath": {
+          "type": "string"
+        },
+        "relativeInput": {
+          "type": "string"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputSet": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InputFile"
+          }
+        },
+        "kind": {
+          "type": "string"
+        },
+        "recipe": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "running",
+            "finished"
+          ]
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "enum": [
+            null,
+            "success",
+            "error",
+            "cancelled",
+            "skipped"
+          ]
+        },
+        "skipReason": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string",
+          "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$)).*$"
+        },
+        "startedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "finishedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "files": {
+          "$ref": "#/$defs/FileCounts"
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QualityReport"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     }

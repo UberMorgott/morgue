@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "journal-v1.schema.json",
+  "title": "Journal v1 record",
+  "$ref": "events-v2.schema.json",
+  "$comment": "Validate each NDJSON line independently. UTF-8 without BOM; LF delimiter; no header. Container journalVersion=1 is stored in morgue.json.",
+  "x-journal-version": 1,
+  "x-encoding": "utf-8",
+  "x-delimiter": "LF"
+}
