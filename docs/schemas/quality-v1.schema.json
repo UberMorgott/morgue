@@ -12,6 +12,7 @@
         "status",
         "functions",
         "types",
+        "names",
         "decompilerErrors",
         "unknownResultTypes",
         "unresolvedReferences",
@@ -41,6 +42,9 @@
         "types": {
           "$ref": "#/$defs/Coverage"
         },
+        "names": {
+          "$ref": "#/$defs/NameQuality"
+        },
         "decompilerErrors": {
           "$ref": "#/$defs/Metric"
         },
@@ -69,6 +73,68 @@
           }
         }
       }
+    },
+    "NameQuality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "autoNamed",
+        "autoRatio",
+        "inferred"
+      ],
+      "properties": {
+        "total": {
+          "$ref": "#/$defs/Metric"
+        },
+        "autoNamed": {
+          "$ref": "#/$defs/Metric"
+        },
+        "autoRatio": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "inferred": {
+          "$ref": "#/$defs/Metric"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "autoRatio": {
+                "type": "number"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "total": {
+                "properties": {
+                  "status": {
+                    "const": "measured"
+                  },
+                  "value": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              },
+              "autoNamed": {
+                "properties": {
+                  "status": {
+                    "const": "measured"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "Metric": {
       "type": "object",

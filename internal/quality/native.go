@@ -501,6 +501,7 @@ func ghidraSection(out string, ev *StepEvidence, notApplicable string, r *runmod
 	statusRel := "src/" + GhidraStatusFile
 	if notApplicable != "" {
 		r.Functions = natCoverageAll(natNA(notApplicable))
+		r.Names = runmodel.NamesNotApplicable(notApplicable)
 		r.DecompilerErrors = natNA(notApplicable)
 		r.UnknownResultTypes = natNA(notApplicable)
 		r.Checks = append(r.Checks,
@@ -524,6 +525,7 @@ func ghidraSection(out string, ev *StepEvidence, notApplicable string, r *runmod
 			basis = statusRel + " missing (Ghidra output from an older Morgue or the export script died); function inventory not measured"
 		}
 		r.Functions = natCoverageAll(natUnknown(basis))
+		r.Names = runmodel.NamesUnknown(basis)
 		r.DecompilerErrors = natUnknown(basis)
 		r.UnknownResultTypes = natUnknown(basis)
 		r.Checks = append(r.Checks,
@@ -576,8 +578,19 @@ func ghidraSection(out string, ev *StepEvidence, notApplicable string, r *runmod
 	if gs.Program != nil && gs.Program.PDBLoaded {
 		nameMsg += "; PDB loaded"
 	}
+	r.Names = runmodel.NameQuality{
+		Total:     natMeasured(gs.Found, foundBasis, statusEv),
+		AutoNamed: natMeasured(def, "functions whose Ghidra name source is DEFAULT (FUN_<addr> and similar auto-generated names): purpose unknown", statusEv),
+		Inferred:  natUnknown("indexes/name_map.csv not produced: no single-string-candidate renames recorded"),
+	}
+	if gs.Found > 0 && def <= gs.Found {
+		ratio := float64(def) / float64(gs.Found)
+		r.Names.AutoRatio = &ratio
+	}
 	if renames, _ := countCSVRows(filepath.Join(srcDir, "indexes", "name_map.csv")); renames >= 0 {
 		nameMsg += fmt.Sprintf("; %d default names renamed by single-string-candidate inference (indexes/name_map.csv, medium confidence)", renames)
+		r.Names.Inferred = natMeasured(renames, "default names renamed by single-string-candidate inference (medium confidence; inference, not original names)",
+			natFile("src/indexes/name_map.csv", "rename map"))
 	}
 	if gs.Found > 0 && def*2 > gs.Found {
 		r.Warnings = append(r.Warnings, fmt.Sprintf("%.1f%% of functions have Ghidra default names (FUN_<addr>): their purpose is unknown", natPct(def, gs.Found)))
@@ -657,6 +670,7 @@ func natBase(family string) runmodel.QualityReport {
 		Family:               family,
 		Status:               "unknown",
 		Types:                natCoverageAll(natUnknown("not measured")),
+		Names:                runmodel.NamesUnknown("Ghidra function status (src/" + GhidraStatusFile + ") not available"),
 		DecompilerErrors:     natUnknown("not measured"),
 		UnknownResultTypes:   natUnknown("not measured"),
 		UnresolvedReferences: natUnknown("native: unresolved call targets/imports are not measured"),

@@ -113,6 +113,9 @@ func il2cppValidate(t *testing.T, r runmodel.QualityReport) {
 			t.Fatalf("%s invalid: %v", name, err)
 		}
 	}
+	if err := r.Names.Validate(); err != nil {
+		t.Fatalf("names invalid: %v", err)
+	}
 	if r.SchemaVersion != 1 || r.Warnings == nil || r.Checks == nil {
 		t.Fatalf("report shape: %+v", r)
 	}

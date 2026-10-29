@@ -34,6 +34,27 @@
     "ratio": null,
     "comparable": false
   },
+  "names": {
+    "total": {
+      "value": null,
+      "status": "not-applicable",
+      "basis": "managed names come from bytecode metadata, not decompiler defaults",
+      "evidence": []
+    },
+    "autoNamed": {
+      "value": null,
+      "status": "not-applicable",
+      "basis": "managed names come from bytecode metadata, not decompiler defaults",
+      "evidence": []
+    },
+    "autoRatio": null,
+    "inferred": {
+      "value": null,
+      "status": "not-applicable",
+      "basis": "managed names come from bytecode metadata, not decompiler defaults",
+      "evidence": []
+    }
+  },
   "decompilerErrors": {
     "value": null,
     "status": "unknown",

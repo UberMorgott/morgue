@@ -73,6 +73,7 @@ func (UnityData) Collect(_ context.Context, in Input) (runmodel.QualityReport, e
 		Family:               "unitydata",
 		Functions:            unityNACoverage(na),
 		Types:                unityNACoverage(na),
+		Names:                runmodel.NamesNotApplicable(na),
 		DecompilerErrors:     unityNA(na),
 		UnknownResultTypes:   unityNA(na),
 		UnresolvedReferences: unityNA(na),

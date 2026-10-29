@@ -68,6 +68,9 @@ func natValidate(t *testing.T, r runmodel.QualityReport) {
 			t.Errorf("%s invalid: %v", name, err)
 		}
 	}
+	if err := r.Names.Validate(); err != nil {
+		t.Errorf("names invalid: %v", err)
+	}
 	if r.SchemaVersion != 1 || r.Warnings == nil || r.Checks == nil {
 		t.Errorf("report envelope incomplete: %+v", r)
 	}
@@ -119,6 +122,13 @@ func TestNativeCoverageTenFoundEightEmitted(t *testing.T) {
 	}
 	if !strings.Contains(msg, "3 of 10 default FUN_") {
 		t.Fatalf("default-name ratio missing from %q", msg)
+	}
+	n := r.Names
+	if n.Total.Status != "measured" || *n.Total.Value != 10 || *n.AutoNamed.Value != 3 || n.AutoRatio == nil || *n.AutoRatio != 0.3 {
+		t.Fatalf("names = %+v", n)
+	}
+	if n.Inferred.Status != "unknown" || n.Inferred.Value != nil {
+		t.Fatalf("absent name_map must leave inferred unknown, got %+v", n.Inferred)
 	}
 }
 

@@ -103,7 +103,7 @@ func unknownCoverage(reason string) runmodel.Coverage {
 }
 func emptyFamily(family string) runmodel.QualityReport {
 	u := unknownMetric("No supported diagnostic evidence collected")
-	return runmodel.QualityReport{SchemaVersion: 1, Family: family, Status: "unknown", Functions: unknownCoverage("No stable body mapping"), Types: unknownCoverage("No stable type mapping"), DecompilerErrors: u, UnknownResultTypes: u, UnresolvedReferences: u, ResidualObfuscation: u, StringDecryption: unknownCoverage("Candidate call-site inventory unavailable; readable text and absent PUA do not establish decryption"), Warnings: []string{}, Checks: []runmodel.QualityCheck{}}
+	return runmodel.QualityReport{SchemaVersion: 1, Family: family, Status: "unknown", Functions: unknownCoverage("No stable body mapping"), Types: unknownCoverage("No stable type mapping"), Names: runmodel.NamesNotApplicable("managed/JVM names come from bytecode metadata (original or obfuscator-renamed), not decompiler defaults; renamed identifiers are counted under residualObfuscation"), DecompilerErrors: u, UnknownResultTypes: u, UnresolvedReferences: u, ResidualObfuscation: u, StringDecryption: unknownCoverage("Candidate call-site inventory unavailable; readable text and absent PUA do not establish decryption"), Warnings: []string{}, Checks: []runmodel.QualityCheck{}}
 }
 func (Managed) Collect(ctx context.Context, in Input) (runmodel.QualityReport, error) {
 	r := emptyFamily("managed")

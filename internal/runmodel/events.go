@@ -81,6 +81,9 @@ type TargetFinished struct {
 	Error      string      `json:"error"`
 	SkipReason string      `json:"skipReason"`
 	DurationMs int64       `json:"durationMs"`
+	// Provenance is the workspace-relative provenance.ndjson of this target,
+	// when the target streamed any provenance rows.
+	Provenance string `json:"provenance,omitempty"`
 }
 
 func (TargetFinished) eventType() EventType { return EventTargetFinished }

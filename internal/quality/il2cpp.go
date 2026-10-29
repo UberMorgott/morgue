@@ -475,6 +475,7 @@ func (IL2CPP) Collect(ctx context.Context, in Input) (runmodel.QualityReport, er
 	r := runmodel.QualityReport{
 		SchemaVersion:        runmodel.QualityVersion,
 		Family:               "il2cpp",
+		Names:                runmodel.NamesNotApplicable("IL2CPP type/method names come from global-metadata.dat (original metadata names, not tool defaults)"),
 		UnknownResultTypes:   unityNA("stub assemblies carry no method bodies whose result types could be inferred"),
 		UnresolvedReferences: unityUnknown("not collected for IL2CPP stub decompilation"),
 		ResidualObfuscation:  unityUnknown("no IL2CPP metadata/binary obfuscation detector runs in this recipe"),
