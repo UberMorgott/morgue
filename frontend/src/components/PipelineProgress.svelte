@@ -173,6 +173,7 @@
           execCounters={$pipelineState.execCounters}
           toolStatus={$pipelineState.toolStatus}
           toolOrder={$pipelineState.toolOrder}
+          runTools={$pipelineState.runTools}
         />
       {/if}
     </div>

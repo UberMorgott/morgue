@@ -1,82 +1,90 @@
 <script lang="ts">
   import { t, type Lang } from '../lib/i18n';
+  import {
+    toolState, stateTone, stateKey, primaryAction, canMutate, canDelete, type ToolView,
+  } from '../lib/tool-policy';
 
   let {
     lang = 'en' as Lang,
-    name,
-    installed = false,
-    version = '',
-    latestVersion = '',
-    updateAvailable = false,
-    category = '',
-    description = '',
+    tool,
     busy = false,
-    checking = false,
     runtimeDeps = [] as Array<{kind: string, available: boolean, version: string, local: boolean}>,
     oninstall,
     ondelete,
     oninstallruntime,
   }: {
     lang?: Lang;
-    name: string;
-    installed?: boolean;
-    version?: string;
-    latestVersion?: string;
-    updateAvailable?: boolean;
-    category?: string;
-    description?: string;
+    tool: ToolView;
     busy?: boolean;
-    checking?: boolean;
     runtimeDeps?: Array<{kind: string, available: boolean, version: string, local: boolean}>;
     oninstall?: (detail: { name: string }) => void;
     ondelete?: (detail: { name: string }) => void;
     oninstallruntime?: (detail: { kind: string }) => void;
   } = $props();
+
+  let name = $derived(tool.name);
+  let state = $derived(toolState(tool));
+  let tone = $derived(stateTone[state]);
+  let action = $derived(primaryAction(tool));
+  let locked = $derived(busy || !canMutate(tool));
+  let pinVersion = $derived(tool.operatorVersion || tool.version);
+  // Hover text explains the state; backend warning text is shown verbatim.
+  let stateTitle = $derived(
+    state === 'pinned' ? t(lang, 'tools.pinnedHint')
+    : state === 'system' ? t(lang, 'tools.systemHint')
+    : tool.warning || ''
+  );
+  let actionKey = $derived(
+    action === 'download' ? 'tools.download'
+    : action === 'repair' ? 'tools.repair'
+    : action === 'unpin' ? 'tools.unpin'
+    : 'tools.update'
+  );
 </script>
 
-<div class="tool-row" class:dimmed={!installed} class:has-deps={runtimeDeps.length > 0}>
+<div class="tool-row" class:dimmed={!tool.installed && state !== 'failed'} class:has-deps={runtimeDeps.length > 0}>
   <div class="tool-info">
     <span class="tool-name">{name}</span>
-    {#if category}
-      <span class="tool-category">{category}</span>
+    {#if tool.category}
+      <span class="tool-category">{tool.category}</span>
     {/if}
-    {#if description}
-      <span class="tool-desc">{description}</span>
+    {#if tool.description}
+      <span class="tool-desc">{tool.description}</span>
     {/if}
   </div>
   <div class="tool-version">
-    {#if installed}
-      <span class="ver-current">{version || '—'}</span>
-      {#if checking}
-        <span class="ver-spinner"></span>
-      {:else if latestVersion}
+    {#if tool.installed}
+      <span class="ver-current">{state === 'pinned' ? pinVersion : (tool.version || '—')}</span>
+      {#if state === 'outdated' && tool.latestVersion}
         <span class="ver-sep">→</span>
-        <span class="ver-latest" class:ver-new={updateAvailable}>{latestVersion}</span>
+        <span class="ver-latest ver-new">{tool.latestVersion}</span>
       {/if}
+    {:else if tool.latestVersion}
+      <span class="ver-available">{tool.latestVersion} {t(lang, 'tools.available')}</span>
     {:else}
-      {#if checking}
-        <span class="ver-spinner"></span>
-      {:else if latestVersion}
-        <span class="ver-available">{latestVersion} {t(lang, 'tools.available')}</span>
-      {:else}
-        <span class="ver-none">—</span>
-      {/if}
+      <span class="ver-none">—</span>
+    {/if}
+  </div>
+  <div class="tool-state text-xs tone-{tone}" title={stateTitle}>
+    {#if state === 'checking'}<span class="ver-spinner"></span>{:else}<span class="state-dot"></span>{/if}
+    <span>{t(lang, stateKey(state))}</span>
+    {#if tool.inUse}
+      <span class="in-use" title={t(lang, 'tools.inUseHint')}>{t(lang, 'tools.inUse')}</span>
     {/if}
   </div>
   <div class="tool-actions">
-    {#if !installed}
-      <button class="action-btn action-download" onclick={() => oninstall?.({ name })} disabled={busy}>
-        {t(lang, 'tools.download')}
+    {#if action}
+      <button class="action-btn"
+        class:action-download={action === 'download' || action === 'unpin'}
+        class:action-update={action === 'update' || action === 'repair'}
+        onclick={() => oninstall?.({ name })} disabled={locked}
+        title={tool.inUse ? t(lang, 'tools.inUseHint') : ''}>
+        {t(lang, actionKey)}
       </button>
-    {:else if updateAvailable}
-      <button class="action-btn action-update" onclick={() => oninstall?.({ name })} disabled={busy}>
-        {t(lang, 'tools.update')}
-      </button>
-    {:else}
-      <span class="up-to-date">{t(lang, 'tools.upToDate')}</span>
     {/if}
-    {#if installed}
-      <button class="action-btn action-delete" onclick={() => ondelete?.({ name })} disabled={busy}>
+    {#if tool.installed && state !== 'system'}
+      <button class="action-btn action-delete" onclick={() => ondelete?.({ name })} disabled={busy || !canDelete(tool)}
+        title={tool.inUse ? t(lang, 'tools.inUseHint') : ''}>
         {t(lang, 'tools.delete')}
       </button>
     {/if}
@@ -133,7 +141,14 @@
   .action-update:hover:not(:disabled) { box-shadow: 0 0 8px var(--accent-dim); }
   .action-delete { border: 1px solid var(--error); color: var(--error); }
   .action-delete:hover:not(:disabled) { background: rgba(255, 51, 102, 0.1); }
-  .up-to-date { font-size: 10px; color: var(--text-muted); }
+  .tool-state { display: flex; align-items: center; gap: 6px; flex-shrink: 0; min-width: 150px; white-space: nowrap; }
+  .state-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .tone-muted { color: var(--text-muted); }
+  .tone-ok { color: var(--success); }
+  .tone-accent { color: var(--accent); }
+  .tone-warn { color: var(--warning); }
+  .tone-error { color: var(--error); }
+  .in-use { padding: 1px 6px; border-radius: 3px; border: 1px solid var(--accent); color: var(--accent); }
   .ver-spinner {
     display: inline-block; width: 12px; height: 12px;
     border: 2px solid var(--border-subtle); border-top-color: var(--accent);

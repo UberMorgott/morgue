@@ -2,6 +2,7 @@
   import { t, type Lang } from '../lib/i18n';
   import type { PipelinePhase } from '../lib/pipeline';
   import ProgressRing from './ProgressRing.svelte';
+  import type { RunToolInfo } from '../lib/tool-policy';
 
   let {
     lang,
@@ -23,6 +24,7 @@
     execCounters = {} as Record<string, { count: number; unit: string; countTotal: number }>,
     toolStatus = {} as Record<string, 'success' | 'skipped' | 'failed'>,
     toolOrder = {} as Record<string, number>,
+    runTools = {} as Record<string, RunToolInfo>,
   }: {
     lang: Lang;
     phase?: PipelinePhase;
@@ -43,6 +45,7 @@
     execCounters?: Record<string, { count: number; unit: string; countTotal: number }>;
     toolStatus?: Record<string, 'success' | 'skipped' | 'failed'>;
     toolOrder?: Record<string, number>;
+    runTools?: Record<string, RunToolInfo>;
   } = $props();
 
   type ToolState = 'checking' | 'downloading' | 'installing' | 'ready' | 'running' | 'done' | 'skipped' | 'failed';
@@ -94,6 +97,13 @@
     if (outcome === 'success') return 'done';
     // Tool with counter data = done (counter only goes up via accumulation)
     if (tool in execCounters) return 'done';
+
+    // Typed acquisition stage (tool.progress) beats message heuristics.
+    const acq = runTools[tool]?.stage;
+    if (acq === 'failed') return 'failed';
+    if (acq === 'downloading') return 'downloading';
+    if (acq === 'extracting') return 'installing';
+    if (acq === 'ready') return 'ready';
 
     // Tools install phase states
     if (tool === downloadingTool) {
@@ -149,11 +159,19 @@
         : ringValue >= 0 ? `${ringValue}%`
         : ''}
       {@const dimmed = state === 'checking'}
+      {@const sel = runTools[tool]}
       <div class="tool-row row-separator" class:dimmed>
-        <span class="tool-name font-accent">{tool}</span>
+        <span class="tool-id">
+          <span class="tool-name font-accent">{tool}</span>
+          {#if sel?.version}
+            <span class="tool-ver font-mono text-xs" class:tool-ver-warn={!!sel.warning} title={sel.warning || ''}>{sel.warning ? '⚠ ' : ''}{sel.version}{sel.fetched ? ' · ' + t(lang, 'tools.run.fetched') : ''}</span>
+          {:else if sel?.warning}
+            <span class="tool-ver font-mono text-xs tool-ver-warn" title={sel.warning}>⚠</span>
+          {/if}
+        </span>
         <span class="tool-info">
           {#if state === 'checking'}
-            <span class="info-muted">{t(lang, 'tools.pending')}</span>
+            <span class="info-muted">{runTools[tool]?.stage === 'checking' ? t(lang, 'tools.run.checking') : t(lang, 'tools.pending')}</span>
           {:else if state === 'downloading'}
             <span class="info-active">{formatMB(downloadBytes)} / {formatMB(downloadTotalBytes)} MB</span>
           {:else if state === 'installing'}
@@ -174,7 +192,7 @@
           {:else if state === 'skipped'}
             <span class="info-muted">{t(lang, 'execution.skipped')}</span>
           {:else if state === 'failed'}
-            <span class="info-failed">{t(lang, 'execution.failed')}</span>
+            <span class="info-failed" title={runTools[tool]?.error || ''}>{runTools[tool]?.stage === 'failed' && !(tool in execCounters) && !toolStatus[tool] ? t(lang, 'tools.run.installFailed') : t(lang, 'execution.failed')}</span>
           {/if}
         </span>
         <span class="tool-counter">
@@ -212,6 +230,23 @@
   }
   .tool-row.dimmed {
     opacity: 0.4;
+  }
+
+  .tool-id {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .tool-ver {
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tool-ver-warn {
+    color: var(--warning);
   }
 
   .tool-name {

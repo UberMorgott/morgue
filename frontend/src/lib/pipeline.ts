@@ -1,5 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import { loadRecent, wailsHistoryBackend, type HistoryBackend, type RecentRun } from './history';
+import { reduceRunTools, type RunToolInfo } from './tool-policy';
 import type {
   EventV2, RunStarted, ScanCompleted, TargetDiscovered, TargetFinished, StepProgress,
   ToolProgress, LogRecord, RunFinished, RunOutcome, Counts,
@@ -70,6 +71,7 @@ export interface PipelineState {
   toolStatus: Record<string, 'success' | 'skipped' | 'failed'>;  // per-tool final outcome
   toolOrder: Record<string, number>;  // per-tool first step index, for display ordering
   currentTool: string;  // tool currently executing
+  runTools: Record<string, RunToolInfo>;  // per-run selected tool identity/freshness (typed tool.progress)
 }
 
 const initial: PipelineState = {
@@ -114,6 +116,7 @@ const initial: PipelineState = {
   toolStatus: {},
   toolOrder: {},
   currentTool: '',
+  runTools: {},
 };
 
 export const pipelineState = writable<PipelineState>({ ...initial });
@@ -294,6 +297,7 @@ export function reduceEventV2(s: PipelineState, ev: EventV2): { state: PipelineS
     }
     case 'tool.progress': {
       const p = ev.data as ToolProgress;
+      next.runTools = reduceRunTools(next.runTools, ev);
       if (next.phase === 'analysis') next.phase = 'tools';
       if (p.tool && !next.toolsNeeded.includes(p.tool)) next.toolsNeeded = [...next.toolsNeeded, p.tool];
       if (p.stage === 'download') {
@@ -315,6 +319,7 @@ export function reduceEventV2(s: PipelineState, ev: EventV2): { state: PipelineS
     }
     case 'log': {
       const d = ev.data as LogRecord;
+      next.runTools = reduceRunTools(next.runTools, ev);
       if (d.message) {
         next.logs = [...next.logs.slice(-19), d.level === 'error' ? `ERROR ${d.message}` : d.message];
         next.lastMessage = d.message;

@@ -5,14 +5,13 @@
 
   import { onEvent } from '../lib/events';
   import { t, type Lang } from '../lib/i18n';
+  import {
+    toToolView, viewChanged, toolState, isInUseError, type RawToolStatus, type ToolView,
+  } from '../lib/tool-policy';
 
   let { lang = 'en' as Lang }: { lang?: Lang } = $props();
 
-  let tools: Array<{
-    name: string; installed: boolean; path: string; version: string;
-    latestVersion: string; updateAvailable: boolean; category: string; description: string;
-    checking: boolean; runtimeDeps: string[];
-  }> = $state([]);
+  let tools: ToolView[] = $state([]);
   let runtimes: Array<{
     kind: string; available: boolean; version: string; path: string; local: boolean; required: boolean;
   }> = $state([]);
@@ -49,55 +48,35 @@
   let cleanups: Array<() => void> = [];
   let pollTimer: ReturnType<typeof setInterval> | null = null;
 
+  /**
+   * Merge fresh backend statuses into the list. Only the backend's own state
+   * (installed/version/freshness/pin/in-use) is trusted: an update is shown as
+   * done only once CheckAll reports the new activated version.
+   */
+  function mergeStatuses(statuses: RawToolStatus[] | null | undefined): boolean {
+    if (!statuses) return false;
+    let changed = false;
+    const next = tools.map(prev => {
+      const raw = statuses.find(s => s.Name === prev.name);
+      if (!raw) return prev;
+      const v = toToolView(raw, prev);
+      if (viewChanged(prev, v) || v.updateAvailable !== prev.updateAvailable) { changed = true; return v; }
+      return prev;
+    });
+    if (changed) tools = next;
+    return changed;
+  }
 
-  async function handleToolInstalled(data: any) {
-    const toolName = typeof data === 'string' ? data : (data?.data || data?.tool || data?.Tool || '');
-    if (!toolName) return;
+  async function refresh() {
     try {
-      const st = await ToolsService.CheckAll();
-      const updated = (st || []).find((s: any) => s.Name === toolName);
-      if (updated) {
-        tools = tools.map(t => t.name === toolName ? {
-          ...t,
-          installed: updated.Installed ?? false,
-          version: updated.Version ?? '',
-          path: updated.Path ?? '',
-        } : t);
-      }
-    } catch (e) { console.error('Refresh after tool:installed failed:', e); }
+      mergeStatuses(await ToolsService.CheckAll() as RawToolStatus[]);
+    } catch (e) { console.error('tools refresh failed:', e); }
   }
 
   function startPolling() {
     if (pollTimer) return;
-    pollTimer = setInterval(async () => {
-      try {
-        const statuses = await ToolsService.CheckAll();
-        if (!statuses) return;
-        let changed = false;
-        for (const s of statuses) {
-          const name = s.Name ?? '';
-          const installed = s.Installed ?? false;
-          const version = s.Version ?? '';
-          const existing = tools.find(t => t.name === name);
-          if (!existing) continue;
-          if (existing.installed !== installed || existing.version !== version) {
-            changed = true;
-          }
-        }
-        if (changed) {
-          tools = tools.map(t => {
-            const fresh = (statuses as any[]).find((s: any) => s.Name === t.name);
-            if (!fresh) return t;
-            return {
-              ...t,
-              installed: fresh.Installed ?? false,
-              version: fresh.Version ?? '',
-              path: fresh.Path ?? '',
-            };
-          });
-        }
-      } catch (e) { console.error('tools polling failed:', e); }
-    }, 3000);
+    // Polling keeps run-driven changes (auto-update, in-use leases) visible.
+    pollTimer = setInterval(refresh, 3000);
   }
 
   function stopPolling() {
@@ -108,7 +87,7 @@
   }
 
   onMount(async () => {
-    cleanups.push(onEvent('tool:installed', handleToolInstalled));
+    cleanups.push(onEvent('tool:installed', () => { refresh(); }));
 
     await Promise.all([loadTools(), loadRuntimes()]);
 
@@ -136,13 +115,21 @@
     finally { runtimesLoading = false; }
   }
 
+  function describeError(name: string, err: any): string {
+    return isInUseError(err)
+      ? `${name} ${t(lang, 'tools.inUseError')}`
+      : `${name}: ${err?.message ?? err}`;
+  }
+
   async function installRuntime(kind: string) {
     runtimeBusy = { ...runtimeBusy, [kind]: true };
+    opError = '';
     try {
       await ToolsService.InstallRuntime(kind);
       await loadRuntimes();
     } catch (err: any) {
       console.error('Runtime install failed:', err);
+      opError = describeError(kind, err);
     } finally {
       runtimeBusy = { ...runtimeBusy, [kind]: false };
     }
@@ -151,23 +138,13 @@
   async function loadTools() {
     loading = true;
     try {
-      const statuses = await ToolsService.CheckAll();
-      tools = (statuses || []).map((s: any) => ({
-        name: s.Name ?? '', installed: s.Installed ?? false,
-        path: s.Path ?? '', version: s.Version ?? '',
-        latestVersion: '', updateAvailable: false,
-        category: s.Category ?? '', description: s.Description ?? '',
-        checking: false, runtimeDeps: s.RuntimeDeps ?? [],
-      }));
+      const statuses = (await ToolsService.CheckAll() || []) as RawToolStatus[];
+      tools = statuses.map(s => toToolView(s));
       loading = false;
 
       const shouldCheck = await ToolsService.ShouldCheckUpdates();
       if (shouldCheck) {
-        tools = tools.map(t => ({ ...t, checking: true }));
-        for (const tool of tools) {
-          checkLatestVersion(tool.name);
-        }
-        await ToolsService.MarkUpdateChecked();
+        await forceCheckUpdates();
       }
     } catch (e) {
       console.error('CheckAll failed:', e);
@@ -178,10 +155,13 @@
   let anyChecking = $derived(tools.some(t => t.checking));
 
   async function forceCheckUpdates() {
-    tools = tools.map(t => ({ ...t, checking: true, latestVersion: '', updateAvailable: false }));
-    for (const tool of tools) {
-      checkLatestVersion(tool.name);
-    }
+    // Pinned and system tools are never probed for a different version.
+    const probe = tools.filter(t => {
+      const s = toolState(t);
+      return s !== 'pinned' && s !== 'system';
+    }).map(t => t.name);
+    tools = tools.map(t => probe.includes(t.name) ? { ...t, checking: true } : t);
+    for (const name of probe) checkLatestVersion(name);
     await ToolsService.MarkUpdateChecked();
   }
 
@@ -199,28 +179,29 @@
     }
   }
 
+  /** Unversioned install: downloads, updates, retries, or clears a pin (on success only). */
+  async function installOne(name: string): Promise<boolean> {
+    try {
+      await ToolsService.Install(name);
+      // Drop the old probe result; the backend now reports the activated version.
+      tools = tools.map(t => t.name === name ? { ...t, latestVersion: '', updateAvailable: false } : t);
+      return true;
+    } catch (err: any) {
+      console.error('Install failed:', name, err);
+      opError = describeError(name, err);
+      return false;
+    }
+  }
+
   async function installTool(detail: { name: string }) {
-    const name = detail.name;
     busy = true;
     opError = '';
     try {
-      await ToolsService.Install(name);
-      const st = await ToolsService.CheckAll();
-      const updated = (st || []).find((s: any) => s.Name === name);
-      if (updated) {
-        tools = tools.map(t => t.name === name ? {
-          ...t,
-          installed: updated.Installed ?? false,
-          version: updated.Version ?? '',
-          path: updated.Path ?? '',
-          checking: true,
-        } : t);
-        checkLatestVersion(name);
-      }
-    } catch (err: any) {
-      console.error('Install failed:', err);
-      opError = `${name}: ${err?.message ?? err}`;
-    } finally { busy = false; }
+      if (await installOne(detail.name)) checkLatestVersion(detail.name);
+    } finally {
+      await refresh();
+      busy = false;
+    }
   }
 
   async function deleteTool(detail: { name: string }) {
@@ -229,45 +210,24 @@
     opError = '';
     try {
       await ToolsService.Delete(name);
-      tools = tools.map(t => t.name === name ? {
-        ...t, installed: false, version: '', path: '',
-      } : t);
     } catch (err: any) {
       console.error('Delete failed:', err);
-      opError = `${name}: ${err?.message ?? err}`;
-    } finally { busy = false; }
+      opError = describeError(name, err);
+    } finally {
+      await refresh();
+      busy = false;
+    }
   }
 
-  async function downloadAll() {
+  async function installMany(names: string[]) {
     busy = true;
-    const missing = tools.filter(t => !t.installed);
-    for (let i = 0; i < missing.length; i++) {
-      const name = missing[i].name;
-      try {
-        await ToolsService.Install(name);
-        tools = tools.map(t => t.name === name ? { ...t, installed: true, checking: true } : t);
-        checkLatestVersion(name);
-      } catch (e: any) {
-        console.error('Install failed:', name, e);
-      }
+    opError = '';
+    try {
+      for (const name of names) await installOne(name);
+    } finally {
+      await refresh();
+      busy = false;
     }
-    busy = false;
-  }
-
-  async function updateAll() {
-    busy = true;
-    const outdated = tools.filter(t => t.updateAvailable);
-    for (let i = 0; i < outdated.length; i++) {
-      const name = outdated[i].name;
-      try {
-        await ToolsService.Install(name);
-        tools = tools.map(t => t.name === name ? { ...t, updateAvailable: false, checking: true } : t);
-        checkLatestVersion(name);
-      } catch (e: any) {
-        console.error('Update failed:', name, e);
-      }
-    }
-    busy = false;
   }
 
   let runtimeDepsMap = $derived(Object.fromEntries(tools.map(tool => [
@@ -280,8 +240,8 @@
     })
   ])));
 
-  let missingCount = $derived(tools.filter(t => !t.installed).length);
-  let outdatedCount = $derived(tools.filter(t => t.updateAvailable).length);
+  let missingNames = $derived(tools.filter(t => toolState(t) === 'missing' && !t.inUse).map(t => t.name));
+  let outdatedNames = $derived(tools.filter(t => toolState(t) === 'outdated' && !t.inUse).map(t => t.name));
 </script>
 
 <div class="tools-page page-container">
@@ -296,14 +256,15 @@
         placeholder={t(lang, 'tools.filterPlaceholder')}
         aria-label={t(lang, 'tools.filterPlaceholder')} />
       <button class="page-action-btn" onclick={forceCheckUpdates} disabled={busy || anyChecking}>{t(lang, 'tools.checkUpdates')}</button>
-      {#if missingCount > 0}
-        <button class="page-action-btn" onclick={downloadAll} disabled={busy}>{t(lang, 'tools.downloadAll')} ({missingCount})</button>
+      {#if missingNames.length > 0}
+        <button class="page-action-btn" onclick={() => installMany(missingNames)} disabled={busy}>{t(lang, 'tools.downloadAll')} ({missingNames.length})</button>
       {/if}
-      {#if outdatedCount > 0}
-        <button class="page-action-btn accent" onclick={updateAll} disabled={busy}>{t(lang, 'tools.updateAll')} ({outdatedCount})</button>
+      {#if outdatedNames.length > 0}
+        <button class="page-action-btn accent" onclick={() => installMany(outdatedNames)} disabled={busy}>{t(lang, 'tools.updateAll')} ({outdatedNames.length})</button>
       {/if}
     </div>
   </div>
+  <div class="section-label">{t(lang, 'tools.autoNote')}</div>
   {#if opError}
     <div class="alert-block alert-error">{t(lang, 'tools.actionFailed')} {opError}</div>
   {/if}
@@ -316,10 +277,7 @@
   {:else}
     <div class="tools-list">
       {#each filteredTools as tool (tool.name)}
-        <ToolRow {lang} name={tool.name} installed={tool.installed} version={tool.version}
-          latestVersion={tool.latestVersion} updateAvailable={tool.updateAvailable}
-          category={tool.category} description={tool.description} {busy}
-          checking={tool.checking}
+        <ToolRow {lang} {tool} {busy}
           runtimeDeps={runtimeDepsMap[tool.name] || []}
           oninstall={installTool} ondelete={deleteTool}
           oninstallruntime={(detail) => installRuntime(detail.kind)} />

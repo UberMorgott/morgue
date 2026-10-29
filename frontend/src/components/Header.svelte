@@ -3,6 +3,7 @@
   import { UpdateService, ToolsService } from '../lib/api';
   import { t, type Lang } from '../lib/i18n';
   import { currentLang } from '../lib/stores';
+  import { toToolView, headerSummary, type RawToolStatus } from '../lib/tool-policy';
 
   let { lang = 'en' as Lang, onappupdate, onnavigate }: {
     lang?: Lang;
@@ -18,6 +19,7 @@
   let newVersion = $state('');
   let updateRaw = $state('');
   let toolUpdatesCount = $state(0);
+  let toolAttentionCount = $state(0);
 
   onMount(async () => {
     try {
@@ -37,9 +39,11 @@
 
     try {
       const statuses = await ToolsService.CheckAllWithUpdates();
-      toolUpdatesCount = (statuses || []).filter(
-        (s: any) => (s.UpdateAvailable || s.updateAvailable) && (s.Installed || s.installed)
-      ).length;
+      // Pinned/system tools never count as pending updates; failed installs and
+      // failed freshness checks surface separately so they are not mistaken for "update".
+      const summary = headerSummary(((statuses || []) as RawToolStatus[]).map(s => toToolView(s)));
+      toolUpdatesCount = summary.updates;
+      toolAttentionCount = summary.attention;
     } catch (e) { console.error('ToolsService.CheckAllWithUpdates failed:', e); }
   });
 </script>
@@ -58,6 +62,11 @@
     {#if toolUpdatesCount > 0}
       <button class="badge badge-tools" onclick={() => onnavigate?.({ page: 'tools' })}>
         🔧 {toolUpdatesCount} {t(lang, 'header.toolUpdates')}
+      </button>
+    {/if}
+    {#if toolAttentionCount > 0}
+      <button class="badge badge-tools badge-attention" onclick={() => onnavigate?.({ page: 'tools' })}>
+        ⚠ {toolAttentionCount} {t(lang, 'header.toolAttention')}
       </button>
     {/if}
     <div class="lang-switcher">
@@ -157,6 +166,8 @@
     box-shadow: 0 0 8px var(--accent-glow-soft);
     color: var(--accent);
   }
+
+  .badge-attention { color: var(--warning); }
 
   .lang-switcher {
     display: flex;
