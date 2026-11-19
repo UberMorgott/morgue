@@ -8,8 +8,10 @@ var Registry = []ToolDef{
 		Category:    CategoryDetector,
 		Method:      MethodGitHubRelease,
 		Repo:        "horsicq/DIE-engine",
-		AssetGlob:   "die_win64_portable_*",
-		Binary:      "diec.exe",
+		// 4.x renamed the portable zip (die_win64_portable_* → die_win64_<ver>.zip);
+		// [0-9] skips the die_win64_qt6_* sibling.
+		AssetGlob: "die_win64_[0-9]*.zip",
+		Binary:    "diec.exe",
 	},
 	{
 		Name:        "ilspycmd",
@@ -52,7 +54,7 @@ var Registry = []ToolDef{
 	{
 		// Ghidra extension recovering .NET NativeAOT metadata (method tables,
 		// vtables, frozen strings). Upstream ships builds only up to Ghidra
-		// 12.0.1; Ghidra 12.1.x loads that build as-is (verified headless).
+		// 12.0.1; recipe/native_aot.go recompiles it against newer Ghidra.
 		Name:        "ghidra-nativeaot",
 		Description: "Ghidra .NET NativeAOT metadata recovery extension",
 		Category:    CategoryDecompiler,
@@ -163,13 +165,13 @@ var Registry = []ToolDef{
 		Category:    CategoryExtractor,
 		Method:      MethodGitHubRelease,
 		Repo:        "aelurum/AssetStudio",
-		// Self-contained net8 build (no .NET runtime dep). The exe is nested one
-		// level deep inside the zip (AssetStudioModCLI_net8_portable/), which
-		// Resolve() finds via findBinaryRecursive on Binary by name.
-		AssetGlob: "AssetStudioModCLI_net8_portable*",
-		Binary:    "AssetStudioModCLI.exe",
-		Version:   "v0.19.0",
-		Optional:  true,
+		// Framework-dependent net10 (Microsoft.NETCore.App 10, hosted by the
+		// portable ASP.NET 10 runtime). v0.20.0 dropped the net8 builds.
+		AssetGlob:   "AssetStudioModCLI_net10_win64*",
+		Binary:      "AssetStudioModCLI.exe",
+		Version:     "v0.20.0",
+		Optional:    true,
+		RuntimeDeps: []RuntimeKind{RuntimeAspNet},
 	},
 	{
 		Name:        "vineflower",
