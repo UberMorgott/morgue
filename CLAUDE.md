@@ -1,8 +1,8 @@
 # Morgue — Project Rules
 
 ## Stack
-- **Backend:** Go 1.27.3, Wails v3.0.0 (wails3 CLI v3.0.0, @wailsio/runtime 3.0.0), Cobra v1.10.2
-- **Frontend:** Svelte 5.57 (runes: $props, $state, $derived, $effect), TypeScript 6.0 (svelte-check not TS7-ready), Vite 8.3, Vitest 5, custom CSS utilities (no CSS framework)
+- **Backend:** Go 1.27.4, Wails v3.1.0 (wails3 CLI v3.1.0, @wailsio/runtime 3.1.0), Cobra v1.10.2
+- **Frontend:** Svelte 5.58 (runes: $props, $state, $derived, $effect), TypeScript 6.0 (svelte-check 4.7.8 TS7 needs TS6+TS7 side by side + experimental --tsgo), Vite 8.3, Vitest 5.1, custom CSS utilities (no CSS framework)
 - **Desktop:** Wails 3 (Go backend + embedded SPA)
 
 ## Architecture
