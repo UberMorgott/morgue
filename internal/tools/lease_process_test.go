@@ -31,7 +31,7 @@ func TestToolsLeaseChild(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer lease.Close()
+		defer func() { _ = lease.Close() }()
 	}
 	if err := os.WriteFile(filepath.Join(base, "ready"), nil, 0600); err != nil {
 		t.Fatal(err)

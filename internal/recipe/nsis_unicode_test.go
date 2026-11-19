@@ -80,7 +80,7 @@ func TestExtractStructured_UnicodePrefixed(t *testing.T) {
 		t.Fatalf("entries=%d wanted=%d files=%d, want 1/1/1", r.Entries, r.Wanted, r.Files)
 	}
 	// $INSTDIR is the installation root, so it collapses onto the output root.
-	got, err := os.ReadFile(filepath.Join(out, "sub", "hello.txt")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	got, err := os.ReadFile(filepath.Join(out, "sub", "hello.txt"))
 	if err != nil {
 		t.Fatalf("expected sub/hello.txt: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestExtractStructured_NonSolidBlock(t *testing.T) {
 	if r.Wanted != 1 || r.Files != 1 {
 		t.Fatalf("files=%d wanted=%d, want 1/1", r.Files, r.Wanted)
 	}
-	got, err := os.ReadFile(filepath.Join(out, "ns.txt")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	got, err := os.ReadFile(filepath.Join(out, "ns.txt"))
 	if err != nil {
 		t.Fatalf("expected ns.txt: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestExtractRawRecords_Resync(t *testing.T) {
 	if n != 2 || skipped != 1 {
 		t.Fatalf("n=%d skipped=%d, want 2/1", n, skipped)
 	}
-	got, err := os.ReadFile(filepath.Join(out, "_raw", "file_0001.bin")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	got, err := os.ReadFile(filepath.Join(out, "_raw", "file_0001.bin"))
 	if err != nil || string(got) != "second record" {
 		t.Fatalf("file_0001.bin = %q err=%v, want %q", got, err, "second record")
 	}
@@ -388,7 +388,7 @@ func TestWalk_ShellPathExtracts(t *testing.T) {
 	if r := extractStructured(stream, hdrSize, "LZMA", out, func(string) {}); r.Files != 1 {
 		t.Fatalf("files=%d, want 1", r.Files)
 	}
-	got, err := os.ReadFile(filepath.Join(out, "_shell_SMPROGRAMS", "App", "readme.txt")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	got, err := os.ReadFile(filepath.Join(out, "_shell_SMPROGRAMS", "App", "readme.txt"))
 	if err != nil || string(got) != "shell payload" {
 		t.Fatalf("_shell_SMPROGRAMS/App/readme.txt = %q err=%v", got, err)
 	}
@@ -461,7 +461,7 @@ func TestWalk_AssignVarResolvesPath(t *testing.T) {
 	if r.Files != 1 {
 		t.Fatalf("files=%d, want 1", r.Files)
 	}
-	got, err := os.ReadFile(filepath.Join(out, "Target", "App", "x.txt")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	got, err := os.ReadFile(filepath.Join(out, "Target", "App", "x.txt"))
 	if err != nil {
 		t.Fatalf("expected Target/App/x.txt (resolved $INSTDIR): %v", err)
 	}
@@ -497,7 +497,7 @@ func TestWalk_RenameDelete(t *testing.T) {
 	if r.Files != 2 || r.Wanted != 2 {
 		t.Fatalf("files=%d wanted=%d, want 2/2", r.Files, r.Wanted)
 	}
-	got, err := os.ReadFile(filepath.Join(out, "c.txt")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	got, err := os.ReadFile(filepath.Join(out, "c.txt"))
 	if err != nil || string(got) != "AAA" {
 		t.Fatalf("renamed c.txt = %q err=%v, want AAA", got, err)
 	}

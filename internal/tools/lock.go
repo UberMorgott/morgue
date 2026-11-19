@@ -84,7 +84,7 @@ func writeInstalledLock(baseDir string, lk InstalledLock) error {
 		return err
 	}
 	name := tmp.Name()
-	defer os.Remove(name)
+	defer func() { _ = os.Remove(name) }()
 	if _, err = tmp.Write(data); err == nil {
 		err = tmp.Sync()
 	}
@@ -103,7 +103,7 @@ func WriteLock(baseDir string, lk Lock) error {
 	if err != nil {
 		return err
 	}
-	defer lease.Close()
+	defer func() { _ = lease.Close() }()
 	next, _ := ReadInstalledLock(baseDir)
 	for name, version := range lk.Tools {
 		id := next.Tools[name]
@@ -126,11 +126,10 @@ func (m *Manager) recordIdentity(ctx context.Context, id ToolIdentity, pin *stri
 	if err != nil {
 		return err
 	}
-	defer lease.Close()
+	defer func() { _ = lease.Close() }()
 	lk, readErr := ReadInstalledLock(m.baseDir)
 	if readErr != nil {
-		var syntax *json.SyntaxError
-		if !errors.As(readErr, &syntax) {
+		if _, ok := errors.AsType[*json.SyntaxError](readErr); !ok {
 			return readErr
 		}
 	}

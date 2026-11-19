@@ -114,7 +114,7 @@ func (s *RunSelection) put(entry selectedPayload) error {
 
 func (s *RunSelection) Ensure(ctx context.Context, names []string, cb *InstallCallbacks) ([]ToolIdentity, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	stop := context.AfterFunc(s.ctx, cancel)
+	stop := context.AfterFunc(s.ctx, cancel) //nolint:contextcheck // ctx still derives from the caller; s.ctx (selection lifetime) only adds a second cancel source
 	defer stop()
 	defer cancel()
 	s.work.Lock()
@@ -173,7 +173,7 @@ func (s *RunSelection) verify(ctx context.Context, entry selectedPayload) error 
 			return fmt.Errorf("selected external payload changed: %s", entry.id.Name)
 		}
 	}
-	for _, pair := range strings.Split(entry.id.RuntimeVersion, ";") {
+	for pair := range strings.SplitSeq(entry.id.RuntimeVersion, ";") {
 		name, _, ok := strings.Cut(pair, "=")
 		if !ok {
 			continue
@@ -197,7 +197,7 @@ func (s *RunSelection) resolve(name string) (string, error) {
 	s.mu.Lock()
 	entry := s.selected[name]
 	s.mu.Unlock()
-	if _, err := os.Stat(entry.path); err != nil && !(name == "ghidra" && validateGhidraHome(filepath.Dir(entry.path)) != "") {
+	if _, err := os.Stat(entry.path); err != nil && (name != "ghidra" || validateGhidraHome(filepath.Dir(entry.path)) == "") {
 		return "", err
 	}
 	return entry.path, nil
@@ -242,7 +242,7 @@ func (s *RunSelection) selectTool(ctx context.Context, name string, cb *InstallC
 		}
 	}()
 	st := m.checkUnbound(name)
-	path, resolveErr := m.resolveUnbound(name)
+	_, resolveErr := m.resolveUnbound(name)
 	external := resolveErr == nil && (st.system || (name == "ghidra" && preSeededGhidraHome(m.cfg) != ""))
 	policy := ToolPolicyStatus{Name: name, Freshness: "checking"}
 	lk, err := ReadInstalledLock(m.baseDir)
@@ -311,7 +311,7 @@ func (s *RunSelection) selectTool(ctx context.Context, name string, cb *InstallC
 			return selectedPayload{}, err
 		}
 	}
-	path, err = m.resolveUnbound(name)
+	path, err := m.resolveUnbound(name)
 	if err != nil {
 		_ = lease.Close()
 		return selectedPayload{}, err
@@ -403,19 +403,19 @@ func (s *RunSelection) selectRuntime(ctx context.Context, kind RuntimeKind, cb *
 			_ = lease.Close()
 		}
 	}()
-	path, err := m.runtimePathUnbound(kind)
+	_, err = m.runtimePathUnbound(kind)
 	if err != nil {
 		_ = lease.Close()
 		lease, err = acquireToolLock(ctx, m.baseDir, name, true, true)
 		if err != nil {
 			return selectedPayload{}, err
 		}
-		path, err = m.runtimePathUnbound(kind)
+		_, err = m.runtimePathUnbound(kind)
 		if err != nil {
 			err = m.installRuntimeLocked(ctx, kind, cb)
 		}
 		if err == nil {
-			path, err = m.runtimePathUnbound(kind)
+			_, err = m.runtimePathUnbound(kind)
 		}
 		_ = lease.Close()
 		if err != nil {
@@ -426,7 +426,7 @@ func (s *RunSelection) selectRuntime(ctx context.Context, kind RuntimeKind, cb *
 			return selectedPayload{}, err
 		}
 	}
-	path, err = m.runtimePathUnbound(kind)
+	path, err := m.runtimePathUnbound(kind)
 	if err != nil {
 		_ = lease.Close()
 		return selectedPayload{}, err

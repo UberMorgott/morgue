@@ -253,7 +253,7 @@ func (w *Writer) Append(ev runmodel.Event) error {
 			// success the journal does not hold.
 			if nerr := w.notifyLocked(); nerr != nil {
 				w.navErr = nerr
-				return fmt.Errorf("workspace: %w (navigation still claims success: %v)", cause, nerr)
+				return fmt.Errorf("workspace: %w (navigation still claims success: %w)", cause, nerr)
 			}
 		}
 		return fmt.Errorf("workspace: %w", cause)
@@ -327,6 +327,8 @@ func publishesNow(t runmodel.EventType) bool {
 	case runmodel.EventRunStarted, runmodel.EventTargetDiscovered, runmodel.EventTargetFinished,
 		runmodel.EventArtifactWritten, runmodel.EventQualityUpdated, runmodel.EventRunFinished:
 		return true
+	case runmodel.EventScanCompleted, runmodel.EventStepProgress, runmodel.EventToolProgress, runmodel.EventLog:
+		// progress: coalesced, published on the next tick
 	}
 	return false
 }
@@ -381,10 +383,7 @@ func (w *Writer) scheduleLocked() {
 	if w.timer != nil {
 		return
 	}
-	wait := coalesceInterval - time.Since(w.lastPub)
-	if wait < 0 {
-		wait = 0
-	}
+	wait := max(coalesceInterval-time.Since(w.lastPub), 0)
 	w.timer = time.AfterFunc(wait, w.flushTick)
 }
 

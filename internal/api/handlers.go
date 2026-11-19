@@ -126,7 +126,6 @@ func (s *Server) handleInstallTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//nolint:contextcheck // the install job must outlive this request, so it runs detached from r.Context()
 	switch err := s.tools.StartInstallVersion(req.Name, req.Version); {
 	case errors.Is(err, services.ErrBusy):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "busy"})
@@ -161,7 +160,7 @@ func (s *Server) handleDeleteTool(w http.ResponseWriter, r *http.Request) {
 
 	// Synchronous so an active run lease is reported (409) instead of being
 	// silently ignored; a leased payload is never evicted.
-	if err := s.tools.Delete(req.Name); err != nil {
+	if err := s.tools.Delete(req.Name); err != nil { //nolint:contextcheck // a started delete must finish: it rewrites the installed-state lock, so the request ctx must not abort it
 		if errors.Is(err, tools.ErrInUse) {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "in use"})
 			return

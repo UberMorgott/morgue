@@ -49,7 +49,7 @@ func TestRunSelectionFreshnessOnceAndLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	ids, err := s.Ensure(t.Context(), []string{"policy", "policy"}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -89,7 +89,7 @@ func TestRunSelectionOfflineRetainsWorkingAndWarns(t *testing.T) {
 			m := NewManager(t.TempDir(), config.Config{})
 			seedPolicyTool(t, m.baseDir, "offline", "1")
 			s, _ := m.NewRunSelection(t.Context())
-			defer s.Close()
+			defer func() { _ = s.Close() }()
 			var warning string
 			ids, err := s.Ensure(t.Context(), []string{"offline"}, &InstallCallbacks{OnStatus: func(st ToolPolicyStatus) {
 				if st.Freshness == "warning" {
@@ -130,9 +130,9 @@ func TestSelectionCancelledWhileWaitingForExclusive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 	s, _ := m.NewRunSelection(t.Context())
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	ctx, cancel := context.WithTimeout(t.Context(), 40*time.Millisecond)
 	defer cancel()
 	if _, err := s.Ensure(ctx, []string{"wait"}, nil); !errors.Is(err, context.DeadlineExceeded) {
@@ -208,7 +208,7 @@ func TestBoundSystemToolMutationIsDetected(t *testing.T) {
 	onlyTestTool(t, ToolDef{Name: "external", Binary: "tool.exe"})
 	m := NewManager(t.TempDir(), config.Config{PreferSystemTools: true})
 	s, _ := m.NewRunSelection(t.Context())
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	if _, err := s.Bind().Resolve("external"); err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestFreshnessTimeoutRetainsInstalledWithoutSuppressingCancellation(t *testi
 	m := NewManager(t.TempDir(), config.Config{})
 	seedPolicyTool(t, m.baseDir, "timeout", "1")
 	s, _ := m.NewRunSelection(t.Context())
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	ctx, cancel := context.WithTimeout(t.Context(), 35*time.Millisecond)
 	defer cancel()
 	if _, err := s.Ensure(ctx, []string{"timeout"}, nil); !errors.Is(err, context.DeadlineExceeded) {
@@ -337,9 +337,9 @@ func TestTwoRunSelectionsSharePayloadWithoutWaitingForCompletion(t *testing.T) {
 	m := NewManager(t.TempDir(), config.Config{})
 	seedPolicyTool(t, m.baseDir, "shared", "1")
 	a, _ := m.NewRunSelection(t.Context())
-	defer a.Close()
+	defer func() { _ = a.Close() }()
 	b, _ := m.NewRunSelection(t.Context())
-	defer b.Close()
+	defer func() { _ = b.Close() }()
 	if _, err := a.Ensure(t.Context(), []string{"shared"}, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +361,7 @@ func TestRunToolsLockSealsAndSortsIdentities(t *testing.T) {
 	seedPolicyTool(t, m.baseDir, "a", "1")
 	seedPolicyTool(t, m.baseDir, "z", "1")
 	s, _ := m.NewRunSelection(t.Context())
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	if _, err := s.Ensure(t.Context(), []string{"z", "a"}, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +389,7 @@ func TestRuntimeLeaseAndFailedRuntimeUpdateRetainsPayload(t *testing.T) {
 	bin := m.localRuntimeBin(RuntimeAspNet)
 	_ = os.WriteFile(bin, []byte("old-runtime"), 0755)
 	s, _ := m.NewRunSelection(t.Context())
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	if _, err := s.Bind().RuntimePath(RuntimeAspNet); err != nil {
 		t.Fatal(err)
 	}
@@ -414,7 +414,7 @@ func TestKnownHelperRequiresExistingPayloadAndSDKIdentity(t *testing.T) {
 	}
 	_ = os.WriteFile(m.localRuntimeBin(RuntimeDotnet), []byte("fake-sdk"), 0755)
 	s, _ := m.NewRunSelection(t.Context())
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	bound := s.Bind()
 	if _, err := bound.RuntimePath(RuntimeDotnet); err != nil {
 		t.Fatal(err)
@@ -437,7 +437,7 @@ func TestWorkingOfflineTimeoutUsesFrozenPayload(t *testing.T) {
 	m := NewManager(t.TempDir(), config.Config{})
 	seedPolicyTool(t, m.baseDir, "net-timeout", "1")
 	s, _ := m.NewRunSelection(t.Context())
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	var warning string
 	ids, err := s.Ensure(t.Context(), []string{"net-timeout"}, &InstallCallbacks{OnStatus: func(st ToolPolicyStatus) { warning = st.Warning }})
 	if err != nil || len(ids) != 1 || warning == "" {
@@ -458,7 +458,7 @@ func TestMissingOptionalToolIsProbedOnlyOncePerRun(t *testing.T) {
 	onlyTestTool(t, ToolDef{Name: "missing", Method: MethodDirectURL, URL: srv.URL + "/tool.exe", Binary: "tool.exe", Optional: true})
 	m := NewManager(t.TempDir(), config.Config{})
 	s, _ := m.NewRunSelection(t.Context())
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	for range 2 {
 		if _, err := s.Ensure(t.Context(), []string{"missing"}, nil); err == nil {
 			t.Fatal("missing optional tool reported installed")
@@ -485,7 +485,7 @@ func TestPreseededHeadlessGhidraSurvivesBoundSelection(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(filepath.Dir(m.localRuntimeBin(RuntimeJava)), javacFile()), []byte("fake-javac"), 0755)
 	stubJavaVersion(t, "25.0.1")
 	s, _ := m.NewRunSelection(t.Context())
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	path, err := s.Bind().Resolve("ghidra")
 	if err != nil {
 		t.Fatal(err)
@@ -510,7 +510,7 @@ func TestPayloadInventoryRejectsJunctionEscape(t *testing.T) {
 	if _, err := util.RunCmd(t.Context(), "cmd.exe", []string{"/d", "/c", "mklink", "/J", alias, outside}, ""); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(alias)
+	defer func() { _ = os.Remove(alias) }()
 	if _, err := inventoryHash(t.Context(), payload); err == nil {
 		t.Fatal("junction payload escape was silently excluded from hash")
 	}
@@ -519,7 +519,7 @@ func TestPayloadInventoryRejectsJunctionEscape(t *testing.T) {
 func TestHelperBuildPanicReleasesPublicationLock(t *testing.T) {
 	m := NewManager(t.TempDir(), config.Config{})
 	s, _ := m.NewRunSelection(t.Context())
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	func() {
 		defer func() {
 			if recover() == nil {
@@ -542,9 +542,9 @@ func TestHelperPublicationDoesNotWaitWhileHoldingOtherLeases(t *testing.T) {
 	}
 	_ = os.WriteFile(m.localRuntimeBin(RuntimeDotnet), []byte("sdk"), 0755)
 	a, _ := m.NewRunSelection(t.Context())
-	defer a.Close()
+	defer func() { _ = a.Close() }()
 	b, _ := m.NewRunSelection(t.Context())
-	defer b.Close()
+	defer func() { _ = b.Close() }()
 	for _, s := range []*RunSelection{a, b} {
 		if _, err := s.Bind().RuntimePath(RuntimeDotnet); err != nil {
 			t.Fatal(err)
@@ -581,12 +581,12 @@ func TestBoundRuntimeInstallStopsWhenSelectionIsCancelled(t *testing.T) {
 	}
 	_ = os.WriteFile(m.localRuntimeBin(RuntimeAspNet), []byte("runtime"), 0755)
 	s, _ := m.NewRunSelection(t.Context())
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	lease, err := acquireToolLock(t.Context(), m.baseDir, "runtime:"+string(RuntimeAspNet), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lease.Close()
+	defer func() { _ = lease.Close() }()
 	result := make(chan error, 1)
 	go func() { result <- s.Bind().InstallRuntimeContext(context.Background(), RuntimeAspNet, nil) }()
 	s.cancel()

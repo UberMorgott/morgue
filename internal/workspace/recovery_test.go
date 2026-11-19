@@ -117,7 +117,7 @@ func TestReadVersionAndUnknownTypes(t *testing.T) {
 func TestReadEventsPagesWithoutBuffering(t *testing.T) {
 	w, r, root := openRun(t, runA)
 	mustAppend(t, w, r.started())
-	for i := 0; i < 2499; i++ {
+	for range 2499 {
 		mustAppend(t, w, r.logLine("line"))
 	}
 	if err := w.Close(); err != nil {
@@ -232,7 +232,7 @@ func TestRead100kEventJournalBounded(t *testing.T) {
 		buf.Write(line)
 	}
 	add(r.started())
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		add(r.discovered(fmt.Sprintf("t%04d", i), "", fmt.Sprintf("game/t%04d", i)))
 	}
 	for r.seq < 100_000 {
@@ -252,9 +252,7 @@ func TestRead100kEventJournalBounded(t *testing.T) {
 	var peak atomic.Uint64
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		var m runtime.MemStats
 		for {
 			runtime.ReadMemStats(&m)
@@ -267,7 +265,7 @@ func TestRead100kEventJournalBounded(t *testing.T) {
 			case <-time.After(5 * time.Millisecond):
 			}
 		}
-	}()
+	})
 	start := time.Now()
 	rec, err := Read(root)
 	elapsed := time.Since(start)

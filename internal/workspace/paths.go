@@ -82,7 +82,7 @@ func (pp pathPolicy) checkReparse(rel string) error {
 		return nil
 	}
 	cur := pp.root
-	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+	for part := range strings.SplitSeq(rel, string(filepath.Separator)) {
 		cur = filepath.Join(cur, part)
 		fi, err := os.Lstat(cur)
 		if errors.Is(err, fs.ErrNotExist) {
@@ -96,7 +96,7 @@ func (pp pathPolicy) checkReparse(rel string) error {
 		}
 		real, err := realPath(cur)
 		if err != nil {
-			return fmt.Errorf("%w: cannot resolve reparse point %q: %v", errPathEscape, cur, err)
+			return fmt.Errorf("%w: cannot resolve reparse point %q: %w", errPathEscape, cur, err)
 		}
 		if _, ok := within(pp.rootReal, filepath.Clean(real)); !ok {
 			return fmt.Errorf("%w: %q resolves outside workspace to %q", errPathEscape, cur, real)

@@ -315,6 +315,8 @@ func applyEvent(st *PipelineStatus, ev runmodel.Event) {
 		if ev.ParentTargetID == "" {
 			st.FilesProcessed++
 		}
+	case runmodel.EventArtifactWritten, runmodel.EventQualityUpdated, runmodel.EventLog, runmodel.EventRunFinished:
+		// no status counters to update
 	}
 }
 

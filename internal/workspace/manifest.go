@@ -72,8 +72,6 @@ func newProjector(strict bool) *projector {
 	return &projector{idx: map[string]int{}, strict: strict}
 }
 
-func strPtr(s string) *string { return &s }
-
 func timePtr(t time.Time) *time.Time { t = t.UTC(); return &t }
 
 // clone returns an independent copy. Pointer fields are never mutated in
@@ -195,12 +193,14 @@ func (p *projector) apply(ev *runmodel.Event) error {
 		p.finished = true
 		r := &p.ws.Run
 		r.State = stateFinished
-		r.Outcome = strPtr(d.Outcome)
+		r.Outcome = new(d.Outcome)
 		r.FinishedAt = timePtr(d.FinishedAt)
 		r.DurationMs = d.DurationMs
 		r.Error = d.Error
 		r.Targets = d.Targets
 		r.LeafTargets = d.LeafTargets
+	case runmodel.EventRunStarted, runmodel.EventScanCompleted, runmodel.EventToolProgress, runmodel.EventLog:
+		// no manifest state of their own
 	}
 	return nil
 }
@@ -254,7 +254,7 @@ func (p *projector) target(ev *runmodel.Event) *runmodel.TargetRecord {
 	}
 	var parent *string
 	if ev.ParentTargetID != "" {
-		parent = strPtr(ev.ParentTargetID)
+		parent = new(ev.ParentTargetID)
 	}
 	p.idx[ev.TargetID] = len(p.ws.Targets)
 	p.ws.Targets = append(p.ws.Targets, runmodel.TargetRecord{
@@ -279,7 +279,7 @@ func (p *projector) discover(ev *runmodel.Event, d runmodel.TargetDiscovered) er
 		t.Recipe = d.Recipe
 	}
 	if d.SHA256 != nil {
-		t.SHA256 = strPtr(*d.SHA256)
+		t.SHA256 = new(*d.SHA256)
 	}
 	if d.InputSet != nil {
 		t.InputSet = append([]runmodel.InputFile{}, d.InputSet...)
@@ -303,7 +303,7 @@ func (p *projector) finishTarget(ev *runmodel.Event, d runmodel.TargetFinished) 
 	}
 	t := p.target(ev)
 	t.State = stateFinished
-	t.Outcome = strPtr(d.Outcome)
+	t.Outcome = new(d.Outcome)
 	t.Error, t.SkipReason, t.DurationMs = d.Error, d.SkipReason, d.DurationMs
 	t.FinishedAt = timePtr(ev.TS)
 	if d.Recipe != "" {
@@ -319,7 +319,7 @@ func (p *projector) finishTarget(ev *runmodel.Event, d runmodel.TargetFinished) 
 		t.Files = *d.Files
 	}
 	if d.Provenance != "" {
-		t.Provenance = strPtr(d.Provenance)
+		t.Provenance = new(d.Provenance)
 	}
 	p.recount()
 	return nil
@@ -335,10 +335,10 @@ func (p *projector) artifact(a runmodel.Artifact) error {
 	}
 	a.Path, a.External = path, external
 	if a.TargetID != nil {
-		a.TargetID = strPtr(*a.TargetID)
+		a.TargetID = new(*a.TargetID)
 	}
 	if a.SHA256 != nil {
-		a.SHA256 = strPtr(*a.SHA256)
+		a.SHA256 = new(*a.SHA256)
 	}
 	for i := range p.ws.Artifacts {
 		if p.ws.Artifacts[i].ID == a.ID {

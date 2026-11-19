@@ -54,14 +54,14 @@ func JavaInventory(ctx context.Context, path string, visit func(module string, i
 		if err != nil {
 			return inv, err
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		return invAfter(&inv, func() error { return one(filepath.Base(path), f) })
 	}
 	z, err := zip.OpenReader(path)
 	if err != nil {
 		return inv, err
 	}
-	defer z.Close()
+	defer func() { _ = z.Close() }()
 	for _, entry := range z.File {
 		if !strings.HasSuffix(entry.Name, ".class") {
 			continue

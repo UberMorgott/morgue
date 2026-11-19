@@ -19,7 +19,7 @@ func (m *Manager) WithHelper(ctx context.Context, name string, build func() (str
 	}
 	s := m.selection
 	ctx, cancel := context.WithCancel(ctx)
-	stop := context.AfterFunc(s.ctx, cancel)
+	stop := context.AfterFunc(s.ctx, cancel) //nolint:contextcheck // ctx still derives from the caller; s.ctx (selection lifetime) only adds a second cancel source
 	defer stop()
 	defer cancel()
 	s.work.Lock()
@@ -47,7 +47,7 @@ func (m *Manager) WithHelper(ctx context.Context, name string, build func() (str
 	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() {
 		_ = lease.Close()
-		return ToolIdentity{}, fmt.Errorf("helper payload is not a regular file: %s (%v)", path, err)
+		return ToolIdentity{}, fmt.Errorf("helper payload is not a regular file: %s (%w)", path, err)
 	}
 	if !withinRoot(m.baseDir, path) {
 		_ = lease.Close()
@@ -78,7 +78,7 @@ func (m *Manager) WithHelper(ctx context.Context, name string, build func() (str
 	actual, err := inventoryHash(ctx, root)
 	if err != nil || actual != id.PayloadSHA256 {
 		_ = lease.Close()
-		return ToolIdentity{}, fmt.Errorf("helper changed during lease acquisition: %s (%v)", name, err)
+		return ToolIdentity{}, fmt.Errorf("helper changed during lease acquisition: %s (%w)", name, err)
 	}
 	entry := selectedPayload{id: id, path: path, root: root, lease: lease}
 	if err = s.put(entry); err != nil {

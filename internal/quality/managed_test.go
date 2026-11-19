@@ -28,8 +28,7 @@ func TestManagedInventoryExcludesNoBody(t *testing.T) {
 
 func TestManagedDiagnosticsAndNoPUAEncryption(t *testing.T) {
 	out := t.TempDir()
-	os.MkdirAll(filepath.Join(out, "src"), 0755)
-	os.WriteFile(filepath.Join(out, "src", "Demo.cs"), []byte("class Demo {\n// Unknown result type (might be due to invalid IL or missing references)\n// Could not resolve type System.Missing\nstring Run() { return Decrypt(123); }\n}"), 0644)
+	writeTestFile(t, filepath.Join(out, "src", "Demo.cs"), "class Demo {\n// Unknown result type (might be due to invalid IL or missing references)\n// Could not resolve type System.Missing\nstring Run() { return Decrypt(123); }\n}")
 	r, err := (Managed{}).Collect(context.Background(), Input{Output: out, Target: runmodel.TargetRecord{InputPath: "missing.dll"}})
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +52,7 @@ func TestStringCoveragePartialAndZero(t *testing.T) {
 		body string
 		want *float64
 	}{
-		{"SITES:2\nSITE:0x06000001:10:replaced\nSITE:0x06000001:20:residual\n", floatPtr(.5)},
+		{"SITES:2\nSITE:0x06000001:10:replaced\nSITE:0x06000001:20:residual\n", new(.5)},
 		{"SITES:0\n", nil},
 		{"REWROTE:5\nRESIDUAL:0\n", nil},
 	} {
@@ -68,13 +67,10 @@ func TestStringCoveragePartialAndZero(t *testing.T) {
 	}
 }
 
-func floatPtr(n float64) *float64 { return &n }
-
 func TestRawDiagnosticDriftRemainsUnknown(t *testing.T) {
 	out := t.TempDir()
-	os.MkdirAll(filepath.Join(out, "logs"), 0755)
-	os.WriteFile(filepath.Join(out, "logs", "ilspycmd-test.log"), []byte("unrecognized future diagnostic format"), 0644)
-	os.WriteFile(filepath.Join(out, "logs", "ilspycmd-test.log.json"), []byte(`{"schemaVersion":1,"tool":"ilspycmd","exitCode":1}`), 0644)
+	writeTestFile(t, filepath.Join(out, "logs", "ilspycmd-test.log"), "unrecognized future diagnostic format")
+	writeTestFile(t, filepath.Join(out, "logs", "ilspycmd-test.log.json"), `{"schemaVersion":1,"tool":"ilspycmd","exitCode":1}`)
 	r := emptyFamily("managed")
 	collectInvocationDiagnostics(Input{Output: out}, "ilspycmd", &r)
 	finishFamily(&r)
@@ -88,8 +84,7 @@ func TestRawDiagnosticDriftRemainsUnknown(t *testing.T) {
 
 func TestApplicationLiteralsAreNotDiagnostics(t *testing.T) {
 	out := t.TempDir()
-	os.MkdirAll(filepath.Join(out, "src"), 0755)
-	os.WriteFile(filepath.Join(out, "src", "Demo.cs"), []byte("class Demo { string text = \"Unknown result type; could not resolve\"; }"), 0644)
+	writeTestFile(t, filepath.Join(out, "src", "Demo.cs"), "class Demo { string text = \"Unknown result type; could not resolve\"; }")
 	r := emptyFamily("managed")
 	if err := collectSource(context.Background(), Input{Output: out}, ".cs", &r); err != nil {
 		t.Fatal(err)
@@ -105,5 +100,15 @@ func TestUnattributedResourcesAreNotResidualObfuscation(t *testing.T) {
 	}
 	if n := residualIndicators(recon.Result{Obfuscator: "ConfuserEx", ObfuscatorFeatures: []string{"constants"}}); n != 2 {
 		t.Fatal(n)
+	}
+}
+
+func writeTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
 	}
 }

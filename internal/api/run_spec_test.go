@@ -42,7 +42,9 @@ func TestRunAcceptsFullRunRequest(t *testing.T) {
 	if code != http.StatusAccepted {
 		t.Fatalf("got %d %s", code, b)
 	}
-	<-done
+	if err := <-done; err != nil {
+		t.Fatalf("run finished with error: %v", err)
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("request lost fields:\n got %+v\nwant %+v", got, want)
 	}
@@ -69,7 +71,8 @@ func TestRunAcceptsFullRunRequest(t *testing.T) {
 	if st["runId"] != resp.RunID || st["outcome"] != "success" || st["lastSeq"] != float64(2) || st["phase"] != "done" {
 		t.Fatalf("status %s", sb)
 	}
-	if ts, _ := time.Parse(time.RFC3339Nano, st["startedAt"].(string)); !ts.Equal(resp.StartedAt) {
+	started, _ := st["startedAt"].(string)
+	if ts, _ := time.Parse(time.RFC3339Nano, started); !ts.Equal(resp.StartedAt) {
 		t.Fatalf("startedAt %v != %v", st["startedAt"], resp.StartedAt)
 	}
 }
@@ -81,7 +84,9 @@ func TestRunLegacyBodyStillValid(t *testing.T) {
 	if code != http.StatusAccepted {
 		t.Fatalf("got %d %s", code, b)
 	}
-	<-done
+	if err := <-done; err != nil {
+		t.Fatalf("run finished with error: %v", err)
+	}
 	if !reflect.DeepEqual(got, runmodel.RunRequest{Path: "a.exe", Output: "o"}) {
 		t.Fatalf("got %+v", got)
 	}

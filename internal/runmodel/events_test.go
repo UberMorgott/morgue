@@ -103,10 +103,9 @@ func TestPublishedSchemaPayloadFields(t *testing.T) {
 		for _, name := range def.Required {
 			required[name] = true
 		}
-		for i := 0; i < typ.NumField(); i++ {
-			field := typ.Field(i)
+		for field := range typ.Fields() {
 			tag := field.Tag.Get("json")
-			name := strings.Split(tag, ",")[0]
+			name, _, _ := strings.Cut(tag, ",")
 			if _, ok := def.Properties[name]; !ok {
 				t.Errorf("schema missing %s.%s", typ.Name(), name)
 			}

@@ -82,7 +82,7 @@ func TestBuildIndexHappyPath(t *testing.T) {
 
 	// index.json must have been written to the indexed dir.
 	indexPath := filepath.Join(dir, "index.json")
-	data, err := os.ReadFile(indexPath) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	data, err := os.ReadFile(indexPath)
 	if err != nil {
 		t.Fatalf("index.json not written: %v", err)
 	}

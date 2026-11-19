@@ -178,7 +178,7 @@ func writeFileAtomic(path string, data []byte) error {
 		return err
 	}
 	tmp := f.Name()
-	defer os.Remove(tmp)
+	defer func() { _ = os.Remove(tmp) }()
 	_, writeErr := f.Write(data)
 	syncErr := f.Sync()
 	closeErr := f.Close()

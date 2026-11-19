@@ -46,7 +46,7 @@ func TestWriteImports(t *testing.T) {
 	requireNonEmpty(t, filepath.Join(out, "imports.txt"))
 	requireNonEmpty(t, filepath.Join(out, "imports.json"))
 
-	data, _ := os.ReadFile(filepath.Join(out, "imports.txt")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	data, _ := os.ReadFile(filepath.Join(out, "imports.txt"))
 	if !strings.Contains(string(data), "!") {
 		t.Errorf("imports.txt should contain DLL!Func lines, got: %.120q", string(data))
 	}
@@ -77,7 +77,7 @@ func TestWriteStringsFallback(t *testing.T) {
 	}
 	requireNonEmpty(t, out)
 
-	got, _ := os.ReadFile(out) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	got, _ := os.ReadFile(out)
 	s := string(got)
 	if !strings.Contains(s, "AsciiMarkerString") {
 		t.Errorf("strings.txt missing ASCII string; got: %q", s)
@@ -99,7 +99,7 @@ func TestWriteSectionSummary(t *testing.T) {
 	}
 	requireNonEmpty(t, out)
 
-	got, _ := os.ReadFile(out) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	got, _ := os.ReadFile(out)
 	if !strings.Contains(string(got), "entropy=") {
 		t.Errorf("sections.txt should include entropy; got: %.200q", string(got))
 	}
@@ -116,7 +116,7 @@ func TestWritePEExtras(t *testing.T) {
 		requireNonEmpty(t, filepath.Join(out, name))
 	}
 	// The Go test binary is not stripped, so it always has a TLS directory.
-	tls, _ := os.ReadFile(filepath.Join(out, "tls.txt")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	tls, _ := os.ReadFile(filepath.Join(out, "tls.txt"))
 	if !strings.Contains(string(tls), "callbacks=") && !strings.Contains(string(tls), "#") {
 		t.Errorf("tls.txt should report callbacks or a note; got: %.120q", string(tls))
 	}
@@ -143,7 +143,7 @@ func TestWritePEExtrasNonPE(t *testing.T) {
 		t.Error("expected a skip note for a non-PE input")
 	}
 	for _, name := range []string{"exports.txt", "resources.txt", "tls.txt", "debug.txt"} {
-		got, rerr := os.ReadFile(filepath.Join(out, name)) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+		got, rerr := os.ReadFile(filepath.Join(out, name))
 		if rerr != nil {
 			t.Fatalf("expected %s to exist: %v", name, rerr)
 		}

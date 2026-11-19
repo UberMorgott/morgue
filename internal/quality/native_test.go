@@ -30,7 +30,7 @@ func nativeFixture(t *testing.T, found, emitted int, defaults int) string {
 	src := filepath.Join(out, "src")
 	var st, fn strings.Builder
 	st.WriteString(`{"kind":"program","ghidraVersion":"12.2","imageBase":"0x140000000","pdbLoaded":false,"functionCount":` + fmt.Sprint(found) + "}\n")
-	for i := 0; i < found; i++ {
+	for i := range found {
 		addr := fmt.Sprintf("0x%x", 0x140001000+i*0x10)
 		name, source := fmt.Sprintf("func_%d", i), "IMPORTED"
 		if i < defaults {
@@ -135,7 +135,7 @@ func TestNativeCoverageTenFoundEightEmitted(t *testing.T) {
 func TestNativeCleanPassesWithProvenance(t *testing.T) {
 	out := nativeFixture(t, 4, 4, 0)
 	var prov strings.Builder
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		a := fmt.Sprintf("0x%x", 0x140001000+i*0x10)
 		b, _ := json.Marshal(runmodel.ProvenanceRecord{SchemaVersion: 1, Address: &a, ArtifactKind: runmodel.FidelityPseudocode,
 			Producer: runmodel.ProvenanceProducer{Tool: "ghidra", StepID: "native.decompile"}})

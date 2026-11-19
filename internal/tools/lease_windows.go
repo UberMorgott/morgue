@@ -38,20 +38,22 @@ func physicalToolPath(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer windows.CloseHandle(h)
-	buf := make([]uint16, windows.MAX_PATH)
+	defer func() { _ = windows.CloseHandle(h) }()
+	size := uint32(windows.MAX_PATH)
+	buf := make([]uint16, size)
 	for {
-		n, err := windows.GetFinalPathNameByHandle(h, &buf[0], uint32(len(buf)), 0)
+		n, err := windows.GetFinalPathNameByHandle(h, &buf[0], size, 0)
 		if err != nil {
 			return "", err
 		}
-		if int(n) < len(buf) {
+		if n < size {
 			value := windows.UTF16ToString(buf[:n])
-			if strings.HasPrefix(value, `\\?\UNC\`) {
-				return `\\` + strings.TrimPrefix(value, `\\?\UNC\`), nil
+			if after, ok := strings.CutPrefix(value, `\\?\UNC\`); ok {
+				return `\\` + after, nil
 			}
 			return strings.TrimPrefix(value, `\\?\`), nil
 		}
-		buf = make([]uint16, n+1)
+		size = n + 1
+		buf = make([]uint16, size)
 	}
 }

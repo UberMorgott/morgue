@@ -49,7 +49,7 @@ func hashInput(ctx context.Context, role, path string) runmodel.InputFile {
 		input.Error = err.Error()
 		return input
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	h := sha256.New()
 	if _, err := io.CopyBuffer(h, contextReader{ctx: ctx, reader: f}, make([]byte, 128*1024)); err != nil {
 		input.Error = err.Error()
@@ -227,6 +227,10 @@ func (r *Run) artifactObserver(ctx context.Context, opts Options, path, recipeNa
 	if r == nil {
 		return nil
 	}
+	return r.newArtifactObserver(ctx, opts, path, recipeName)
+}
+
+func (r *Run) newArtifactObserver(ctx context.Context, opts Options, path, recipeName string) *artifactObserver {
 	return &artifactObserver{run: r, ctx: ctx, id: r.targetID(opts, path), recipe: recipeName, complete: true}
 }
 
@@ -239,8 +243,8 @@ func (r *Run) collectProducts(opts Options, tr TargetResult) error {
 	if tr.Recipe != nil {
 		name = tr.Recipe.Name()
 	}
-	observer := r.artifactObserver(ctx, opts, tr.Recon.Path, name)
-	observer.(*artifactObserver).complete = tr.Error == nil
+	observer := r.newArtifactObserver(ctx, opts, tr.Recon.Path, name)
+	observer.complete = tr.Error == nil
 	if original := filepath.Join(tr.Output, "original", filepath.Base(tr.Recon.Path)); tr.Recon.SHA256 != "" {
 		if info, err := os.Stat(original); err == nil && !info.IsDir() {
 			copied := hashInput(ctx, "original", original)
@@ -324,7 +328,7 @@ func (r *Run) writeSummaryLocked() error {
 		return err
 	}
 	tmp := f.Name()
-	defer os.Remove(tmp)
+	defer func() { _ = os.Remove(tmp) }()
 	_, writeErr := f.Write(data)
 	syncErr := f.Sync()
 	closeErr := f.Close()

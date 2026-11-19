@@ -174,7 +174,9 @@ func (r *lineRenderer) Render(ev runmodel.Event) error {
 		}
 		_, err := fmt.Fprintln(r.w, line)
 		return err
+	case runmodel.EventArtifactWritten, runmodel.EventQualityUpdated:
+		// nothing to print yet
 	}
-	// artifact.written / quality.updated / unknown types: nothing to print yet.
+	// unknown types: nothing to print either.
 	return nil
 }

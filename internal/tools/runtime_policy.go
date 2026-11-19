@@ -15,7 +15,7 @@ func (m *Manager) installRuntimeLocked(ctx context.Context, kind RuntimeKind, cb
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(stageRoot)
+	defer func() { _ = os.RemoveAll(stageRoot) }()
 	staged := &Manager{baseDir: stageRoot, cfg: m.cfg, state: m.state, runtimeToolBase: m.baseDir}
 	if err = staged.installRuntimeInto(ctx, kind, cb); err != nil {
 		return err

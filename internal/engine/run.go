@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -97,9 +98,7 @@ type runTarget struct {
 func cloneConfig(cfg config.Config) config.Config {
 	if cfg.SkipCategories != nil {
 		m := make(map[string]bool, len(cfg.SkipCategories))
-		for k, v := range cfg.SkipCategories {
-			m[k] = v
-		}
+		maps.Copy(m, cfg.SkipCategories)
 		cfg.SkipCategories = m
 	}
 	cfg.CustomSkip = append([]string(nil), cfg.CustomSkip...)
@@ -240,7 +239,7 @@ func (e *Engine) PrepareRun(ctx context.Context, req runmodel.RunRequest) (*Run,
 		return nil, fmt.Errorf("prepare workspace: %w", err)
 	}
 	writer.SetPublisher(workspace.WriteNavigation)
-	r := newRun(New(cfg, e.toolBaseDir), h, spec)
+	r := newRun(New(cfg, e.toolBaseDir), h, spec) //nolint:contextcheck // shared products live for the whole run, not for the prepare ctx
 	r.store = writer
 	r.reservation = key
 	release = false
@@ -378,7 +377,7 @@ func (e *Engine) Run(ctx context.Context, opts Options, events chan<- PipelineEv
 		return err
 	}
 	spec := runmodel.RunSpec{Version: 1, Path: opts.Input, Output: opts.Output, Recipe: opts.Recipe, NoSkip: opts.NoSkip, Exclude: append([]string{}, opts.Exclude...), ReferencePaths: append([]string{}, opts.ReferencePaths...), AllowDynamic: opts.AllowDynamic, Cflow: opts.Cflow, CodeOnly: opts.CodeOnly, ExtractAssets: !opts.CodeOnly && e.cfg.UnityExtractAssets, GameDataOut: opts.GameDataOut, ToolsMirror: e.cfg.ToolsMirror}
-	opts.run = newRun(e, h, spec)
+	opts.run = newRun(e, h, spec) //nolint:contextcheck // shared products live for the whole run, not for the caller ctx
 	return e.runPipeline(ctx, opts, events)
 }
 
@@ -490,7 +489,7 @@ func (r *Run) appendLocked(ev *runmodel.Event, p runmodel.Payload) bool {
 		return false
 	}
 	r.result.Outcome, r.result.Error = OutcomeError, rf.Error
-	if err := r.store.Append(retry); err != nil && !(errors.As(err, &pe) && pe.Committed) {
+	if err := r.store.Append(retry); err != nil && (!errors.As(err, &pe) || !pe.Committed) {
 		r.failPersistenceLocked(err)
 		return false
 	}

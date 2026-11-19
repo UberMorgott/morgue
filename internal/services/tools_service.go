@@ -273,8 +273,6 @@ func (s *ToolsService) Install(ctx context.Context, name string) error {
 // A tool leased by an active run is never swapped (tools.ErrInUse). Success is
 // reported only after activation and installed-lock recording.
 func (s *ToolsService) InstallVersion(ctx context.Context, name, version string) error {
-	//nolint:contextcheck // reaches tools.Manager.RuntimePath -> systemDotNetHasAspNet10, a local
-	// `dotnet --list-runtimes` probe that already bounds itself to 10s (same note as engine.Run).
 	if err := s.ensureRuntimeDeps(name); err != nil {
 		return err
 	}

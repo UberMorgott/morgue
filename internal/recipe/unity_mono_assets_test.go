@@ -46,7 +46,7 @@ func TestSharedProductIgnoresOnDiskMarkersWithoutLiveRun(t *testing.T) {
 	}
 	calls := 0
 	ctx := &Context{Ctx: context.Background()}
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		reused, err := runSharedProduct(ctx, "same-key", out, "asset", "extract", "assetripper", func() error { calls++; return os.WriteFile(filepath.Join(out, "fresh.txt"), []byte("fresh"), 0600) })
 		if err != nil || reused {
 			t.Fatalf("reused old marker: %v / %v", reused, err)

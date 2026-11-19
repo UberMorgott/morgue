@@ -297,8 +297,7 @@ func (s *cancelOnMatchSink) Append(ev runmodel.Event) error {
 	err := s.Sink.Append(ev)
 	if err == nil && ev.Type == runmodel.EventLog {
 		var p runmodel.LogRecord
-		json.Unmarshal(ev.Data, &p)
-		if p.Phase == "match" {
+		if json.Unmarshal(ev.Data, &p) == nil && p.Phase == "match" {
 			s.cancel()
 		}
 	}
@@ -330,7 +329,9 @@ func TestJournalFailureNeverNotifiesSuccess(t *testing.T) {
 	for ev := range ch {
 		if ev.Type == runmodel.EventRunFinished {
 			var p runmodel.RunFinished
-			json.Unmarshal(ev.Data, &p)
+			if err := json.Unmarshal(ev.Data, &p); err != nil {
+				t.Fatal(err)
+			}
 			if p.Outcome == "success" {
 				t.Fatal("uncommitted success was notified")
 			}
@@ -348,7 +349,10 @@ func TestTerminalPublishFailureRecordsErrorOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := r.store.(*workspace.Writer)
+	w, ok := r.store.(*workspace.Writer)
+	if !ok {
+		t.Fatalf("store is %T, want *workspace.Writer", r.store)
+	}
 	w.SetPublisher(func(ws runmodel.Workspace) error {
 		if ws.Run.Outcome != nil {
 			return errors.New("index disk full")

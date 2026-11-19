@@ -131,6 +131,34 @@ linters:
       - linters: [gosec]
         text: 'G703'
         path: 'internal/recipe/(strings_analyze|dotnet_confuserex|ilspy)\.go'
+      # Tests only touch paths they built themselves (t.TempDir(), testdata/, the
+      # test binary), serve their own fixtures from httptest, and spawn their own
+      # helper processes -- file-inclusion/taint/subprocess findings there are
+      # false positives by design. Production code still gets every one of them.
+      - linters: [gosec]
+        text: 'G(122|204|304|702|703|705)'
+        path: '_test\.go$'
+      # File inclusion by design: these files only open paths under the run's own
+      # output workspace (user-chosen -o / API output: journal, manifest, lock,
+      # quality, provenance, decompiled sources) or under BaseDir()/tools (lock
+      # files, payload inventory, helper cache). Reading/writing there is the job;
+      # G122 (WalkDir symlink TOCTOU) is the same trust boundary for those walks.
+      - linters: [gosec]
+        text: 'G(122|304)'
+        path: 'internal/(engine/workspace|provenance/writer|quality/(il2cpp|java|managed)|recipe/(ilspy|java)|tools/(identity|lease|lock)|workspace/(journal|manifest|navigation|recovery|writer))\.go$'
+      # Same paths seen by the taint pass (G703 cannot take a //nolint, see above):
+      # WalkDir over the target's output, BaseDir()/tools lock files, and os.Stat
+      # probes of candidate runtime dirs (Java selection, PATH isolation).
+      - linters: [gosec]
+        text: 'G703'
+        path: 'internal/(quality/il2cpp|tools/(java_select|lease|lock)|util/isolation)\.go$'
+      # These three probes take no context on purpose: toolInUse is a non-blocking
+      # try-lock, and the two `dotnet`/`java --version` probes own a 10s timeout.
+      # Threading a caller ctx through Manager.Check/IsInstalled/RuntimePath would
+      # change every status API for nothing to cancel. Matches only the chains that
+      # END in one of them; any other missing-ctx chain is still reported.
+      - linters: [contextcheck]
+        text: '(toolInUse|systemDotNetHasAspNet10|detectRuntimeVersion)` should pass the context parameter'
       # ---------------------------------------------------------------------
       # ADOPTING THIS ON AN EXISTING CODEBASE
       #

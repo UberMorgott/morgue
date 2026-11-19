@@ -65,7 +65,7 @@ func TestUnityRealWorkspace(t *testing.T) {
 			}
 			tok := false
 			for i := m.Line - 2; i >= 0 && i >= m.Line-6; i-- {
-				if m2 := il2cppTokenAttr.FindStringSubmatch(strings.TrimSpace(lines[i])); m2 != nil && il2cppHex(m2[1]) == m.Token {
+				if m2 := il2cppTokenAttr.FindStringSubmatch(strings.TrimSpace(lines[i])); len(m2) > 1 && il2cppHex(m2[1]) == m.Token {
 					tok = true
 				}
 			}
@@ -87,7 +87,7 @@ func unityReadLines(t *testing.T, path string, upto int64) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 64*1024), 16*1024*1024)
 	var out []string

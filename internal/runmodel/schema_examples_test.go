@@ -26,11 +26,11 @@ func TestQualityAndProvenanceExamplesMatchDTOs(t *testing.T) {
 	}
 	for _, file := range []string{"quality-v1", "events-v2", "morgue-v1"} {
 		defs := schemaDefs(t, "../../docs/schemas/"+file+".schema.json")
-		for _, typ := range []reflect.Type{reflect.TypeOf(QualityReport{}), reflect.TypeOf(NameQuality{}), reflect.TypeOf(Coverage{}), reflect.TypeOf(Metric{})} {
+		for _, typ := range []reflect.Type{reflect.TypeFor[QualityReport](), reflect.TypeFor[NameQuality](), reflect.TypeFor[Coverage](), reflect.TypeFor[Metric]()} {
 			requireFields(t, file, defs, typ)
 		}
 	}
-	requireFields(t, "provenance-v1", schemaDefs(t, "../../docs/schemas/provenance-v1.schema.json"), reflect.TypeOf(ProvenanceRecord{}))
+	requireFields(t, "provenance-v1", schemaDefs(t, "../../docs/schemas/provenance-v1.schema.json"), reflect.TypeFor[ProvenanceRecord]())
 }
 
 func decodeStrict(t *testing.T, path string, v any) {
@@ -87,9 +87,9 @@ func requireFields(t *testing.T, file string, defs map[string]schemaDef, typ ref
 	for _, r := range def.Required {
 		required[r] = true
 	}
-	for i := 0; i < typ.NumField(); i++ {
-		tag := typ.Field(i).Tag.Get("json")
-		name := strings.Split(tag, ",")[0]
+	for field := range typ.Fields() {
+		tag := field.Tag.Get("json")
+		name, _, _ := strings.Cut(tag, ",")
 		if _, ok := def.Properties[name]; !ok {
 			t.Errorf("%s: schema %s missing property %s", file, typ.Name(), name)
 		}

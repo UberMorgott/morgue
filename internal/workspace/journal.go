@@ -95,7 +95,7 @@ func scanJournal(path string, fn func(ev *runmodel.Event) error) (*journalScan, 
 		}
 		var ev runmodel.Event
 		if err := json.Unmarshal(bytes.TrimSuffix(raw, []byte{'\n'}), &ev); err != nil {
-			return s, fmt.Errorf("%w: line %d: malformed record: %v", ErrCorrupt, line, err)
+			return s, fmt.Errorf("%w: line %d: malformed record: %w", ErrCorrupt, line, err)
 		}
 		if ev.Version != runmodel.EventVersion {
 			return s, fmt.Errorf("journal line %d: unsupported event version %d (this build reads v%d)", line, ev.Version, runmodel.EventVersion)

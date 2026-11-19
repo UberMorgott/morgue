@@ -320,7 +320,7 @@ func (m *Manager) InstallRuntimeContext(ctx context.Context, kind RuntimeKind, c
 	if m.selection != nil {
 		s := m.selection
 		ctx, cancel := context.WithCancel(ctx)
-		stop := context.AfterFunc(s.ctx, cancel)
+		stop := context.AfterFunc(s.ctx, cancel) //nolint:contextcheck // ctx still derives from the caller; s.ctx (selection lifetime) only adds a second cancel source
 		defer stop()
 		defer cancel()
 		s.work.Lock()
@@ -335,7 +335,7 @@ func (m *Manager) InstallRuntimeContext(ctx context.Context, kind RuntimeKind, c
 	if err != nil {
 		return err
 	}
-	defer lease.Close()
+	defer func() { _ = lease.Close() }()
 	return m.installRuntimeLocked(ctx, kind, cb)
 }
 

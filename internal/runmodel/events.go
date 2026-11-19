@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"time"
 )
 
@@ -222,12 +223,7 @@ func NewEvent(run string, seq uint64, ts time.Time, targetID, parentID string, p
 }
 
 func oneOf(value string, values ...string) bool {
-	for _, v := range values {
-		if value == v {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, value)
 }
 func validOutcome(s string, skipped bool) bool {
 	return oneOf(s, OutcomeSuccess, OutcomeError, OutcomeCancelled) || skipped && s == OutcomeSkipped

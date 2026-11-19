@@ -762,13 +762,13 @@ func helperSourceDigest(ctx *Context, dotnet, tool string, assets embed.FS, asse
 	if r, err := util.RunCmd(ctx.Ctx, dotnet, []string{"--version"}, ""); err == nil && r != nil && r.ExitCode == 0 {
 		sdkVersion = strings.TrimSpace(r.Stdout)
 	}
-	fmt.Fprintf(h, "morgue-helper\x00%s\x00rev:%s\x00sdk:%s\x00%s\x00", tool, rev, dotnet, sdkVersion)
+	_, _ = fmt.Fprintf(h, "morgue-helper\x00%s\x00rev:%s\x00sdk:%s\x00%s\x00", tool, rev, dotnet, sdkVersion) // hash.Hash.Write never fails
 	for _, name := range srcFiles {
 		data, err := assets.ReadFile(assetPrefix + name)
 		if err != nil {
 			return "", fmt.Errorf("read embedded %s: %w", name, err)
 		}
-		fmt.Fprintf(h, "%s\x00%d\x00", name, len(data))
+		_, _ = fmt.Fprintf(h, "%s\x00%d\x00", name, len(data)) // hash.Hash.Write never fails
 		h.Write(data)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
@@ -787,7 +787,7 @@ func buildHelperCached(ctx *Context, dotnet string, logTool func(string, string)
 	}
 
 	// Cached build — reuse only when built from exactly this source/SDK/app.
-	if stamp, err := os.ReadFile(filepath.Join(cacheDir, helperStamp)); err == nil && strings.TrimSpace(string(stamp)) == digest {
+	if stamp, err := os.ReadFile(filepath.Join(cacheDir, helperStamp)); err == nil && strings.TrimSpace(string(stamp)) == digest { //nolint:gosec // G304: stamp file inside BaseDir()/tools helper cache, not caller input
 		if _, err := os.Stat(dll); err == nil {
 			return dll, digest, nil
 		}

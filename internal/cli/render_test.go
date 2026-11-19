@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
@@ -15,7 +16,12 @@ import (
 
 func mustEvent(t *testing.T, run string, seq uint64, target, parent string, p runmodel.Payload) runmodel.Event {
 	t.Helper()
-	ts := time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC).Add(time.Duration(seq) * time.Second)
+	ts := time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)
+	if seq > math.MaxInt32 {
+		t.Fatalf("seq %d out of fixture range", seq)
+	} else {
+		ts = ts.Add(time.Duration(seq) * time.Second)
+	}
 	if rs, ok := p.(runmodel.RunStarted); ok {
 		ts = rs.Handle.StartedAt
 	}

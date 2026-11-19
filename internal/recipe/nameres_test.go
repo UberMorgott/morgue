@@ -150,7 +150,7 @@ func TestResolveNamesBoundedMemory(t *testing.T) {
 	}
 
 	// symbols.ndjson: N anonymous functions.
-	symF, _ := os.Create(filepath.Join(srcDir, "symbols.ndjson")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	symF, _ := os.Create(filepath.Join(srcDir, "symbols.ndjson"))
 	symW := bufio.NewWriterSize(symF, 1<<20)
 	for i := range n {
 		_, _ = fmt.Fprintf(symW, "{\"address\":\"0x%x\",\"name\":\"FUN_%x\"}\n", 0x140000000+i*0x20, 0x140000000+i*0x20)
@@ -160,7 +160,7 @@ func TestResolveNamesBoundedMemory(t *testing.T) {
 
 	// string_refs.csv: every function references a noise string; every 100th also
 	// references exactly one qualified id (so ~1% resolve).
-	srF, _ := os.Create(filepath.Join(idx, "string_refs.csv")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	srF, _ := os.Create(filepath.Join(idx, "string_refs.csv"))
 	srW := bufio.NewWriterSize(srF, 1<<20)
 	_, _ = srW.WriteString("function,address,string\n")
 	for i := range n {
@@ -221,7 +221,7 @@ func writeFile(t *testing.T, path, content string) {
 
 func readSymbolsNDJSON(t *testing.T, path string) map[string]string {
 	t.Helper()
-	f, err := os.Open(path) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	f, err := os.Open(path)
 	if err != nil {
 		t.Fatalf("open %s: %v", path, err)
 	}

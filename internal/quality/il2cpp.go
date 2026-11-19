@@ -149,7 +149,7 @@ func il2cppScanFile(path, rel, module string, seen map[string]bool, stats *StubS
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 64*1024), 16*1024*1024)
 	var (
@@ -277,7 +277,7 @@ func ParseIL2CPPDump(ctx context.Context, path string) (DumpHeader, error) {
 	if err != nil {
 		return h, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 64*1024), 16*1024*1024)
 	seen := map[int64]bool{}
@@ -359,8 +359,6 @@ func init() { Register("il2cpp", IL2CPP{}) }
 // stub declarations: no native method body is ever counted as recovered.
 type IL2CPP struct{}
 
-func unityI64(n int64) *int64 { return &n }
-
 func unityMetric(status string, value *int64, basis string, ev ...runmodel.Evidence) runmodel.Metric {
 	if ev == nil {
 		ev = []runmodel.Evidence{}
@@ -369,7 +367,7 @@ func unityMetric(status string, value *int64, basis string, ev ...runmodel.Evide
 }
 
 func unityMeasured(n int64, basis string, ev ...runmodel.Evidence) runmodel.Metric {
-	return unityMetric("measured", unityI64(n), basis, ev...)
+	return unityMetric("measured", new(n), basis, ev...)
 }
 func unityUnknown(basis string, ev ...runmodel.Evidence) runmodel.Metric {
 	return unityMetric("unknown", nil, basis, ev...)
@@ -433,7 +431,7 @@ func unityFileSHA256(ctx context.Context, path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	h := sha256.New()
 	buf := make([]byte, 256*1024)
 	for {

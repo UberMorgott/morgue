@@ -600,6 +600,6 @@ func (m *Manager) Delete(name string) error {
 	if err != nil {
 		return err
 	}
-	defer lease.Close()
+	defer func() { _ = lease.Close() }()
 	return m.deleteLocked(name)
 }

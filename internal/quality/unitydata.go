@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/UberMorgott/morgue/internal/runmodel"
 )
@@ -87,7 +88,7 @@ func (UnityData) Collect(_ context.Context, in Input) (runmodel.QualityReport, e
 		r.Status = "unknown"
 		r.Warnings = append(r.Warnings, "asset export evidence unavailable: "+err.Error())
 		r.Checks = append(r.Checks, unityCheck("output.present", "unknown", "asset export evidence unavailable"))
-		return r, nil
+		return r, nil //nolint:nilerr // missing evidence is reported as status unknown, not a collector failure
 	}
 	exportEv := unityEv(ev.ExportDir, ev.Mode)
 	switch ev.State {
@@ -122,7 +123,8 @@ func (UnityData) Collect(_ context.Context, in Input) (runmodel.QualityReport, e
 	}
 
 	fid := "pass"
-	fmsg := "exported assets are AssetRipper reconstructions (kind asset), not original project files"
+	var fmsg strings.Builder
+	fmsg.WriteString("exported assets are AssetRipper reconstructions (kind asset), not original project files")
 	for _, s := range []struct {
 		name string
 		step *UnityStep
@@ -130,23 +132,23 @@ func (UnityData) Collect(_ context.Context, in Input) (runmodel.QualityReport, e
 		if s.step == nil {
 			continue
 		}
-		fmsg += fmt.Sprintf("; %s %s", s.name, s.step.State)
+		fmt.Fprintf(&fmsg, "; %s %s", s.name, s.step.State)
 		if s.step.Count != nil {
-			fmsg += fmt.Sprintf(" %d %s", *s.step.Count, s.step.Unit)
+			fmt.Fprintf(&fmsg, " %d %s", *s.step.Count, s.step.Unit)
 		}
 		if s.step.Failed != nil && *s.step.Failed > 0 {
-			fmsg += fmt.Sprintf(", %d failed", *s.step.Failed)
+			fmt.Fprintf(&fmsg, ", %d failed", *s.step.Failed)
 			fid = "warn"
 		}
 		if s.step.State == "failed" {
 			fid = "warn"
-			fmsg += ": " + s.step.Reason
+			fmsg.WriteString(": " + s.step.Reason)
 		}
 		if s.step.External {
-			fmsg += " (external destination " + s.step.Output + ")"
+			fmsg.WriteString(" (external destination " + s.step.Output + ")")
 		}
 	}
-	r.Checks = append(r.Checks, unityCheck("artifact.fidelity", fid, fmsg, exportEv))
+	r.Checks = append(r.Checks, unityCheck("artifact.fidelity", fid, fmsg.String(), exportEv))
 
 	pstatus, pmsg := "pass", "tool "+ev.Tool+" "+ev.ToolVersion
 	if ev.ToolVersion == "" {

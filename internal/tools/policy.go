@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -101,7 +102,7 @@ func freshVersion(ctx context.Context, t ToolDef) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			return "", fmt.Errorf("freshness check HTTP %d", resp.StatusCode)
 		}
@@ -133,7 +134,7 @@ func (m *Manager) InstallVersion(ctx context.Context, name string, opts InstallO
 	if err != nil {
 		return ToolIdentity{}, err
 	}
-	defer lease.Close()
+	defer func() { _ = lease.Close() }()
 	m.report(ToolPolicyStatus{Name: name, Freshness: "checking"}, cb)
 	version, err := freshVersion(ctx, t)
 	if err == nil {
@@ -168,13 +169,13 @@ func (m *Manager) installLocked(ctx context.Context, t ToolDef, version string, 
 		if err != nil {
 			return ToolIdentity{}, err
 		}
-		defer sdk.Close()
+		defer func() { _ = sdk.Close() }()
 	}
 	stage, err := os.MkdirTemp(m.baseDir, "."+t.Name+".staging-*")
 	if err != nil {
 		return ToolIdentity{}, err
 	}
-	defer os.RemoveAll(stage)
+	defer func() { _ = os.RemoveAll(stage) }()
 	got, err := m.installInto(ctx, t, stage, cb)
 	if err != nil {
 		return ToolIdentity{}, err
@@ -216,12 +217,12 @@ func (m *Manager) installLocked(ctx context.Context, t ToolDef, version string, 
 	rollback := func(cause error) (ToolIdentity, error) {
 		if _, err := os.Stat(dest); err == nil {
 			if err = os.Rename(dest, stage); err != nil {
-				return ToolIdentity{}, fmt.Errorf("%w; rollback new install failed: %v (old kept at %s)", cause, err, backup)
+				return ToolIdentity{}, fmt.Errorf("%w; rollback new install failed: %w (old kept at %s)", cause, err, backup)
 			}
 		}
 		if hadOld {
 			if err := os.Rename(backup, dest); err != nil {
-				return ToolIdentity{}, fmt.Errorf("%w; restore old failed: %v (old kept at %s)", cause, err, backup)
+				return ToolIdentity{}, fmt.Errorf("%w; restore old failed: %w (old kept at %s)", cause, err, backup)
 			}
 		}
 		return ToolIdentity{}, cause
@@ -229,7 +230,7 @@ func (m *Manager) installLocked(ctx context.Context, t ToolDef, version string, 
 	if err = os.Rename(stage, dest); err != nil {
 		if hadOld {
 			if restore := os.Rename(backup, dest); restore != nil {
-				return ToolIdentity{}, fmt.Errorf("activate: %w; restore: %v", err, restore)
+				return ToolIdentity{}, fmt.Errorf("activate: %w; restore: %w", err, restore)
 			}
 		}
 		return ToolIdentity{}, err
@@ -248,7 +249,7 @@ func (m *Manager) deleteLocked(name string) error {
 	if err != nil {
 		return err
 	}
-	defer state.Close()
+	defer func() { _ = state.Close() }()
 	lk, err := ReadInstalledLock(m.baseDir)
 	if err != nil {
 		return err
@@ -264,7 +265,7 @@ func (m *Manager) deleteLocked(name string) error {
 	}
 	if err = os.RemoveAll(filepath.Join(m.baseDir, name)); err != nil {
 		if restore := writeInstalledLock(m.baseDir, old); restore != nil {
-			return fmt.Errorf("delete: %w; restore lock: %v", err, restore)
+			return fmt.Errorf("delete: %w; restore lock: %w", err, restore)
 		}
 		return err
 	}
@@ -272,15 +273,11 @@ func (m *Manager) deleteLocked(name string) error {
 }
 func cloneIdentities(in map[string]ToolIdentity) map[string]ToolIdentity {
 	out := map[string]ToolIdentity{}
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
 	return out
 }
 func cloneVersions(in map[string]string) map[string]string {
 	out := map[string]string{}
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
 	return out
 }

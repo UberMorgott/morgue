@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -522,7 +523,7 @@ func assertJournalOutcome(t *testing.T, root string, n int, want string) {
 func TestProgressIsSyncedAndPublishedWithinInterval(t *testing.T) {
 	w, r, root := openRun(t, runA)
 	mustAppend(t, w, r.started(), r.discovered("t1", "", "game"))
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		mustAppend(t, w, r.progress("t1"), r.logLine("x"))
 	}
 	deadline := time.Now().Add(coalesceInterval + 500*time.Millisecond)
@@ -606,7 +607,7 @@ type helper struct {
 
 func startHelper(t *testing.T, root, id string) *helper {
 	t.Helper()
-	cmd := exec.Command(os.Args[0], "-test.run=^TestWorkspaceHelperProcess$")
+	cmd := exec.CommandContext(context.Background(), os.Args[0], "-test.run=^TestWorkspaceHelperProcess$")
 	cmd.Env = append(os.Environ(), "MORGUE_WS_HELPER_ROOT="+root, "MORGUE_WS_HELPER_RUN="+id)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

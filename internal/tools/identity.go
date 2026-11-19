@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -77,7 +78,7 @@ func inventoryHash(ctx context.Context, root string) (string, error) {
 				break
 			}
 		}
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			err = nil
 		}
 		cerr := f.Close()
@@ -128,6 +129,8 @@ func sourceFor(tool ToolDef) string {
 		return "dotnet"
 	case MethodDirectURL:
 		return "direct"
+	case MethodGitBuild:
+		// built from source: no download origin to record
 	}
 	return "unknown"
 }

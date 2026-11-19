@@ -12,14 +12,12 @@ func TestSharedProductsOnlyCacheSuccessfulLiveWork(t *testing.T) {
 	s := newSharedProducts(context.Background())
 	var calls atomic.Int32
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			if _, err := s.Do("game1|settings1", func() error { calls.Add(1); return nil }); err != nil {
 				t.Error(err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if calls.Load() != 1 {

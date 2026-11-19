@@ -51,7 +51,7 @@ func historyFixture(t *testing.T, n uint64) (*HistoryHandlers, http.Handler) {
 
 func get(t *testing.T, srv http.Handler, url string, auth bool) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, url, nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
 	req.Host = "127.0.0.1:19876"
 	if auth {
 		req.Header.Set(apitoken.Header, "tok")
@@ -155,7 +155,7 @@ func TestSSELastEventIDReplaysJournal(t *testing.T) {
 	defer s.events.Shutdown()
 
 	open := func(lastID string) *http.Response {
-		req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/events", nil)
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/api/events", nil)
 		req.Header.Set(apitoken.Header, s.Token())
 		req.Header.Set("Last-Event-ID", lastID)
 		resp, err := http.DefaultClient.Do(req)
@@ -166,14 +166,14 @@ func TestSSELastEventIDReplaysJournal(t *testing.T) {
 	}
 	for id, code := range map[string]int{strings.Repeat("e", 32) + ":2": http.StatusConflict, "garbage": http.StatusBadRequest} {
 		resp := open(id)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != code {
 			t.Fatalf("Last-Event-ID %q: %d, want %d", id, resp.StatusCode, code)
 		}
 	}
 
 	resp := open(histRun + ":3")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	sc := bufio.NewScanner(resp.Body)
 	next := func() uint64 {
 		for sc.Scan() {

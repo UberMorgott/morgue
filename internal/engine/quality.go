@@ -141,8 +141,8 @@ func (r *Run) collectQuality(opts Options, tr TargetResult) {
 	if err != nil {
 		report.Warnings = append(report.Warnings, "quality.json not written: "+err.Error())
 	} else {
-		observer := r.artifactObserver(context.Background(), opts, tr.Recon.Path, name)
-		observer.(*artifactObserver).complete = tr.Error == nil
+		observer := r.newArtifactObserver(context.Background(), opts, tr.Recon.Path, name)
+		observer.complete = tr.Error == nil
 		if rerr := observer.Record(path, "metadata", "quality", "morgue", false); rerr != nil {
 			report.Warnings = append(report.Warnings, "quality.json not recorded: "+rerr.Error())
 		}

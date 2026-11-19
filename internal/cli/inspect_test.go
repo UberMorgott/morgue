@@ -20,7 +20,7 @@ func inspectRecovery(n int) workspace.Recovery {
 	r.Workspace.Run.ID = strings.Repeat("b", 32)
 	r.LastSeq = 42
 	r.Interrupted = true
-	for i := 0; i < n; i++ {
+	for i := range n {
 		r.Workspace.Targets = append(r.Workspace.Targets, runmodel.TargetRecord{
 			ID: fmt.Sprintf("t%016x", i), State: "running", RelativeInput: fmt.Sprintf("f%d\nINJECT", i), Output: fmt.Sprintf("f%d", i),
 		})

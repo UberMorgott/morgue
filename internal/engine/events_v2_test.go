@@ -20,7 +20,7 @@ func TestTypedProgressAndLegacyErrorProjection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	// These are in-memory sequencer tests; integrated durability is covered by
 	// workspace_test. A real Writer correctly rejects progress before started.
 	if err := r.store.Close(); err != nil {
@@ -52,7 +52,9 @@ func TestTypedProgressAndLegacyErrorProjection(t *testing.T) {
 		t.Fatalf("lost legacy warning: %+v", legacy)
 	}
 	var download runmodel.ToolProgress
-	json.Unmarshal(tool.Data, &download)
+	if err := json.Unmarshal(tool.Data, &download); err != nil {
+		t.Fatal(err)
+	}
 	if download.Bytes != 123 || download.BytesTotal != 456 {
 		t.Fatalf("parsed log instead of fields: %+v", download)
 	}
@@ -71,7 +73,7 @@ func TestConcurrentEventSequencer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	if err := r.store.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -80,9 +82,8 @@ func TestConcurrentEventSequencer(t *testing.T) {
 	r.events = ch
 	em := emitter{run: r, opts: r.options(nil)}
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() { defer wg.Done(); em.emit("log", "", "concurrent event") }()
+	for range 100 {
+		wg.Go(func() { em.emit("log", "", "concurrent event") })
 	}
 	wg.Wait()
 	close(ch)

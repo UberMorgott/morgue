@@ -29,7 +29,7 @@ func writeSyntheticMonolith(t *testing.T, srcDir string, n, bodyLines, namedEver
 	t.Helper()
 	binPath := filepath.Join(srcDir, "game.exe")
 	combined := filepath.Join(srcDir, "game.c")
-	f, err := os.Create(combined) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	f, err := os.Create(combined)
 	if err != nil {
 		t.Fatalf("create combined .c: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestSplitManyRecordsBoundedMemory(t *testing.T) {
 
 	// symbols.json parses with expected counts.
 	symPath := filepath.Join(srcDir, "symbols.json")
-	data, err := os.ReadFile(symPath) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	data, err := os.ReadFile(symPath)
 	if err != nil {
 		t.Fatalf("read symbols.json: %v", err)
 	}
@@ -234,7 +234,7 @@ func TestSplitPathologicalHugeRecord(t *testing.T) {
 	srcDir := t.TempDir()
 	binPath := filepath.Join(srcDir, "game.exe")
 	combined := filepath.Join(srcDir, "game.c")
-	f, err := os.Create(combined) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	f, err := os.Create(combined)
 	if err != nil {
 		t.Fatalf("create combined .c: %v", err)
 	}
@@ -275,7 +275,7 @@ func TestSplitPathologicalHugeRecord(t *testing.T) {
 		if e != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".c") {
 			return e
 		}
-		data, rerr := os.ReadFile(p) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+		data, rerr := os.ReadFile(p)
 		if rerr != nil {
 			return rerr
 		}

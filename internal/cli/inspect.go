@@ -167,10 +167,12 @@ func Inspect(opts InspectOptions) error {
 			return err
 		}
 	} else {
-		printInspectText(opts.Out, rep)
+		if err := printInspectText(opts.Out, rep); err != nil {
+			return err
+		}
 	}
 	if rerr != nil {
-		return fmt.Errorf("%w: %v", ErrWorkspaceCorrupt, rerr)
+		return fmt.Errorf("%w: %w", ErrWorkspaceCorrupt, rerr)
 	}
 	return nil
 }
@@ -213,44 +215,46 @@ func nonNil(s []string) []string {
 	return s
 }
 
-func printInspectText(w io.Writer, r InspectReport) {
+func printInspectText(w io.Writer, r InspectReport) error {
+	var b strings.Builder
 	outcome := "none"
 	if r.Outcome != nil {
 		outcome = *r.Outcome
 	}
-	fmt.Fprintf(w, "workspace: %s\n", r.Root)
-	fmt.Fprintf(w, "status: %s\n", r.Status)
-	fmt.Fprintf(w, "run: %s outcome: %s\n", nonEmptyStr(r.RunID, "unknown"), outcome)
-	fmt.Fprintf(w, "journal: committed through seq %d", r.LastSeq)
+	fmt.Fprintf(&b, "workspace: %s\n", r.Root)
+	fmt.Fprintf(&b, "status: %s\n", r.Status)
+	fmt.Fprintf(&b, "run: %s outcome: %s\n", nonEmptyStr(r.RunID, "unknown"), outcome)
+	fmt.Fprintf(&b, "journal: committed through seq %d", r.LastSeq)
 	if r.TornTail {
-		fmt.Fprint(w, " (torn final line ignored)")
+		fmt.Fprint(&b, " (torn final line ignored)")
 	}
-	fmt.Fprintln(w)
+	b.WriteByte('\n')
 	if r.Rebuilt {
-		fmt.Fprintln(w, "manifest: rebuilt from journal (prior snapshot preserved)")
+		fmt.Fprintln(&b, "manifest: rebuilt from journal (prior snapshot preserved)")
 	}
 	switch r.Status {
 	case "interrupted":
-		fmt.Fprintln(w, "note: run has no terminal event and no live lock; outputs may be partial. Start a fresh run to redo it.")
+		fmt.Fprintln(&b, "note: run has no terminal event and no live lock; outputs may be partial. Start a fresh run to redo it.")
 	case "running":
-		fmt.Fprintln(w, "note: a Morgue process holds this workspace; data shown is the committed prefix so far.")
+		fmt.Fprintln(&b, "note: a Morgue process holds this workspace; data shown is the committed prefix so far.")
 	case "corrupt":
-		fmt.Fprintf(w, "error: %s\n", r.Error)
+		fmt.Fprintf(&b, "error: %s\n", r.Error)
 	}
-	fmt.Fprintf(w, "targets: %s\n", countsLine(r.Targets))
-	fmt.Fprintf(w, "leaf targets: %s\n", countsLine(r.LeafTargets))
+	fmt.Fprintf(&b, "targets: %s\n", countsLine(r.Targets))
+	fmt.Fprintf(&b, "leaf targets: %s\n", countsLine(r.LeafTargets))
 	for _, d := range r.Diagnostics {
-		fmt.Fprintf(w, "diagnostic: %s\n", oneLine(d))
+		fmt.Fprintf(&b, "diagnostic: %s\n", oneLine(d))
 	}
 	for _, x := range r.Warnings {
-		fmt.Fprintf(w, "warning: %s\n", oneLine(x))
+		fmt.Fprintf(&b, "warning: %s\n", oneLine(x))
 	}
 	if r.TargetsTotal == 0 {
-		fmt.Fprintln(w, "no targets recorded")
-		return
+		fmt.Fprintln(&b, "no targets recorded")
+		_, err := io.WriteString(w, b.String())
+		return err
 	}
 	end := r.Offset + len(r.TargetPage)
-	fmt.Fprintf(w, "targets %d-%d of %d (id | outcome | recipe | input -> index):\n", min(r.Offset+1, end), end, r.TargetsTotal)
+	fmt.Fprintf(&b, "targets %d-%d of %d (id | outcome | recipe | input -> index):\n", min(r.Offset+1, end), end, r.TargetsTotal)
 	for i, t := range r.TargetPage {
 		state := t.State
 		if t.Outcome != nil {
@@ -260,20 +264,22 @@ func printInspectText(w io.Writer, r InspectReport) {
 		if t.Output != "" {
 			idx = path.Join(t.Output, workspace.IndexPath)
 		}
-		fmt.Fprintf(w, "  %s | %s | %s | %s -> %s\n", t.ID, state, nonEmptyStr(t.Recipe, "-"), oneLine(t.RelativeInput), idx)
+		fmt.Fprintf(&b, "  %s | %s | %s | %s -> %s\n", t.ID, state, nonEmptyStr(t.Recipe, "-"), oneLine(t.RelativeInput), idx)
 		if t.Error != "" {
-			fmt.Fprintf(w, "    error: %s\n", oneLine(t.Error))
+			fmt.Fprintf(&b, "    error: %s\n", oneLine(t.Error))
 		} else if t.SkipReason != "" {
-			fmt.Fprintf(w, "    skipped: %s\n", oneLine(t.SkipReason))
+			fmt.Fprintf(&b, "    skipped: %s\n", oneLine(t.SkipReason))
 		}
 		if i < len(r.Quality) {
-			fmt.Fprintf(w, "    quality: %s\n", oneLine(qualityLine(r.Quality[i])))
+			fmt.Fprintf(&b, "    quality: %s\n", oneLine(qualityLine(r.Quality[i])))
 		}
 	}
 	if r.HasMore {
-		fmt.Fprintf(w, "more: rerun with --offset %d\n", end)
+		fmt.Fprintf(&b, "more: rerun with --offset %d\n", end)
 	}
-	fmt.Fprintf(w, "read next: %s, %s\n", workspace.AgentsPath, workspace.IndexPath)
+	fmt.Fprintf(&b, "read next: %s, %s\n", workspace.AgentsPath, workspace.IndexPath)
+	_, err := io.WriteString(w, b.String())
+	return err
 }
 
 func countsLine(c runmodel.Counts) string {

@@ -55,7 +55,7 @@ func read(root string, active bool) (Recovery, error) {
 	p := newProjector(false)
 	scan, err := scanJournal(journalPath(root), func(ev *runmodel.Event) error {
 		if err := p.apply(ev); err != nil {
-			return fmt.Errorf("%w: %v", ErrCorrupt, err)
+			return fmt.Errorf("%w: %w", ErrCorrupt, err)
 		}
 		return nil
 	})

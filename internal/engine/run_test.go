@@ -29,7 +29,7 @@ func TestPrepareRunFreezesDefaultsAndAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	s := r.Spec()
 	if s.AllowDynamic || s.Cflow || !s.ExtractAssets || len(s.ReferencePaths) != 1 {
 		t.Fatalf("bad defaults: %+v", s)
@@ -53,7 +53,7 @@ func TestPrepareRunFreezesDefaultsAndAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r2.Close()
+	_ = r2.Close()
 }
 
 func TestPrepareRunRejectsInvalidRequest(t *testing.T) {
@@ -80,7 +80,7 @@ func TestPrepareRunRejectsAmbiguousGameDataDestination(t *testing.T) {
 	e := New(config.Default(), t.TempDir())
 	r, err := e.PrepareRun(context.Background(), runmodel.RunRequest{Path: input, Output: t.TempDir(), GameDataOut: t.TempDir()})
 	if err == nil {
-		r.Close()
+		_ = r.Close()
 		t.Fatal("two games admitted with one explicit game-data destination")
 	}
 	if !errors.Is(err, ErrInvalidRun) {
@@ -162,28 +162,6 @@ func TestPreparedRunCancellationAndAbsentConsumer(t *testing.T) {
 
 type cancelRunKey struct{}
 
-type cancelDuringAnalysis struct {
-	context.Context
-	checks int
-	done   chan struct{}
-}
-
-func (c *cancelDuringAnalysis) Done() <-chan struct{} {
-	c.checks++
-	if c.checks == 2 {
-		close(c.done)
-	}
-	return c.done
-}
-func (c *cancelDuringAnalysis) Err() error {
-	select {
-	case <-c.done:
-		return context.Canceled
-	default:
-		return nil
-	}
-}
-
 func TestPreparedRunCancellationDuringAnalysisPreservesScannedTargets(t *testing.T) {
 	e := New(config.Default(), t.TempDir())
 	r, err := e.PrepareRun(context.Background(), runmodel.RunRequest{Path: terminalInput(t, "a.dll", "b.dll"), Output: t.TempDir(), Recipe: terminalRecipeName})
@@ -210,7 +188,9 @@ type cancelRunRecipe struct{ terminalRecipe }
 
 func (cancelRunRecipe) Name() string { return "__cancel_analyzed_targets" }
 func (cancelRunRecipe) Execute(ctx *recipe.Context) error {
-	ctx.Ctx.Value(cancelRunKey{}).(context.CancelFunc)()
+	if cancel, ok := ctx.Ctx.Value(cancelRunKey{}).(context.CancelFunc); ok {
+		cancel()
+	}
 	return ctx.Ctx.Err()
 }
 func init() { recipe.Register(cancelRunRecipe{}) }
@@ -259,7 +239,9 @@ func assertV2Lifecycle(t *testing.T, h runmodel.RunHandle, events []runmodel.Eve
 		if ev.Type == runmodel.EventRunFinished {
 			terminals++
 			var p runmodel.RunFinished
-			json.Unmarshal(ev.Data, &p)
+			if err := json.Unmarshal(ev.Data, &p); err != nil {
+				t.Fatal(err)
+			}
 			if p.Outcome != want {
 				t.Fatalf("outcome %s", p.Outcome)
 			}
@@ -389,5 +371,5 @@ func TestPreparedRunChildObserverFailurePropagates(t *testing.T) {
 	if err := r.descendantError(r.targetID(opts, parent.Recon.Path)); err == nil {
 		t.Fatal("child failure lost")
 	}
-	r.Close()
+	_ = r.Close()
 }

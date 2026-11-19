@@ -45,7 +45,7 @@ func TestSummarySkippedEntriesHavePath(t *testing.T) {
 	e := New(config.Default(), t.TempDir())
 	runAndDrain(t, e, Options{Input: in, Output: out, Exclude: []string{"Excluded.dll"}})
 
-	data, err := os.ReadFile(filepath.Join(out, "summary.json")) //nolint:gosec // path is built from this test's own t.TempDir()
+	data, err := os.ReadFile(filepath.Join(out, "summary.json"))
 	if err != nil {
 		t.Fatalf("read summary.json: %v", err)
 	}

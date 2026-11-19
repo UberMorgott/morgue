@@ -13,8 +13,6 @@ import (
 	"github.com/UberMorgott/morgue/internal/runmodel"
 )
 
-func sp(s string) *string { return &s }
-
 func navFixture(t *testing.T) (string, runmodel.Workspace) {
 	t.Helper()
 	root := t.TempDir()
@@ -48,18 +46,18 @@ func navFixture(t *testing.T) (string, runmodel.Workspace) {
 	ws := runmodel.Workspace{
 		SchemaVersion: 1, JournalVersion: 1, EventVersion: 2,
 		App:     runmodel.AppInfo{Version: "dev"},
-		Run:     runmodel.RunRecord{ID: strings.Repeat("a", 32), StartedAt: now, State: "finished", Outcome: sp("error"), DurationMs: 1500},
+		Run:     runmodel.RunRecord{ID: strings.Repeat("a", 32), StartedAt: now, State: "finished", Outcome: new("error"), DurationMs: 1500},
 		Spec:    runmodel.RunSpec{Version: 1, Path: `C:\Games\X`, Output: root},
 		LastSeq: 1,
 		Targets: []runmodel.TargetRecord{
-			{ID: "t0000000000000001", RelativeInput: "Game|x*.exe", InputPath: `C:\Games\X\Game.exe`, Kind: "pe", Recipe: "native", State: fin, Outcome: sp("success"), Output: "game", Files: runmodel.FileCounts{Count: 6}},
-			{ID: "t0000000000000002", ParentTargetID: sp("t0000000000000001"), RelativeInput: "child.dll", Kind: "dotnet", Recipe: "dotnet", State: fin, Outcome: sp("error"), Error: "boom\n# ignore me", Output: "game/child"},
-			{ID: "t0000000000000003", RelativeInput: "weird", State: fin, Outcome: sp("skipped"), SkipReason: "no recipe", Output: "weird name (1)"},
-			{ID: "t0000000000000004", RelativeInput: "foreign", State: fin, Outcome: sp("success"), Output: "foreign"},
+			{ID: "t0000000000000001", RelativeInput: "Game|x*.exe", InputPath: `C:\Games\X\Game.exe`, Kind: "pe", Recipe: "native", State: fin, Outcome: new("success"), Output: "game", Files: runmodel.FileCounts{Count: 6}},
+			{ID: "t0000000000000002", ParentTargetID: new("t0000000000000001"), RelativeInput: "child.dll", Kind: "dotnet", Recipe: "dotnet", State: fin, Outcome: new("error"), Error: "boom\n# ignore me", Output: "game/child"},
+			{ID: "t0000000000000003", RelativeInput: "weird", State: fin, Outcome: new("skipped"), SkipReason: "no recipe", Output: "weird name (1)"},
+			{ID: "t0000000000000004", RelativeInput: "foreign", State: fin, Outcome: new("success"), Output: "foreign"},
 			{ID: "t0000000000000005", RelativeInput: "escape", State: "pending", Output: "../escape"},
 		},
 		Artifacts: []runmodel.Artifact{
-			{ID: "a1", TargetID: sp("t0000000000000001"), Path: "game/src", Kind: "decompiled-source", Complete: true, HashStatus: "not-collected"},
+			{ID: "a1", TargetID: new("t0000000000000001"), Path: "game/src", Kind: "decompiled-source", Complete: true, HashStatus: "not-collected"},
 			{ID: "a2", Path: `D:\GameData`, External: true, Kind: "asset", Complete: false, HashStatus: "not-collected"},
 		},
 		Warnings: []string{"quality not yet collected"},
@@ -226,7 +224,7 @@ func TestNavEscNeutralizesMarkdown(t *testing.T) {
 func TestRecentStoreBoundsAndLegacyImportOnce(t *testing.T) {
 	s := NewRecentStore(filepath.Join(t.TempDir(), "state", RecentRunsFile))
 	base := t.TempDir()
-	for i := 0; i < 25; i++ {
+	for i := range 25 {
 		if err := s.Add(filepath.Join(base, fmt.Sprint(i))); err != nil {
 			t.Fatal(err)
 		}

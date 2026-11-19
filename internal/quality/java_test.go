@@ -3,6 +3,7 @@ package quality
 import (
 	"bytes"
 	"encoding/binary"
+	"math"
 	"testing"
 )
 
@@ -19,7 +20,11 @@ func TestClassInventoryCodeVsAbstract(t *testing.T) {
 	put(uint16(5))
 	for _, s := range []string{"Demo", "run", "()V", "Code"} {
 		put(uint8(1))
-		put(uint16(len(s)))
+		if n := len(s); n >= 0 && n <= math.MaxUint16 {
+			put(uint16(n))
+		} else {
+			t.Fatal("fixture string too long")
+		}
 		b.WriteString(s)
 	}
 	for _, n := range []uint16{1, 1, 0, 0, 0, 2} {

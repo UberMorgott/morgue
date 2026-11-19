@@ -215,11 +215,6 @@ func fetchReleaseByTag(ctx context.Context, repo, token, tag string) (string, []
 	return release.GetTagName(), infos, nil
 }
 
-// downloadAndExtract downloads each matched asset into destDir, extracting archives.
-func downloadAndExtract(ctx context.Context, matched []assetInfo, destDir string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
-	return downloadAndExtractVerified(ctx, matched, destDir, "", onProgress, onExtract)
-}
-
 func downloadAndExtractVerified(ctx context.Context, matched []assetInfo, destDir, expectedHash string, onProgress func(bytesDown, bytesTotal int64), onExtract func()) error {
 	for _, asset := range matched {
 		archivePath := filepath.Join(destDir, asset.Name)

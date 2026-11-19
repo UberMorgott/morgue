@@ -55,8 +55,7 @@ func TestLongPathRoundTrip(t *testing.T) {
 	if runtime.GOOS == "windows" && !strings.HasPrefix(lp, `\\?\`) {
 		t.Fatalf("LongPath(%q) = %q, want \\\\?\\ prefix", f, lp)
 	}
-	//nolint:gosec // G304: lp is LongPath() of a file this test just created under
-	// t.TempDir(); filepath.Clean would strip the \\?\ prefix that is under test.
+	// filepath.Clean would strip the \\?\ prefix that is under test.
 	b, err := os.ReadFile(lp)
 	if err != nil {
 		t.Fatalf("ReadFile(%q): %v", lp, err)

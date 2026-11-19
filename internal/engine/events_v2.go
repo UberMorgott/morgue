@@ -240,6 +240,8 @@ func LegacyEvent(ev runmodel.Event) PipelineEvent {
 				result.Message = p.Error
 			}
 		}
+	case runmodel.EventArtifactWritten, runmodel.EventQualityUpdated:
+		// no legacy PipelineEvent field carries these
 	}
 	return result
 }

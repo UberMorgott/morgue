@@ -181,7 +181,7 @@ func (e *Engine) runPipeline(ctx context.Context, opts Options, events chan<- Pi
 			result.Error = errors.Join(result.Error, ctx.Err())
 		}
 		if opts.run != nil {
-			result = opts.run.record(opts, result)
+			result = opts.run.record(opts, result) //nolint:contextcheck // quality.json/products are recorded even for a cancelled target, so this runs detached
 		}
 		results = append(results, result)
 		em.targetResult(result)
@@ -330,9 +330,6 @@ func (e *Engine) runPipeline(ctx context.Context, opts Options, events chan<- Pi
 		}
 
 		// Check runtime dependencies
-		//nolint:contextcheck // reaches tools.Manager.RuntimePath -> systemDotNetHasAspNet10,
-		// a local `dotnet --list-runtimes` probe that already bounds itself to 10s. Threading a
-		// ctx would change RuntimePath's signature across engine/recipe/services for no gain.
 		if err := e.ensureRuntimeDeps(t.filePath, t.recipe, em, skipAssets); err != nil {
 			recordResult(TargetResult{
 				Group: t.group, Recon: t.recon, Recipe: t.recipe,

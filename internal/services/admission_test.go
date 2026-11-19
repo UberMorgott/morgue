@@ -100,7 +100,9 @@ func TestStartSpecForwardsEveryField(t *testing.T) {
 	if h.ID == "" || h.StartedAt.IsZero() || h.Output != "out" {
 		t.Fatalf("handle %+v", h)
 	}
-	<-done
+	if err := <-done; err != nil {
+		t.Fatalf("run finished with error: %v", err)
+	}
 }
 
 func TestStartSpecPrepareFailureReleasesSlot(t *testing.T) {
@@ -130,7 +132,9 @@ func TestStartSpecPrepareFailureReleasesSlot(t *testing.T) {
 	if _, err := s.StartSpec(runmodel.RunRequest{Path: "x"}); err != nil {
 		t.Fatalf("retry after failed prepare: %v", err)
 	}
-	<-done
+	if err := <-done; err != nil {
+		t.Fatalf("run finished with error: %v", err)
+	}
 }
 
 func TestEventHookAndStatusSeq(t *testing.T) {
@@ -163,7 +167,7 @@ func TestStopCancelsAndClosesRun(t *testing.T) {
 	s := NewPipelineServiceWithPrepare(func(ctx context.Context, req runmodel.RunRequest) (AdmittedRun, error) {
 		r, err := stubPrepare(func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }, nil)(ctx, req)
 		if err == nil {
-			run = r.(*stubRun)
+			run, _ = r.(*stubRun)
 		}
 		return r, err
 	})

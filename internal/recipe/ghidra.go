@@ -97,7 +97,7 @@ func checkGhidraJava(ctx context.Context, ghidraHome, javaPath string) error {
 	out, err := javaVersionOutput(ctx, javaPath)
 	major := parseJavaMajor(out)
 	if major == 0 {
-		return fmt.Errorf("ghidra requires JDK %d+ but the version of %s could not be determined: %v", minMajor, javaPath, err)
+		return fmt.Errorf("ghidra requires JDK %d+ but the version of %s could not be determined: %w", minMajor, javaPath, err)
 	}
 	if major < minMajor {
 		return fmt.Errorf("ghidra requires JDK %d+ (application.java.min=%d) but the selected Java %s is version %d", minMajor, minMajor, javaPath, major)

@@ -73,7 +73,7 @@ func TestPathPolicyRejectsReparseEscape(t *testing.T) {
 		p := filepath.Join(root, name)
 		var err error
 		if runtime.GOOS == "windows" {
-			err = exec.Command("cmd", "/c", "mklink", "/J", p, target).Run()
+			err = exec.CommandContext(t.Context(), "cmd", "/c", "mklink", "/J", p, target).Run()
 		} else {
 			err = os.Symlink(target, p)
 		}
@@ -106,7 +106,7 @@ func TestPathPolicyRejectsReparseEscape(t *testing.T) {
 	mustAppend(t, w, r.started())
 	p := filepath.Join(root2, "esc")
 	if runtime.GOOS == "windows" {
-		err = exec.Command("cmd", "/c", "mklink", "/J", p, outside).Run()
+		err = exec.CommandContext(t.Context(), "cmd", "/c", "mklink", "/J", p, outside).Run()
 	} else {
 		err = os.Symlink(outside, p)
 	}

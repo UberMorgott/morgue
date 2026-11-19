@@ -33,11 +33,11 @@ func TestToolDiagnosticsRetainEveryAttempt(t *testing.T) {
 
 func TestNonemptySourceRequired(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "Empty.cs"), nil, 0644)
+	writeFile(t, filepath.Join(dir, "Empty.cs"), "")
 	if countNonemptySource(dir, ".cs") != 0 {
 		t.Fatal("empty decompilation accepted")
 	}
-	os.WriteFile(filepath.Join(dir, "Real.cs"), []byte("class Demo {}"), 0644)
+	writeFile(t, filepath.Join(dir, "Real.cs"), "class Demo {}")
 	if countNonemptySource(dir, ".cs") != 1 {
 		t.Fatal("nonempty source missing")
 	}

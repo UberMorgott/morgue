@@ -168,7 +168,7 @@ func ReadGhidraStats(path, relPath string) (GhidraStats, error) {
 		var g GhidraFunction
 		if json.Unmarshal(b, &g) != nil {
 			st.MalformedLines++
-			return nil
+			return nil //nolint:nilerr // malformed line is counted above; the stream goes on
 		}
 		switch g.Kind {
 		case "program":
@@ -274,7 +274,7 @@ func readSplitStats(srcDir string) (splitStats, error) {
 			IsNamed bool   `json:"is_named"`
 		}
 		if json.Unmarshal(b, &e) != nil {
-			return nil
+			return nil //nolint:nilerr // malformed line is skipped; the stream goes on
 		}
 		st.Records++
 		if e.IsNamed {
@@ -349,7 +349,7 @@ func readProvenanceStats(path string) (provenanceStats, error) {
 		}
 		var r runmodel.ProvenanceRecord
 		if json.Unmarshal(b, &r) != nil {
-			return nil
+			return nil //nolint:nilerr // malformed line is skipped; the stream goes on
 		}
 		st.Records++
 		if r.ArtifactKind == runmodel.FidelityPseudocode {

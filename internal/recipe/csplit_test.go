@@ -105,7 +105,7 @@ func TestSplitDecompiledC(t *testing.T) {
 
 	// functions.ndjson: one JSON object per line, count == FunctionCount.
 	ndjsonPath := filepath.Join(srcDir, "functions.ndjson")
-	nf, err := os.Open(ndjsonPath) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	nf, err := os.Open(ndjsonPath)
 	if err != nil {
 		t.Fatalf("open functions.ndjson: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestSplitDecompiledC(t *testing.T) {
 	}
 
 	// functions_index.json: counts match.
-	fiData, err := os.ReadFile(filepath.Join(srcDir, "functions_index.json")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	fiData, err := os.ReadFile(filepath.Join(srcDir, "functions_index.json"))
 	if err != nil {
 		t.Fatalf("read functions_index.json: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestSplitDecompiledC(t *testing.T) {
 	// symbols.json: a small summary (counts + classes + ndjson pointer). The full
 	// address->name map is streamed to symbols.ndjson, NOT inlined here (memory
 	// safety). The summary must NOT carry the giant map.
-	smData, err := os.ReadFile(filepath.Join(srcDir, "symbols.json")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	smData, err := os.ReadFile(filepath.Join(srcDir, "symbols.json"))
 	if err != nil {
 		t.Fatalf("read symbols.json: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestSplitDecompiledC(t *testing.T) {
 
 	// symbols.ndjson: one {address,name} per line; addresses present, names right.
 	syms := map[string]string{}
-	sf, err := os.Open(filepath.Join(srcDir, "symbols.ndjson")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	sf, err := os.Open(filepath.Join(srcDir, "symbols.ndjson"))
 	if err != nil {
 		t.Fatalf("open symbols.ndjson: %v", err)
 	}

@@ -156,7 +156,7 @@ func TestNSISUnpack_ExtractSeverity(t *testing.T) {
 			}
 		}
 		var man nsisManifest
-		mdata, err := os.ReadFile(filepath.Join(outDir, "nsis-manifest.json")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+		mdata, err := os.ReadFile(filepath.Join(outDir, "nsis-manifest.json"))
 		if err != nil {
 			t.Fatalf("manifest: %v", err)
 		}
@@ -226,7 +226,7 @@ func TestNSISUnpack_Execute(t *testing.T) {
 			}
 
 			// The extracted file must exist with the right bytes.
-			got, err := os.ReadFile(filepath.Join(outDir, "extracted", "OUT", "hello.txt")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+			got, err := os.ReadFile(filepath.Join(outDir, "extracted", "OUT", "hello.txt"))
 			if err != nil {
 				t.Fatalf("expected extracted/OUT/hello.txt: %v", err)
 			}
@@ -235,7 +235,7 @@ func TestNSISUnpack_Execute(t *testing.T) {
 			}
 
 			// Manifest sanity.
-			mdata, err := os.ReadFile(filepath.Join(outDir, "nsis-manifest.json")) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+			mdata, err := os.ReadFile(filepath.Join(outDir, "nsis-manifest.json"))
 			if err != nil {
 				t.Fatalf("expected nsis-manifest.json: %v", err)
 			}

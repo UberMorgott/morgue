@@ -28,7 +28,7 @@ func ManagedInventory(path string, visit func(Identity) error) (Inventory, error
 	if err != nil {
 		return Inventory{}, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if err = f.Parse(); err != nil {
 		return Inventory{}, err
 	}
@@ -136,7 +136,7 @@ func (Managed) Collect(ctx context.Context, in Input) (runmodel.QualityReport, e
 	logs := filepath.Join(in.Output, "logs")
 	_ = filepath.WalkDir(logs, func(path string, d fs.DirEntry, e error) error {
 		if e != nil || d.IsDir() || !strings.Contains(d.Name(), "cfxstrings") || filepath.Ext(path) != ".log" {
-			return nil
+			return nil //nolint:nilerr // unreadable or unrelated log entries are skipped, not fatal
 		}
 		b, er := os.ReadFile(path)
 		if er == nil {
@@ -188,7 +188,7 @@ func collectSource(ctx context.Context, in Input, ext string, r *runmodel.Qualit
 		if e != nil {
 			return e
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		info, e := f.Stat()
 		if e != nil {
 			return e
@@ -306,7 +306,7 @@ func collectInvocationDiagnostics(in Input, tool string, r *runmodel.QualityRepo
 		if e != nil {
 			return nil
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		s := bufio.NewScanner(f)
 		s.Buffer(make([]byte, 65536), 16*1024*1024)
 		var line int64

@@ -400,7 +400,7 @@ func navScanTarget(dir string) navTargetScan {
 	seen := 0
 	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // unreadable entries are left out of the index; the walk goes on
 		}
 		if p == dir {
 			return nil
@@ -412,7 +412,7 @@ func navScanTarget(dir string) navTargetScan {
 		}
 		rel, rerr := filepath.Rel(dir, p)
 		if rerr != nil {
-			return nil
+			return nil //nolint:nilerr // entry outside dir is left out of the index; the walk goes on
 		}
 		rel = filepath.ToSlash(rel)
 		depth := strings.Count(rel, "/")
@@ -874,7 +874,7 @@ func navNextPunct(rest string) bool {
 // navShellQuote single-quotes p for a copy-paste shell command.
 func navShellQuote(p string) string {
 	if p != "" && strings.IndexFunc(p, func(r rune) bool {
-		return !(r == '/' || r == '.' || r == '_' || r == '-' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z')
+		return r != '/' && r != '.' && r != '_' && r != '-' && (r < '0' || r > '9') && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z')
 	}) < 0 {
 		return p
 	}

@@ -54,7 +54,7 @@ func TestReinstallFailedDownloadKeepsOldTool(t *testing.T) {
 	if _, err := mgr.Install(t.Context(), "test-stage-tool", nil); err == nil {
 		t.Fatal("Install succeeded against a failing server")
 	}
-	data, err := os.ReadFile(filepath.Join(toolDir, "stage.exe")) //nolint:gosec // path is built from this test's own t.TempDir()
+	data, err := os.ReadFile(filepath.Join(toolDir, "stage.exe"))
 	if err != nil || string(data) != "old" {
 		t.Fatalf("old binary lost after failed reinstall: %q, %v", data, err)
 	}
@@ -88,7 +88,7 @@ func TestReinstallSwapsInNewVersion(t *testing.T) {
 	if err != nil || ver != "2.0" {
 		t.Fatalf("Install = (%q, %v)", ver, err)
 	}
-	if data, _ := os.ReadFile(filepath.Join(toolDir, "stage.exe")); string(data) != "new" { //nolint:gosec // path is built from this test's own t.TempDir()
+	if data, _ := os.ReadFile(filepath.Join(toolDir, "stage.exe")); string(data) != "new" {
 		t.Fatalf("binary not replaced: %q", data)
 	}
 	if _, err := os.Stat(filepath.Join(toolDir, "stale.txt")); !os.IsNotExist(err) {

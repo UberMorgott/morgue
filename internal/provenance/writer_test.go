@@ -17,15 +17,13 @@ func TestWriterStreamsConcurrentRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 50 {
+		wg.Go(func() {
 			token := "0x06000001"
 			if err := w.Write(runmodel.ProvenanceRecord{SchemaVersion: 1, Token: &token}); err != nil {
 				t.Error(err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if err := w.Close(); err != nil {
@@ -35,7 +33,7 @@ func TestWriterStreamsConcurrentRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	s := bufio.NewScanner(f)
 	n := 0
 	for s.Scan() {

@@ -154,7 +154,7 @@ void FUN_140002000(void)
 // readCSV reads a CSV file and returns all data rows (header skipped).
 func readCSV(t *testing.T, path string) [][]string {
 	t.Helper()
-	f, err := os.Open(path) //nolint:gosec // G304: test fixture path built from t.TempDir(), not user input
+	f, err := os.Open(path)
 	if err != nil {
 		t.Fatalf("open %s: %v", path, err)
 	}

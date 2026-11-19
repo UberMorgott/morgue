@@ -22,7 +22,7 @@ func writeTestFile(t *testing.T, path, content string) {
 // readTestFile reads a file the test itself produced under t.TempDir().
 func readTestFile(t *testing.T, path string) []byte {
 	t.Helper()
-	data, err := os.ReadFile(path) //nolint:gosec // path is built from this test's own t.TempDir()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +365,7 @@ func TestOrganizeInventoryXML(t *testing.T) {
 	rep := &Report{AssetCountsByType: map[string]int{}}
 	organizeInventory(Options{InventoryCSV: inPath, OutDir: out}, rep)
 
-	f, err := os.Open(filepath.Join(out, "inventory", "assets.csv")) //nolint:gosec // path is built from this test's own t.TempDir()
+	f, err := os.Open(filepath.Join(out, "inventory", "assets.csv"))
 	if err != nil {
 		t.Fatal(err)
 	}
