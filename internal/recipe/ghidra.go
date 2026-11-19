@@ -268,6 +268,23 @@ public class MorgueExport extends GhidraScript {
 }
 `
 
+// checkGhidraProjectRoot fails fast when the temp root (where the Ghidra project
+// is created; portable TEMP lives under BaseDir) has a path element starting with
+// '.': Ghidra rejects it ("Path element starting with '.' is not permitted") only
+// after the JVM has started, so a Morgue copy under e.g. .claude\ failed late.
+func checkGhidraProjectRoot(dir string) error {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("ghidra project dir %s: %w", dir, err)
+	}
+	for el := range strings.SplitSeq(filepath.ToSlash(abs), "/") {
+		if strings.HasPrefix(el, ".") {
+			return fmt.Errorf("ghidra cannot create its project under %s: path element %q starts with '.', which Ghidra rejects; move Morgue to a folder whose path has no dot-folders (e.g. not under .claude or .cache)", abs, el)
+		}
+	}
+	return nil
+}
+
 // runGhidra runs Ghidra's analyzeHeadless on binaryPath, decompiling every
 // function to C via the embedded MorgueExport.java script. The decompiled C is
 // written to <outDir>/<binaryBaseName>.c and the number of decompiled functions
@@ -335,6 +352,10 @@ func runGhidra(
 
 	// ghidraToolPath points to ghidraRun.bat; we need support/analyzeHeadless
 	ghidraDir := filepath.Dir(ghidraToolPath)
+	if perr := checkGhidraProjectRoot(os.TempDir()); perr != nil {
+		log(perr.Error())
+		return 0, perr
+	}
 	if jerr := checkGhidraJava(ctx, ghidraDir, javaPath); jerr != nil {
 		log(jerr.Error())
 		return 0, jerr

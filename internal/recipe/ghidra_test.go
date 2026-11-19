@@ -336,3 +336,14 @@ func TestBuildIndexNonExistentDir(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckGhidraProjectRootRejectsDotFolders(t *testing.T) {
+	base := filepath.FromSlash("/Games") // synthetic: the real TEMP may itself sit under a dot-folder
+	if err := checkGhidraProjectRoot(filepath.Join(base, "Morgue", "data", "tmp", "p1")); err != nil {
+		t.Fatalf("clean path rejected: %v", err)
+	}
+	err := checkGhidraProjectRoot(filepath.Join(base, ".claude", "Morgue", "data", "tmp"))
+	if err == nil || !strings.Contains(err.Error(), "\".claude\"") || !strings.Contains(err.Error(), "move Morgue") {
+		t.Fatalf("dot-folder not reported actionably: %v", err)
+	}
+}
