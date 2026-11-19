@@ -7,19 +7,20 @@ import (
 )
 
 func TestDecodeAssetFileSingle(t *testing.T) {
-	dir := "testdata"
-	out, n, err := DecodeAssetFile(filepath.Join(dir, "GemComposeAsset.asset"))
+	blob := sampleBlob()
+	p := writeOdinAsset(t, t.TempDir(), "Sample", "0123456789abcdef0123456789abcdef", blob)
+	out, n, err := DecodeAssetFile(p)
 	if err != nil {
 		t.Fatalf("DecodeAssetFile: %v", err)
 	}
-	if n != 3709 {
-		t.Fatalf("blob size = %d, want 3709", n)
+	if n != len(blob) {
+		t.Fatalf("blob size = %d, want %d", n, len(blob))
 	}
 	if out == "" {
 		t.Fatalf("empty decode output")
 	}
 	// First non-empty line of the tree should be the root struct.
-	if want := "_data { <GemComposeAsset+Data>"; !contains(out, want) {
+	if want := "_data { <Asset+Data>"; !contains(out, want) {
 		t.Fatalf("decoded output missing %q", want)
 	}
 }
