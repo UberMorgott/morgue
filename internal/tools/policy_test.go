@@ -490,7 +490,12 @@ func TestPreseededHeadlessGhidraSurvivesBoundSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Dir(path) != home {
+	// Resolve compares physical paths; TEMP may be an 8.3 alias (CI: RUNNER~1).
+	want, err := physicalToolPath(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(path) != want {
 		t.Fatalf("lost configured Ghidra home: %s", path)
 	}
 }
