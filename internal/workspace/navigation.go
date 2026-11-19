@@ -500,9 +500,9 @@ func navRenderTargetIndex(ws runmodel.Workspace, tree navTree, n *navNode, dir s
 	navLine(&b, "- Kind: %s; recipe: %s", navEsc(navNonEmpty(t.Kind, "unknown")), navEsc(navNonEmpty(t.Recipe, "none")))
 	navLine(&b, "- State: **%s**", navEsc(navTargetOutcome(t)))
 	if p := navDeref(t.ParentTargetID); p != "" {
-		if pn := tree.byID[p]; pn != nil {
-			if _, ok := navTargetDir(ws.Spec.Output, pn.rec.Output); ok {
-				navLine(&b, "- Parent target: `%s` (%s)", p, navMdLink(IndexPath, up+path.Join(pn.rec.Output, IndexPath)))
+		if parentNode := tree.byID[p]; parentNode != nil {
+			if _, ok := navTargetDir(ws.Spec.Output, parentNode.rec.Output); ok {
+				navLine(&b, "- Parent target: `%s` (%s)", p, navMdLink(IndexPath, up+path.Join(parentNode.rec.Output, IndexPath)))
 			} else {
 				navLine(&b, "- Parent target: `%s`", p)
 			}
