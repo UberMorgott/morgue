@@ -9,12 +9,14 @@ import (
 	"github.com/UberMorgott/morgue/internal/util"
 )
 
-// dieDetect represents a single detection entry from DiE JSON output.
+// dieDetect represents a single detection entry from DiE JSON output. DiE 3.x+
+// nests the real detections under each file part's "values".
 type dieDetect struct {
-	Type    string `json:"type"`
-	Name    string `json:"name"`
-	String  string `json:"string"`
-	Version string `json:"version"`
+	Type    string      `json:"type"`
+	Name    string      `json:"name"`
+	String  string      `json:"string"`
+	Version string      `json:"version"`
+	Values  []dieDetect `json:"values"`
 }
 
 // dieOutput represents the top-level DiE JSON output.
@@ -32,7 +34,12 @@ func RunDiE(parent context.Context, r *Result, diePath, targetPath string) {
 		return
 	}
 
-	stdout := strings.TrimSpace(cmdResult.Stdout)
+	applyDiEJSON(r, cmdResult.Stdout)
+}
+
+// applyDiEJSON enriches r from `diec -j` output (best-effort).
+func applyDiEJSON(r *Result, stdout string) {
+	stdout = strings.TrimSpace(stdout)
 	if stdout == "" {
 		return
 	}
@@ -42,7 +49,11 @@ func RunDiE(parent context.Context, r *Result, diePath, targetPath string) {
 		return
 	}
 
+	var detects []dieDetect
 	for _, d := range output.Detects {
+		detects = append(append(detects, d), d.Values...)
+	}
+	for _, d := range detects {
 		switch strings.ToLower(d.Type) {
 		case "compiler":
 			if r.Compiler == "" {
