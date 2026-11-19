@@ -142,10 +142,18 @@ func countBucketFiles(t *testing.T, funcsDir string) int {
 // the real file's scale (millions of functions / 43.9M lines). N=2M therefore
 // reproduces the blowup deterministically: the old code peaks ~816 MiB (FAIL),
 // while a streaming fix stays roughly constant in function count.
-func TestSplitManyRecordsBoundedMemory(t *testing.T) {
-	if testing.Short() {
-		t.Skip("2M-record heap-bound stress test: skipped under -short (the -race lane), where the detector's own overhead swamps the bound")
+// skipHeapStress skips a full-size heap-bound stress test under -short or -race.
+// Under -race the detector's shadow memory swamps the heap bound and the run
+// takes minutes (2M records: 280 s vs ~15 s); the plain go test lane keeps the proof.
+func skipHeapStress(t *testing.T, size string) {
+	t.Helper()
+	if testing.Short() || raceEnabled {
+		t.Skip(size + " heap-bound stress test: skipped under -short/-race, where the detector's own overhead swamps the bound")
 	}
+}
+
+func TestSplitManyRecordsBoundedMemory(t *testing.T) {
+	skipHeapStress(t, "2M-record")
 	const (
 		n          = 2_000_000
 		bodyLines  = 3
@@ -218,9 +226,7 @@ const recordTruncationMarker = "[record body truncated by Morgue"
 //     fired and recBuilder stopped growing, rather than the record just
 //     happening to stream through under the limit.
 func TestSplitPathologicalHugeRecord(t *testing.T) {
-	if testing.Short() {
-		t.Skip("4M-line heap-bound stress test: skipped under -short (the -race lane), where the detector's own overhead swamps the bound")
-	}
+	skipHeapStress(t, "4M-line")
 	const (
 		// Each body line is ~28 bytes; >2.4M lines guarantees the accumulated
 		// record body crosses maxRecordBytes (64MiB) so the cap MUST fire.
