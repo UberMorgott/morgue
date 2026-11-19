@@ -11,8 +11,8 @@ import (
 // TestPinnedVersion: a pinned tool reports its own pin as the latest version, so
 // the UI never offers an update the installer cannot perform (assetripper was
 // pinned at 1.3.14 and still advertised 2.0.0), and never falls back to the
-// Last-Modified date of a direct-download asset (confuserex-killer showed
-// "2021.12.07" opposite its installed v0.1.0.0-beta).
+// Last-Modified date of a direct-download asset (one showed "2021.12.07"
+// opposite its installed v0.1.0.0-beta).
 func TestPinnedVersion(t *testing.T) {
 	tests := []struct {
 		name   string

@@ -77,7 +77,6 @@ Out of scope for v0.8: job queue, learned ETA, full results browser, automatic r
   plain line renderer driven by typed events.
 - `morgue api run|tools|settings` → fold into normal commands (`--gui=auto` delegation) once RunSpec gives
   parity; keep aliases for one release. `api_cmd.go` `settingTypes` duplicates the config schema.
-- Tool registry entries not used by any recipe: `goresym`, `nofuserex`, `confuserex-killer`,
-  `proxycall-remover`; plus the `MethodGitBuild` install path (no registry entry uses it).
+- Tool registry entries not used by any recipe: `goresym`, `nofuserex`; plus the `MethodGitBuild` install path (no registry entry uses it).
 - Regex parsing of human log messages in `frontend/src/lib/pipeline.ts` (after typed events) and
   localStorage run history (after the journal).

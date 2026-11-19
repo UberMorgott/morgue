@@ -92,7 +92,7 @@ NuGet, or direct URLs). Inspect and manage them with `morgue tools check` /
 - **retoc** — Unreal Engine PAK/IoStore extractor
 - **vineflower** — Java bytecode decompiler
 - **strings** — Sysinternals Strings
-- **goresym**, **nofuserex**, **confuserex-killer**, **proxycall-remover** — installable
+- **goresym**, **nofuserex** — installable
   via `morgue tools install`, currently not used by any recipe
 
 ### Updating tools
